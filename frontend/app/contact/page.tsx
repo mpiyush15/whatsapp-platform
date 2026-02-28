@@ -84,7 +84,7 @@ export default function ContactPage() {
               <h3 className="text-xl font-bold text-gray-900 mb-2">Phone</h3>
               <p className="text-gray-600 mb-4">Call us during business hours</p>
               <a href="tel:+919999999999" className="text-green-600 font-semibold hover:text-green-700">
-                +91 9999 999 999
+                +91 8087131777
               </a>
             </div>
 
