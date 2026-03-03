@@ -197,15 +197,81 @@ export const sendTemplateMessage = async (req, res) => {
 
 /**
  * GET /api/messages - Get message history
+ * Query params:
+ *   - phoneNumberId: filter by phone number
+ *   - status: filter by message status
+ *   - tag: filter by contact tag (messages from contacts with this tag)
+ *   - limit: pagination limit (default 50)
+ *   - skip: pagination skip (default 0)
  */
 export const getMessages = async (req, res) => {
   try {
     const accountId = req.account.accountId; // Use String for database queries
-    const { phoneNumberId, status, limit = 50, skip = 0 } = req.query;
+    const { phoneNumberId, status, tag, limit = 50, skip = 0 } = req.query;
     
     const query = { accountId };
     if (phoneNumberId) query.phoneNumberId = phoneNumberId;
     if (status) query.status = status;
+    
+    // If tag filter is specified, find contacts with that tag and filter messages
+    if (tag) {
+      const Contact = require('../models/Contact.js').default;
+      const Conversation = require('../models/Conversation.js').default;
+      
+      try {
+        // Find contacts with the specified tag
+        const contacts = await Contact.find({
+          accountId,
+          tags: tag
+        }).lean();
+        
+        if (contacts.length === 0) {
+          // No contacts with this tag, return empty results
+          return res.json({
+            success: true,
+            messages: [],
+            pagination: {
+              total: 0,
+              limit: parseInt(limit),
+              skip: parseInt(skip),
+              hasMore: false
+            }
+          });
+        }
+        
+        // Get phone numbers of these contacts
+        const contactPhones = contacts.map(c => c.whatsappNumber);
+        
+        // Find conversations for these contacts
+        const conversations = await Conversation.find({
+          accountId,
+          userPhone: { $in: contactPhones }
+        }).lean();
+        
+        if (conversations.length === 0) {
+          // No conversations for these contacts, return empty results
+          return res.json({
+            success: true,
+            messages: [],
+            pagination: {
+              total: 0,
+              limit: parseInt(limit),
+              skip: parseInt(skip),
+              hasMore: false
+            }
+          });
+        }
+        
+        // Get conversation IDs
+        const conversationIds = conversations.map(c => c._id);
+        
+        // Add conversation filter to query
+        query.conversationId = { $in: conversationIds };
+      } catch (tagError) {
+        console.error('❌ Tag filter error:', tagError);
+        // Continue without tag filter on error
+      }
+    }
     
     const messages = await Message.find(query)
       .sort({ createdAt: -1 })

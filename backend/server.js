@@ -8,15 +8,20 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const PORT = process.env.PORT || 5050;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://pixelsagency:Pm02072023@pixelsagency.664wxw1.mongodb.net/pixelswhatsapp';
+const MONGO_URI = process.env.MONGODB_URI;
 
 // Create HTTP server
 const httpServer = createServer(app);
 
-// Setup Socket.io
+// Setup Socket.io with CORS from environment variable
+const socketCorsOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: socketCorsOrigins,
     methods: ['GET', 'POST']
   }
 });

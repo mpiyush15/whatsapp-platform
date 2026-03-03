@@ -12,6 +12,7 @@ const router = express.Router();
 
 // CRUD operations
 router.get('/', contactController.getContacts);
+router.get('/by-phone/:whatsappNumber', contactController.getContactByPhone);
 router.post('/', contactLimiter, validators.validateCreateContact, contactController.createContact);
 router.put('/:id', validators.validateUpdateContact, contactController.updateContact);
 router.delete('/:id', validators.validateObjectId, contactController.deleteContact);

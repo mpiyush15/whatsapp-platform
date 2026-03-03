@@ -456,21 +456,24 @@ export const convertLeadToClient = async (req, res) => {
     }
     
     // Extract contact info from responses
-    const contactName = lead.responses.name || `Contact-${lead.customerPhone}`;
-    const contactEmail = lead.responses.email || undefined;
+    const contactName = lead.responses?.name || `Contact-${lead.customerPhone}`;
+    const contactEmail = lead.responses?.email || undefined;
     const contactPhone = lead.customerPhone;
     
-    // Create contact
+    // Create contact with whatsappNumber (crucial for messaging)
     const contact = await Contact.create({
       accountId,
       name: contactName,
       phone: contactPhone,
+      whatsappNumber: contactPhone,  // ✅ CRITICAL: WhatsApp messaging requires this field
       email: contactEmail,
-      source: 'chatbot_lead',
+      type: 'lead',  // Mark as lead type
+      source: 'chatbot',
       metadata: {
         leadId: lead._id.toString(),
         chatbotId: lead.chatbotId,
-        responses: lead.responses
+        flowResponses: lead.responses,  // Store original form responses
+        workflowSessionId: lead.workflowSessionId
       }
     });
     
@@ -485,7 +488,7 @@ export const convertLeadToClient = async (req, res) => {
     
     res.json({ 
       success: true, 
-      message: 'Lead converted to contact',
+      message: 'Lead converted to contact successfully',
       data: { lead, contact } 
     });
   } catch (error) {

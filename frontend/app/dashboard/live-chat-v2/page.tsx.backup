@@ -1,0 +1,765 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { io } from 'socket.io-client';
+import { 
+  Send, 
+  Paperclip, 
+  Search, 
+  MoreVertical, 
+  Phone, 
+  Video,
+  Check,
+  CheckCheck,
+  Clock,
+  AlertCircle,
+  Download,
+  Smile,
+  ArrowLeft,
+  X,
+  Copy,
+  Trash2,
+  Pin,
+  ChevronDown,
+  Image as ImageIcon,
+  File as FileIcon
+} from 'lucide-react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
+
+interface Message {
+  _id: string;
+  conversationId: string;
+  content: { text?: string; url?: string; caption?: string; filename?: string };
+  direction: 'inbound' | 'outbound';
+  status: 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+  messageType: 'text' | 'image' | 'video' | 'audio' | 'document';
+  senderName?: string;
+  createdAt: string;
+  sentAt?: string;
+  deliveredAt?: string;
+  readAt?: string;
+  waMessageId?: string;
+}
+
+interface Conversation {
+  _id: string;
+  userPhone: string;
+  lastMessagePreview: string;
+  lastMessageAt: string;
+  unreadCount?: number;
+  phoneNumberId: string;
+}
+
+interface PhoneNumber {
+  _id: string;
+  phoneNumberId: string;
+  displayPhone: string;
+  displayName: string;
+  qualityRating: string;
+  isActive: boolean;
+}
+
+// ✅ DIAGNOSTIC: Log API configuration on mount
+if (typeof window !== 'undefined') {
+  console.log('🔧 API Configuration:', {
+    API_URL,
+    hasToken: !!localStorage.getItem('token'),
+    tokenLength: localStorage.getItem('token')?.length || 0
+  });
+}
+
+const getHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+};
+
+// ✅ Helper function to make API calls with better error handling
+const apiCall = async (endpoint: string, options: RequestInit = {}) => {
+  const url = `${API_URL}${endpoint}`;
+  const headers = getHeaders();
+  
+  console.log(`📡 API Call: ${options.method || 'GET'} ${url}`);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...headers,
+        ...options.headers
+      }
+    });
+    
+    // If response is not JSON, return text for debugging
+    if (!response.ok) {
+      let errorText = '';
+      try {
+        errorText = await response.text();
+      } catch (e) {
+        errorText = 'Unable to parse error response';
+      }
+      
+      console.error(`❌ API Error ${response.status}:`, errorText);
+      throw new Error(`API Error ${response.status}: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`❌ API Call Failed: ${errorMsg}`);
+    throw error;
+  }
+};
+
+const formatTime = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+};
+
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  
+  if (date.toDateString() === now.toDateString()) {
+    return 'TODAY';
+  } else if (date.getTime() > now.getTime() - 24 * 60 * 60 * 1000) {
+    return 'YESTERDAY';
+  } else {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined }).toUpperCase();
+  }
+};
+
+const getStatusIcon = (message: Message) => {
+  if (message.direction !== 'outbound') return null;
+
+  switch (message.status) {
+    case 'sent':
+      return <Check className="h-4 w-4 text-[#667781]" />;
+    case 'delivered':
+      return <CheckCheck className="h-4 w-4 text-[#667781]" />;
+    case 'read':
+      return <CheckCheck className="h-4 w-4 text-[#53bdeb]" />;
+    case 'failed':
+      return <AlertCircle className="h-4 w-4 text-red-500" />;
+    default:
+      return <Clock className="h-4 w-4 text-[#667781]" />;
+  }
+};
+
+export default function LiveChatV2() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [socket, setSocket] = useState<any>(null);
+  const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
+  const [selectedPhoneId, setSelectedPhoneId] = useState<string>('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showFilePreview, setShowFilePreview] = useState<{ file: File; preview: string } | null>(null);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [showMessageMenu, setShowMessageMenu] = useState<string | null>(null);
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-adjust textarea height
+  const adjustTextareaHeight = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 100) + 'px';
+    }
+  };
+
+  // Check mobile view
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobileView(window.innerWidth < 768);
+      setSidebarOpen(window.innerWidth >= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // 🔴 FETCH PHONE NUMBERS FIRST
+  const fetchPhoneNumbers = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('❌ No authentication token found');
+        return;
+      }
+      
+      const response = await fetch(`${API_URL}/settings/phone-numbers`, {
+        headers: getHeaders()
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPhoneNumbers(data.phoneNumbers || data || []);
+        
+        // Auto-select first active phone
+        const phones = data.phoneNumbers || data || [];
+        const activePhone = phones.find((p: PhoneNumber) => p.isActive);
+        if (activePhone) {
+          setSelectedPhoneId(activePhone.phoneNumberId);
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('Failed to fetch phones:', response.status, errorText);
+      }
+    } catch (error) {
+      console.error('Error fetching phone numbers:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message);
+      }
+    }
+  }, []);
+
+  // 🔴 FETCH CONVERSATIONS WITH PHONE ID
+  const fetchConversations = useCallback(async () => {
+    if (!selectedPhoneId) {
+      return;
+    }
+    
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('❌ No authentication token found');
+        setIsLoading(false);
+        return;
+      }
+      
+      const url = new URL(`${API_URL}/conversations`);
+      url.searchParams.append('phoneNumberId', selectedPhoneId);
+      
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'x-phone-number-id': selectedPhoneId
+      };
+      
+      console.log('📡 Fetching conversations from:', url.toString());
+      console.log('📡 API_URL:', API_URL);
+      console.log('📡 Token exists:', !!token);
+      console.log('📡 SelectedPhoneId:', selectedPhoneId);
+      
+      const response = await fetch(url.toString(), { headers });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error:', response.status, response.statusText, errorText);
+        setConversations([]);
+        setIsLoading(false);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.conversations) {
+        console.log('✅ Fetched conversations:', data.conversations.length);
+        setConversations(data.conversations);
+      } else {
+        console.warn('⚠️ No conversations found:', data);
+        setConversations([]);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching conversations:', error);
+      if (error instanceof Error) {
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+      }
+      setConversations([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedPhoneId]);
+
+  // 🔴 FETCH MESSAGES FOR CONVERSATION
+  const fetchMessages = useCallback(async (conversationId: string, phoneNumberId: string) => {
+    if (!conversationId || !phoneNumberId) {
+      console.warn('⚠️ Missing conversationId or phoneNumberId');
+      return;
+    }
+    
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('❌ No authentication token found');
+        return;
+      }
+      
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'x-phone-number-id': phoneNumberId
+      };
+      
+      const messageUrl = `${API_URL}/conversations/${conversationId}/messages?phoneNumberId=${phoneNumberId}`;
+      console.log('📡 Fetching messages from:', messageUrl);
+      
+      const response = await fetch(messageUrl, { headers });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error:', response.status, response.statusText, errorText);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.messages) {
+        console.log('✅ Fetched messages:', data.messages.length);
+        setMessages(data.messages);
+        
+        // Auto-scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else {
+        console.warn('⚠️ No messages found or error:', data);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching messages:', error);
+      if (error instanceof Error) {
+        console.error('❌ Error message:', error.message);
+      }
+    }
+  }, []);
+
+  // 🔴 SEND MESSAGE
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !selectedConversation || isSending) return;
+    
+    setIsSending(true);
+    
+    try {
+      const response = await fetch(`${API_URL}/messages/send`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          phoneNumberId: selectedConversation.phoneNumberId,
+          recipientPhone: selectedConversation.userPhone,
+          messageText: newMessage
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setNewMessage('');
+        // Message will be added via socket.io broadcast
+      } else {
+        alert(`Failed to send: ${data.message}`);
+      }
+    } catch (error) {
+      console.error('❌ Send error:', error);
+      alert('Failed to send message');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // 🔴 SEND FILE
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedConversation) return;
+    
+    if (file.size > 16 * 1024 * 1024) {
+      alert('File too large (max 16MB)');
+      return;
+    }
+
+    // Generate preview
+    let preview = '';
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setShowFilePreview({ file, preview: e.target?.result as string });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setShowFilePreview({ file, preview: '' });
+    }
+  };
+
+  // Send file after preview
+  const sendFile = async (file: File) => {
+    if (!selectedConversation) return;
+    
+    setIsSending(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('phoneNumberId', selectedConversation.phoneNumberId);
+      formData.append('recipientPhone', selectedConversation.userPhone);
+      formData.append('campaign', 'manual');
+      
+      const response = await fetch(`${API_URL}/messages/send-media`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setShowFilePreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } else {
+        alert(`Upload failed: ${data.message}`);
+      }
+    } catch (error) {
+      console.error('❌ Upload error:', error);
+      alert('Upload failed');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // 🔴 INIT PHONE NUMBERS & SOCKET
+  useEffect(() => {
+    fetchPhoneNumbers();
+    
+    // Setup socket.io
+    const socketUrl = API_URL.replace('/api', '');
+    console.log('🔌 Connecting to socket:', socketUrl);
+    
+    const newSocket = io(socketUrl, {
+      auth: { token: localStorage.getItem('token') },
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5
+    });
+    
+    newSocket.on('connect', () => {
+      console.log('✅ Socket connected:', newSocket.id);
+    });
+    
+    newSocket.on('disconnect', () => {
+      console.log('❌ Socket disconnected');
+    });
+    
+    newSocket.on('error', (error) => {
+      console.error('🔴 Socket error:', error);
+    });
+    
+    newSocket.on('message.received', (data: Message) => {
+      console.log('📨 Message received:', data);
+      if (selectedConversation && data.conversationId === selectedConversation._id) {
+        setMessages(prev => [...prev, data]);
+      }
+    });
+    
+    newSocket.on('message.sent', (data: Message) => {
+      console.log('📤 Message sent:', data);
+      if (selectedConversation && data.conversationId === selectedConversation._id) {
+        setMessages(prev => {
+          const exists = prev.some(m => m._id === data._id);
+          return exists ? prev.map(m => m._id === data._id ? data : m) : [...prev, data];
+        });
+      }
+    });
+    
+    newSocket.on('message_status', (data: any) => {
+      console.log('🔄 Message status:', data);
+      setMessages(prev =>
+        prev.map(m =>
+          m._id === data.messageId
+            ? { ...m, status: data.status }
+            : m
+        )
+      );
+    });
+    
+    setSocket(newSocket);
+    
+    return () => {
+      newSocket.disconnect();
+    };
+  }, []);
+
+  // 🔴 FETCH CONVERSATIONS WHEN PHONE CHANGES
+  useEffect(() => {
+    if (selectedPhoneId) {
+      setIsLoading(true);
+      fetchConversations();
+      const interval = setInterval(fetchConversations, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [selectedPhoneId, fetchConversations]);
+
+  // 🔴 FETCH MESSAGES WHEN CONVERSATION CHANGES
+  useEffect(() => {
+    if (selectedConversation) {
+      fetchMessages(selectedConversation._id, selectedConversation.phoneNumberId);
+      
+      // Subscribe to conversation room
+      socket?.emit('join_conversation', selectedConversation._id);
+      
+      return () => {
+        socket?.emit('leave_conversation', selectedConversation._id);
+      };
+    }
+  }, [selectedConversation, socket, fetchMessages]);
+
+  // 🔴 AUTO SCROLL
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Render message content
+  const renderMessageContent = (message: Message) => {
+    const { content, messageType } = message;
+    
+    switch (messageType) {
+      case 'image':
+        return (
+          <div className="max-w-xs">
+            <img src={content.url} alt="Image" className="rounded-lg w-full" />
+            {content.caption && <p className="text-sm mt-1">{content.caption}</p>}
+          </div>
+        );
+      case 'video':
+        return (
+          <div className="max-w-xs">
+            <video src={content.url} controls className="rounded-lg w-full" />
+            {content.caption && <p className="text-sm mt-1">{content.caption}</p>}
+          </div>
+        );
+      case 'audio':
+        return (
+          <div className="w-64">
+            <audio src={content.url} controls className="w-full" />
+          </div>
+        );
+      case 'document':
+        return (
+          <a href={content.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-500 underline">
+            <Download className="h-4 w-4" />
+            {content.filename || 'Document'}
+          </a>
+        );
+      default:
+        return <p className="text-sm break-words">{content.text}</p>;
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-white overflow-hidden">
+      {/* Sidebar - Conversations List */}
+      <div className="w-80 border-r border-gray-200 flex flex-col bg-white">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-200">
+          <h1 className="text-2xl font-bold text-gray-900">💬 Live Chat</h1>
+          <p className="text-xs text-gray-600 mt-1">Real-time messaging</p>
+        </div>
+
+        {/* Phone Selector */}
+        <div className="p-3 border-b border-gray-200">
+          <select
+            value={selectedPhoneId}
+            onChange={(e) => setSelectedPhoneId(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-lg text-sm"
+          >
+            <option value="">Select phone number</option>
+            {phoneNumbers.map(phone => (
+              <option key={phone.phoneNumberId} value={phone.phoneNumberId}>
+                {phone.displayPhone} {phone.isActive ? '(Active)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Search */}
+        <div className="p-3 border-b border-gray-200">
+          <div className="relative">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search conversations"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+        </div>
+
+        {/* Conversations List */}
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="p-4 text-center text-gray-500">Loading...</div>
+          ) : conversations.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">No conversations</div>
+          ) : (
+            conversations
+              .filter(conv => conv.userPhone.includes(searchQuery))
+              .map(conv => (
+                <button
+                  key={conv._id}
+                  onClick={() => setSelectedConversation(conv)}
+                  className={`w-full p-3 border-b border-gray-100 hover:bg-gray-50 text-left transition ${
+                    selectedConversation?._id === conv._id ? 'bg-blue-50' : ''
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-gray-900">{conv.userPhone}</p>
+                      <p className="text-xs text-gray-500 truncate">{conv.lastMessagePreview}</p>
+                    </div>
+                    <p className="text-xs text-gray-400 ml-2">
+                      {new Date(conv.lastMessageAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  {conv.unreadCount ? (
+                    <div className="mt-1 inline-block bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                      {conv.unreadCount}
+                    </div>
+                  ) : null}
+                </button>
+              ))
+          )}
+        </div>
+      </div>
+
+      {/* Main Chat Area */}
+      {selectedConversation ? (
+        <div className="flex-1 flex flex-col bg-white">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSelectedConversation(null)}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <ArrowLeft className="h-5 w-5 text-gray-600" />
+              </button>
+              <div>
+                <p className="font-semibold text-gray-900">{selectedConversation.userPhone}</p>
+                <p className="text-xs text-gray-500">Active now</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-full">
+                <Phone className="h-5 w-5 text-gray-600" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-full">
+                <Video className="h-5 w-5 text-gray-600" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-full">
+                <MoreVertical className="h-5 w-5 text-gray-600" />
+              </button>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-gray-500">No messages yet</p>
+              </div>
+            ) : (
+              messages.map((msg, idx) => {
+                const showDate = idx === 0 || new Date(messages[idx - 1].createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
+                
+                return (
+                  <div key={msg._id}>
+                    {showDate && (
+                      <div className="flex justify-center my-3">
+                        <span className="text-xs bg-white text-gray-500 px-2 py-1 rounded">{formatDate(msg.createdAt)}</span>
+                      </div>
+                    )}
+                    <div className={`flex ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-xs px-3 py-2 rounded-lg shadow-sm ${
+                          msg.direction === 'outbound'
+                            ? 'bg-[#d9fdd3]'
+                            : 'bg-white'
+                        }`}
+                      >
+                        {msg.direction === 'inbound' && (
+                          <p className="text-xs font-semibold text-green-600 mb-1">{msg.senderName || 'Unknown'}</p>
+                        )}
+                        {renderMessageContent(msg)}
+                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-500 justify-between">
+                          <span>{formatTime(msg.createdAt)}</span>
+                          {msg.direction === 'outbound' && getStatusIcon(msg)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="p-3 border-t border-gray-200 bg-white">
+            <div className="flex gap-2 items-end">
+              <button className="p-2 hover:bg-gray-100 rounded-full">
+                <Smile className="h-5 w-5 text-gray-600" />
+              </button>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <Paperclip className="h-5 w-5 text-gray-600" />
+              </button>
+
+              <textarea
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                placeholder="Type a message..."
+                rows={1}
+                className="flex-1 p-2 border border-gray-300 rounded-lg text-sm resize-none"
+              />
+
+              <button
+                onClick={sendMessage}
+                disabled={isSending || !newMessage.trim()}
+                className="p-2 hover:bg-gray-100 rounded-full disabled:opacity-50"
+              >
+                <Send className="h-5 w-5 text-green-500" />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <p className="text-gray-500">Select a conversation to start messaging</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

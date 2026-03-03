@@ -39,6 +39,10 @@ interface BroadcastFormData {
     contactIds: string[]
   }
   throttleRate: number
+  scheduling?: {
+    type: "immediate" | "scheduled"
+    scheduledTime?: string // ISO datetime string
+  }
 }
 
 export default function CreateBroadcastPage() {
@@ -68,7 +72,11 @@ export default function CreateBroadcastPage() {
       phoneNumbers: [],
       contactIds: []
     },
-    throttleRate: 50
+    throttleRate: 50,
+    scheduling: {
+      type: "immediate",
+      scheduledTime: undefined
+    }
   })
 
   // Check WABA connection first, then fetch contacts and templates
@@ -399,7 +407,11 @@ export default function CreateBroadcastPage() {
             },
             recipientList: recipientMode === "contacts" ? "segment" : "manual",
             throttleRate: formData.throttleRate,
-            phoneNumberId: activePhone.phoneNumberId
+            phoneNumberId: activePhone.phoneNumberId,
+            scheduling: {
+              type: formData.scheduling?.type || "immediate",
+              scheduledTime: formData.scheduling?.type === "scheduled" ? formData.scheduling.scheduledTime : null
+            }
           })
         }
       )
@@ -762,6 +774,71 @@ export default function CreateBroadcastPage() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Scheduling */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <label className="block text-sm font-medium text-gray-900 mb-4">
+              Send Time
+            </label>
+            <div className="space-y-4">
+              {/* Toggle: Send Now vs Schedule */}
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="scheduling"
+                    value="immediate"
+                    checked={formData.scheduling?.type === "immediate"}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      scheduling: { type: "immediate" as const, scheduledTime: undefined }
+                    })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm text-gray-700">Send Now</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="scheduling"
+                    value="scheduled"
+                    checked={formData.scheduling?.type === "scheduled"}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      scheduling: { type: "scheduled" as const, scheduledTime: formData.scheduling?.scheduledTime }
+                    })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm text-gray-700">Schedule for Later</span>
+                </label>
+              </div>
+
+              {/* DateTime picker for scheduled broadcasts */}
+              {formData.scheduling?.type === "scheduled" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Date & Time
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={formData.scheduling?.scheduledTime || ""}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      scheduling: {
+                        type: "scheduled",
+                        scheduledTime: e.target.value
+                      }
+                    })}
+                    min={new Date().toISOString().slice(0, 16)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-600 mt-2">
+                    Messages will be sent at the scheduled time. The system will queue and process them automatically.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Throttle Rate */}

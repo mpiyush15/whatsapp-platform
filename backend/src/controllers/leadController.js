@@ -10,7 +10,7 @@ import leadService from '../services/leadService.js';
  */
 export const getLeads = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
     
     // Get filters from query params
     const filters = {
@@ -50,7 +50,7 @@ export const getLeads = async (req, res) => {
  */
 export const getLead = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
     const { id } = req.params;
 
     const lead = await Lead.findOne({
@@ -88,7 +88,7 @@ export const getLead = async (req, res) => {
  */
 export const createLead = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
     const { conversationId, contactId, phoneNumberId, intent, name, email, phone, company } = req.body;
 
     if (!conversationId || !contactId || !phoneNumberId) {
@@ -156,7 +156,7 @@ export const createLead = async (req, res) => {
  */
 export const updateLead = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
     const { id } = req.params;
     const { status, notes, tags, assignedTo, nextFollowUp } = req.body;
 
@@ -219,7 +219,7 @@ export const updateLead = async (req, res) => {
  */
 export const deleteLead = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
     const { id } = req.params;
 
     const result = await Lead.deleteOne({
@@ -254,7 +254,7 @@ export const deleteLead = async (req, res) => {
  */
 export const autoCaptureLead = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
     const { conversationId } = req.params;
 
     const lead = await leadService.captureLeadFromConversation(accountId, conversationId);
@@ -288,7 +288,7 @@ export const autoCaptureLead = async (req, res) => {
  */
 export const getLeadStats = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
 
     const stats = await leadService.getLeadStats(accountId);
 
@@ -312,7 +312,7 @@ export const getLeadStats = async (req, res) => {
  */
 export const markStaleLeads = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
 
     const count = await leadService.markStaleLeads(accountId);
 
@@ -337,7 +337,7 @@ export const markStaleLeads = async (req, res) => {
  */
 export const exportLeads = async (req, res) => {
   try {
-    const accountId = req.account._id; // ObjectId (single source of truth)
+    const accountId = req.account.accountId; // String accountId (consistent with system)
     const { status, intent } = req.query;
 
     const query = { accountId };

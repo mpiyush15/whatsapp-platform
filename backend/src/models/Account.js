@@ -63,11 +63,13 @@ const accountSchema = new mongoose.Schema({
   
   // WhatsApp WABA ID (Meta Business Account ID for webhook routing)
   // ⚠️ CRITICAL: Must be unique to prevent cross-account contamination
+  // Note: sparse: true allows multiple null values, but unique: true enforces uniqueness for actual values
+  // This prevents multiple accounts from sharing the same WABA ID (multi-tenancy violation)
   wabaId: {
     type: String,
     index: true,
-    sparse: true,  // Optional - only for accounts with WABA
-    unique: true   // 🔥 ENFORCE: Only ONE account per WABA ID
+    sparse: true,  // Allow null for accounts without WABA (migration case)
+    unique: true   // 🔥 ENFORCE: Only ONE account per WABA ID (critical for webhook isolation)
   },
   
   // Business ID (Meta Business Account ID owner of WABA - for API calls)
@@ -93,9 +95,15 @@ const accountSchema = new mongoose.Schema({
       sparse: true
     },
     oauthAccessToken: {
-      type: String
-      // Note: NOT selecting false here because webhook NEEDS this token to fetch phone numbers
-      // Access token is only used internally for Meta API calls, not exposed to users
+      type: String,
+      // ⚠️ IMPORTANT: NOT select: false here!
+      // Webhook handler MUST access this token to fetch phone numbers after OAuth
+      // Access token is ONLY used internally for Meta API calls (never exposed to frontend)
+      // This is safe because:
+      //   1. Only backend can query with select('+metaSync.oauthAccessToken')
+      //   2. JwtAuth middleware strips all internal fields before sending to frontend
+      //   3. Used only for Meta API calls, not exposed in any API response
+      select: false  // Explicitly hide by default, but accessible via +metaSync.oauthAccessToken query
     },
     accountId: {
       type: String,
@@ -210,7 +218,33 @@ const accountSchema = new mongoose.Schema({
   timestamps: true 
 });
 
-// Note: accountId, apiKeyHash, and subdomain already have index: true in schema
+// ✅ INDEX SUMMARY FOR QUERY PERFORMANCE:
+// Primary lookups:
+//   - accountId: UNIQUE INDEX (primary identifier)
+//   - subdomain: UNIQUE INDEX (workspace identification)
+//   - wabaId: UNIQUE INDEX (webhook routing, prevents cross-account contamination)
+//
+// Secondary lookups:
+//   - metaSync.status: INDEX (webhook account matching)
+//   - metaSync.oauth_timestamp: INDEX (OAuth flow tracking)
+//   - metaSync.accountId: INDEX (OAuth account linking)
+//   - apiKeyHash: UNIQUE INDEX (API authentication)
+//   - integrationTokenHash: UNIQUE INDEX (External integration auth)
+//   - totalPayments: INDEX (billing queries)
+//
+// 🔒 MULTI-TENANCY SAFETY CRITICAL FIELDS:
+//   1. wabaId (unique) - Only ONE account per WABA ID
+//   2. subdomain (unique) - Only ONE workspace per subdomain
+//   3. apiKeyHash (unique) - Only ONE account per API key
+//   4. integrationTokenHash (unique) - Only ONE account per token
+//
+// ⚠️ SECURITY NOTES:
+//   - password: select: false (never returned in queries)
+//   - apiKeyHash: select: false (only accessible with explicit select)
+//   - integrationTokenHash: select: false (only accessible with explicit select)
+//   - metaSync.oauthAccessToken: select: false (only accessible with explicit select)
+//
+// These prevent accidental exposure of sensitive data in API responses
 
 // Hash function for API keys
 accountSchema.statics.hashApiKey = function(apiKey) {

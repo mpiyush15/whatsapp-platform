@@ -17,6 +17,21 @@ const router = express.Router();
 
 // JWT auth is handled at app.js level, no need for authenticate here
 
+// ===== LEADS ROUTES (Must come BEFORE /:id routes) =====
+// Get all leads for a chatbot
+router.get('/:chatbotId/leads', getChatbotLeads);
+
+// Update lead status/notes
+router.patch('/leads/:leadId', updateLead);
+
+// Convert lead to contact
+router.post('/leads/:leadId/convert', convertLeadToClient);
+
+// Delete lead
+router.delete('/leads/:leadId', deleteLead);
+
+// ===== CHATBOT ROUTES =====
+
 // Get all chatbots with stats
 router.get('/', getChatbots);
 
@@ -37,19 +52,5 @@ router.patch('/:id/toggle', toggleChatbot);
 
 // Delete chatbot
 router.delete('/:id', deleteChatbot);
-
-// ===== LEADS ROUTES =====
-
-// Get all leads for a chatbot
-router.get('/:chatbotId/leads', getChatbotLeads);
-
-// Update lead status/notes
-router.patch('/leads/:leadId', updateLead);
-
-// Convert lead to contact
-router.post('/leads/:leadId/convert', convertLeadToClient);
-
-// Delete lead
-router.delete('/leads/:leadId', deleteLead);
 
 export default router;

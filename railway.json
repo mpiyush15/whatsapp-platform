@@ -6,6 +6,11 @@
   "deploy": {
     "startCommand": "cd backend && npm start",
     "restartPolicyType": "always",
-    "restartPolicyMaxRetries": 3
+    "restartPolicyMaxRetries": 3,
+    "env": {
+      "NODE_ENV": "production",
+      "MONGODB_URI": "${{DATABASE_URL}}",
+      "PORT": "5050"
+    }
   }
 }

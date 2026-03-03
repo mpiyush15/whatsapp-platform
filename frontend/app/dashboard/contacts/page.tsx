@@ -31,6 +31,23 @@ interface Stats {
   optedIn: number
 }
 
+interface Message {
+  _id: string
+  content: string
+  sender: string
+  receiver: string
+  senderName?: string
+  timestamp?: string
+  createdAt: string
+  mediaUrl?: string
+  messageType?: string
+}
+
+interface ContactDetail extends Contact {
+  messages?: Message[]
+  score?: number  // For leads, shows their quality score
+}
+
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [stats, setStats] = useState<Stats>({ total: 0, active: 0, newThisMonth: 0, optedIn: 0 })
@@ -46,6 +63,10 @@ export default function ContactsPage() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPreview, setImportPreview] = useState<any[]>([])
   const [isImporting, setIsImporting] = useState(false)
+  const [showQuickViewDrawer, setShowQuickViewDrawer] = useState(false)
+  const [drawerContact, setDrawerContact] = useState<ContactDetail | null>(null)
+  const [drawerMessages, setDrawerMessages] = useState<Message[]>([])
+  const [drawerLoading, setDrawerLoading] = useState(false)
   const router = useRouter()
   const [formData, setFormData] = useState({
     name: '',
@@ -159,6 +180,51 @@ export default function ContactsPage() {
   const openContactChat = (contact: Contact) => {
     // Simply navigate to chat page - contact will be passed via state
     router.push(`/dashboard/chat`)
+  }
+
+  // Open quick view drawer
+  const openQuickViewDrawer = async (contact: Contact) => {
+    setDrawerContact(contact)
+    setDrawerLoading(true)
+    setShowQuickViewDrawer(true)
+    
+    try {
+      // Try to fetch conversations for this contact
+      const response = await fetch(`${API_URL}/conversations?phone=${contact.whatsappNumber}`, {
+        headers: getHeaders(),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        const conversations = data.conversations || []
+        
+        if (conversations.length > 0) {
+          const firstConversation = conversations[0]
+          
+          // Fetch messages from this conversation
+          const messagesResponse = await fetch(
+            `${API_URL}/conversations/${firstConversation._id}/messages`,
+            { headers: getHeaders() }
+          )
+          
+          if (messagesResponse.ok) {
+            const msgData = await messagesResponse.json()
+            setDrawerMessages((msgData.messages || []).slice(0, 5).reverse())
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching messages:", error)
+    } finally {
+      setDrawerLoading(false)
+    }
+  }
+
+  // Close quick view drawer
+  const closeQuickViewDrawer = () => {
+    setShowQuickViewDrawer(false)
+    setDrawerContact(null)
+    setDrawerMessages([])
   }
 
   // Open modal for add/edit
@@ -566,7 +632,11 @@ export default function ContactsPage() {
           ) : (
             <div className="space-y-3">
               {filteredContacts.map((contact) => (
-                <div key={contact._id} className="border border-gray-200 rounded-lg p-3 sm:p-4 hover:bg-gray-50 transition">
+                <div 
+                  key={contact._id} 
+                  onClick={() => openQuickViewDrawer(contact)}
+                  className="border border-gray-200 rounded-lg p-3 sm:p-4 hover:bg-gray-50 transition cursor-pointer"
+                >
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -606,21 +676,30 @@ export default function ContactsPage() {
                     <div>{contact.messageCount} messages</div>
                     <div className="flex gap-2">
                       <button 
-                        onClick={() => openContactChat(contact)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openContactChat(contact)
+                        }}
                         className="text-green-600 hover:text-green-700 p-1 hover:bg-green-50 rounded"
                         title="Send Message"
                       >
                         <MessageCircle className="h-4 w-4" />
                       </button>
                       <button 
-                        onClick={() => openEditModal(contact)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openEditModal(contact)
+                        }}
                         className="text-blue-600 hover:text-blue-700 p-1 hover:bg-blue-50 rounded"
                         title="Edit"
                       >
                         <Edit className="h-4 w-4" />
                       </button>
                       <button 
-                        onClick={() => deleteContact(contact._id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteContact(contact._id)
+                        }}
                         className="text-red-600 hover:text-red-700 p-1 hover:bg-red-50 rounded"
                         title="Delete"
                       >
@@ -896,6 +975,171 @@ export default function ContactsPage() {
                     Import Contacts
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick View Drawer */}
+      {showQuickViewDrawer && drawerContact && (
+        <div className="fixed inset-0 z-40">
+          {/* Overlay */}
+          <div 
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={closeQuickViewDrawer}
+          />
+          
+          {/* Drawer Panel */}
+          <div className="absolute right-0 top-0 bottom-0 w-full sm:w-96 bg-white shadow-xl flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-green-700 font-medium">
+                    {drawerContact.name[0]?.toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{drawerContact.name}</p>
+                  <p className="text-xs text-gray-500 truncate">{drawerContact.whatsappNumber}</p>
+                </div>
+              </div>
+              <button 
+                onClick={closeQuickViewDrawer}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Contact Info */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase">Contact Info</p>
+                {drawerContact.email && (
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <Mail className="h-4 w-4 text-gray-400" />
+                    <span>{drawerContact.email}</span>
+                  </div>
+                )}
+                {drawerContact.businessName && (
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <Building2 className="h-4 w-4 text-gray-400" />
+                    <span>{drawerContact.businessName}</span>
+                  </div>
+                )}
+                {drawerContact.city && (
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <MapPin className="h-4 w-4 text-gray-400" />
+                    <span>{drawerContact.city}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <MessageCircle className="h-4 w-4 text-gray-400" />
+                  <span>{drawerContact.messageCount} messages</span>
+                </div>
+              </div>
+
+              {/* Lead Score (if this contact is a lead type) */}
+              {drawerContact.type === 'lead' && drawerContact.score !== undefined && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-600 uppercase">Lead Quality Score</p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            drawerContact.score >= 75
+                              ? 'bg-green-600'
+                              : drawerContact.score >= 50
+                              ? 'bg-yellow-600'
+                              : 'bg-red-600'
+                          }`}
+                          style={{ width: `${drawerContact.score}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 w-10 text-right">
+                      {Math.round(drawerContact.score)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {drawerContact.score >= 75 ? '🟢 High potential' : drawerContact.score >= 50 ? '🟡 Medium potential' : '🔴 Low potential'}
+                  </p>
+                </div>
+              )}
+
+              {/* Tags */}
+              {drawerContact.tags && drawerContact.tags.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-gray-600 uppercase">Tags</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {drawerContact.tags.map((tag, index) => (
+                      <span key={index} className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Messages */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase">Recent Messages</p>
+                {drawerLoading ? (
+                  <div className="text-center py-4">
+                    <p className="text-xs text-gray-500">Loading messages...</p>
+                  </div>
+                ) : drawerMessages.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="text-xs text-gray-500">No messages yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {drawerMessages.map((msg, index) => (
+                      <div key={index} className="bg-gray-50 rounded-lg p-2">
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                          <p className="text-xs font-medium text-gray-700">
+                            {msg.sender === drawerContact.whatsappNumber ? 'Them' : 'You'}
+                          </p>
+                          <span className="text-xs text-gray-500">
+                            {msg.timestamp ? new Date(msg.timestamp).toLocaleDateString() : new Date(msg.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 break-words">
+                          {msg.content || msg.messageType || 'Media message'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer with Action Buttons */}
+            <div className="flex gap-2 p-4 border-t border-gray-200 bg-white">
+              <Button 
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  closeQuickViewDrawer()
+                  openContactChat(drawerContact)
+                }}
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Send Message
+              </Button>
+              <Button 
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  closeQuickViewDrawer()
+                  openEditModal(drawerContact)
+                }}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
               </Button>
             </div>
           </div>

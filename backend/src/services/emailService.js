@@ -1050,5 +1050,89 @@ export const emailService = {
       // Don't fail the signup if admin email fails
       return { success: false, error: error.message };
     }
+  },
+
+  // Send agent invitation email
+  sendAgentInvitationEmail: async (agentEmail, agentName, invitationToken, accountName) => {
+    try {
+      console.log('📧 [EMAIL SERVICE] Sending agent invitation email...');
+      console.log('  To:', agentEmail);
+      console.log('  Agent:', agentName);
+      
+      if (!ENABLE_EMAIL) {
+        console.log('✅ Email service disabled - skipping (set ENABLE_EMAIL=true to enable)');
+        return { success: true, skipped: true };
+      }
+
+      const invitationUrl = `${process.env.FRONTEND_URL}/agent-onboarding?token=${invitationToken}&email=${encodeURIComponent(agentEmail)}`;
+
+      await sendViaZepto(
+        agentEmail,
+        `Welcome to ${accountName}! 🎉`,
+        `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px; text-align: center; }
+              .content { padding: 30px; background: #f9f9f9; border-radius: 8px; margin-top: 20px; }
+              .button { background: #667eea; color: white; padding: 14px 32px; text-decoration: none; border-radius: 4px; display: inline-block; margin-top: 20px; font-weight: bold; }
+              .footer { text-align: center; padding: 20px; color: #999; font-size: 12px; }
+              .info-box { background: white; padding: 15px; border-left: 4px solid #667eea; margin: 15px 0; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2>Welcome, ${agentName}! 🎉</h2>
+                <p>You've been invited to join ${accountName}</p>
+              </div>
+              
+              <div class="content">
+                <p>Hello ${agentName},</p>
+                <p>You've been invited to join the support team at <strong>${accountName}</strong> as an agent on the Replysys platform.</p>
+                
+                <div class="info-box">
+                  <p><strong>What you'll do:</strong></p>
+                  <ul>
+                    <li>Manage customer conversations on WhatsApp</li>
+                    <li>Provide real-time customer support</li>
+                    <li>Track your performance metrics</li>
+                  </ul>
+                </div>
+
+                <p style="text-align: center;">
+                  <a href="${invitationUrl}" class="button">Accept Invitation & Create Account</a>
+                </p>
+
+                <p><strong>Note:</strong> This invitation link expires in 7 days. If you don't create an account by then, please contact your manager for a new invitation.</p>
+
+                <div class="info-box" style="border-left-color: #999;">
+                  <p><strong>Having trouble?</strong></p>
+                  <p>If the button above doesn't work, copy and paste this link in your browser:</p>
+                  <p style="word-break: break-all; background: white; padding: 10px; border-radius: 4px; font-size: 12px;">
+                    ${invitationUrl}
+                  </p>
+                </div>
+              </div>
+
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Replysys. All rights reserved.</p>
+                <p>This is an automated email. Please do not reply directly to this message.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      );
+      
+      console.log('✅ Agent invitation email sent to', agentEmail);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Agent invitation email failed:', error.message);
+      return { success: false, error: error.message };
+    }
   }
 };

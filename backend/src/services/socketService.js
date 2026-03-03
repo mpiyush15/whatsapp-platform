@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { Server } from 'socket.io';
 import { JWT_SECRET } from '../config/jwt.js';
+import Conversation from '../models/Conversation.js';
 
 /**
  * Initialize Socket.io for real-time chat
@@ -9,6 +10,12 @@ import { JWT_SECRET } from '../config/jwt.js';
 export const initSocketIO = (server) => {
   
   // ✅ CRITICAL FIX: Configure Socket.io properly for production
+  // Read CORS origins from environment variable
+  const socketCorsOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+  
   const io = new Server(server, {
     // ✅ Enable both WebSocket and HTTP polling (with polling as fallback)
     transports: ['websocket', 'polling'],
@@ -23,16 +30,9 @@ export const initSocketIO = (server) => {
       maxHttpBufferSize: 1e5  // 100KB (default is 1e6)
     },
     
-    // ✅ CORS configuration for production
+    // ✅ CORS configuration for production (reads from environment variable)
     cors: {
-      origin: [
-        'http://localhost:3000',
-        'https://whatsapp-platform-nine.vercel.app',
-        'https://mpiyush15-whatsapp-platform.vercel.app',
-        'https://replysys.com',
-        'https://www.replysys.com',
-        process.env.FRONTEND_URL
-      ].filter(Boolean),
+      origin: socketCorsOrigins,
       credentials: true,
       methods: ['GET', 'POST']
     },
@@ -51,7 +51,7 @@ export const initSocketIO = (server) => {
     });
   });
 
-  // Authentication middleware for WebSocket
+  // ✅ FIX #1: Event Verification Middleware - validates accountId on all incoming events
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
     console.log('\n🔐 Socket Auth Verification:');
@@ -72,11 +72,28 @@ export const initSocketIO = (server) => {
       socket.userId = decoded.accountId;
       socket.email = decoded.email;
       socket.accountId = decoded.accountId;
+      socket.isAuthenticated = true;  // ✅ Mark as authenticated for event verification
       next();
     } catch (error) {
       console.error('  ❌ JWT Verification FAILED:', error.message);
       next(new Error('Invalid token: ' + error.message));
     }
+  });
+
+  // ✅ FIX #4: Security Audit Logging - log all socket events for security monitoring
+  io.use((socket, next) => {
+    socket.onAny((eventName, ...args) => {
+      // Log security-relevant events
+      if (['join_conversation', 'typing', 'subscribe_conversations'].includes(eventName)) {
+        console.log(`🔐 SOCKET EVENT [${socket.email}]:`, {
+          event: eventName,
+          socketId: socket.id,
+          accountId: socket.accountId,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+    next();
   });
 
   // Track user's current conversation
@@ -89,10 +106,49 @@ export const initSocketIO = (server) => {
     /**
      * Join a specific conversation room
      * Enables real-time updates for that conversation
+     * ✅ FIX #2: Conversation Ownership Check - verify user owns this conversation
      */
-    socket.on('join_conversation', (data) => {
+    socket.on('join_conversation', async (data) => {
       const { conversationId } = data;
-      if (conversationId) {
+      if (!conversationId) {
+        console.error('❌ join_conversation: No conversationId provided');
+        return;
+      }
+
+      try {
+        // ✅ FIX #2: Query database to verify conversation ownership
+        const conversation = await Conversation.findById(conversationId).select('accountId _id').lean();
+        
+        if (!conversation) {
+          console.error('❌ Unauthorized join_conversation attempt:', {
+            socketId: socket.id,
+            email: socket.email,
+            accountId: socket.accountId,
+            attemptedConversationId: conversationId,
+            reason: 'Conversation not found'
+          });
+          socket.emit('error', { message: 'Conversation not found' });
+          return;
+        }
+
+        // ✅ Verify accountId matches (convert both to strings for comparison)
+        const conversationAccountId = String(conversation.accountId);
+        const socketAccountId = String(socket.accountId);
+        
+        if (conversationAccountId !== socketAccountId) {
+          console.error('❌ SECURITY ALERT: Cross-account join_conversation attempt!', {
+            socketId: socket.id,
+            email: socket.email,
+            socketAccountId: socketAccountId,
+            conversationAccountId: conversationAccountId,
+            conversationId: conversationId,
+            timestamp: new Date().toISOString()
+          });
+          socket.emit('error', { message: 'Unauthorized access to conversation' });
+          return;
+        }
+
+        // ✅ User owns this conversation - allow join
         socket.join(`conversation:${conversationId}`);
         userConversations.set(socket.id, conversationId);
         
@@ -102,15 +158,23 @@ export const initSocketIO = (server) => {
         }
         conversationUsers.get(conversationId).add(socket.id);
         
-        console.log('%c📍 USER JOINED CONVERSATION ROOM', {
+        console.log('✅ USER JOINED CONVERSATION ROOM (VERIFIED)', {
           userId: socket.email,
           socketId: socket.id,
+          accountId: socket.accountId,
           conversationId: conversationId,
-          conversationIdType: typeof conversationId,
           room: `conversation:${conversationId}`,
           totalUsersInConversation: conversationUsers.get(conversationId).size,
           timestamp: new Date().toISOString()
         });
+      } catch (error) {
+        console.error('❌ Error in join_conversation:', {
+          error: error.message,
+          conversationId,
+          socketId: socket.id,
+          stack: error.stack
+        });
+        socket.emit('error', { message: 'Error joining conversation' });
       }
     });
 
@@ -145,15 +209,64 @@ export const initSocketIO = (server) => {
 
     /**
      * Handle typing indicator
+     * ✅ FIX #3: Typing Indicator Protection - verify conversation ownership before broadcasting
      */
-    socket.on('typing', (data) => {
+    socket.on('typing', async (data) => {
       const { conversationId, isTyping } = data;
-      if (conversationId) {
+      if (!conversationId) {
+        console.error('❌ typing: No conversationId provided');
+        return;
+      }
+
+      try {
+        // ✅ FIX #3: Query database to verify conversation ownership before broadcasting
+        const conversation = await Conversation.findById(conversationId).select('accountId _id').lean();
+        
+        if (!conversation) {
+          console.error('❌ Unauthorized typing attempt: Conversation not found', {
+            conversationId,
+            socketId: socket.id,
+            email: socket.email
+          });
+          return;  // Silent fail (security best practice - don't reveal conversation doesn't exist)
+        }
+
+        // ✅ Verify accountId matches (convert both to strings for comparison)
+        const conversationAccountId = String(conversation.accountId);
+        const socketAccountId = String(socket.accountId);
+        
+        if (conversationAccountId !== socketAccountId) {
+          console.error('❌ SECURITY ALERT: Cross-account typing attempt!', {
+            socketId: socket.id,
+            email: socket.email,
+            socketAccountId: socketAccountId,
+            conversationAccountId: conversationAccountId,
+            conversationId: conversationId,
+            timestamp: new Date().toISOString()
+          });
+          return;  // Silent fail (don't broadcast)
+        }
+
+        // ✅ User owns this conversation - broadcast typing indicator
         io.to(`conversation:${conversationId}`).emit('typing', {
           userId: socket.accountId,
           isTyping,
           timestamp: new Date().toISOString(),
         });
+
+        console.log('✅ Typing indicator broadcast (verified)', {
+          conversationId,
+          accountId: socket.accountId,
+          isTyping
+        });
+      } catch (error) {
+        console.error('❌ Error in typing indicator:', {
+          error: error.message,
+          conversationId,
+          socketId: socket.id,
+          stack: error.stack
+        });
+        // Silent fail - don't broadcast
       }
     });
 

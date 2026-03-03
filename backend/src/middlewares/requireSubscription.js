@@ -30,7 +30,6 @@ export const requireSubscription = async (req, res, next) => {
 
     // ALLOW: Superadmins (internal accounts) skip subscription check
     if (account.type === 'internal') {
-      console.log(`✅ Superadmin ${accountId} bypasses subscription check`);
       return next();
     }
 

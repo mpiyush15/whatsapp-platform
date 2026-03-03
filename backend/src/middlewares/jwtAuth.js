@@ -16,21 +16,7 @@ export const requireJWT = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     const token = authHeader?.replace('Bearer ', '');
     
-    console.log('🔑 JWT Check:');
-    console.log('  Path:', req.path);
-    console.log('  Method:', req.method);
-    console.log('  Auth Header:', !!authHeader ? '✅ Present' : '❌ Missing');
-    console.log('  Token:', !!token ? '✅ Present' : '❌ Missing');
-    
-    if (!!token) {
-      console.log('  Token length:', token.length);
-      console.log('  Token prefix:', token.substring(0, 20) + '...');
-      console.log('  Token dots count:', (token.match(/\./g) || []).length, '(should be 2)');
-      console.log('  Token sample:', token.substring(0, 50) + '...');
-    }
-    
     if (!token) {
-      console.log('  → Rejecting: No token provided');
       return res.status(401).json({
         success: false,
         message: 'Authentication required. Please login.',
@@ -40,7 +26,6 @@ export const requireJWT = async (req, res, next) => {
     
     // Verify token
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log('  → ✅ Token verified for:', decoded.email);
     
     // Inject user info into request
     req.accountId = decoded.accountId;
@@ -57,7 +42,6 @@ export const requireJWT = async (req, res, next) => {
     
     // ✅ FALLBACK: Handle old tokens with legacy account IDs (only for pixels_internal)
     if (accountIdToLookup === 'pixels_internal') {
-      console.log('⚠️  Old token with accountId: pixels_internal - redirecting to 2600001');
       accountIdToLookup = '2600001';
       req.accountId = '2600001';
       req.user.accountId = '2600001';
@@ -75,7 +59,6 @@ export const requireJWT = async (req, res, next) => {
     }
     
     if (!account) {
-      console.error('❌ Account not found for accountId:', decoded.accountId);
       return res.status(401).json({
         success: false,
         message: 'Account not found. Please login again.',
@@ -97,10 +80,10 @@ export const requireJWT = async (req, res, next) => {
     
     next();
   } catch (error) {
-    console.error('❌ JWT verification failed:', error.message);
-    console.error('  JWT_SECRET env:', !!process.env.JWT_SECRET ? '✅ Set' : '❌ Using default');
-    console.error('  Error type:', error.name);
-    console.error('  Error details:', error.toString());
+    // Log JWT errors only in development for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[JWT Error]', error.message);
+    }
     return res.status(401).json({
       success: false,
       message: 'Invalid or expired token. Please login again.',

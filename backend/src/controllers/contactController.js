@@ -10,7 +10,7 @@ import Contact from '../models/Contact.js';
  */
 export const getContacts = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId for database queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId for database queries (consistent with system)
     const { type, isOptedIn, limit = 100, skip = 0 } = req.query;
     
     const query = { accountId };
@@ -47,11 +47,54 @@ export const getContacts = async (req, res) => {
 };
 
 /**
+ * GET /api/contacts/by-phone/:whatsappNumber - Get contact by WhatsApp number
+ */
+export const getContactByPhone = async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const { whatsappNumber } = req.params;
+    
+    if (!whatsappNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'WhatsApp number is required'
+      });
+    }
+    
+    const contact = await Contact.findOne({
+      accountId,
+      whatsappNumber
+    }).lean();
+    
+    if (!contact) {
+      return res.json({
+        success: true,
+        contact: null,
+        message: 'No contact found for this number'
+      });
+    }
+    
+    res.json({
+      success: true,
+      contact
+    });
+    
+  } catch (error) {
+    console.error('❌ Get contact by phone error:', error);
+    res.status(500).json({
+      success: false,
+      code: 'CONTACT_FETCH_ERROR',
+      message: error.message
+    });
+  }
+};
+
+/**
  * POST /api/contacts - Create contact
  */
 export const createContact = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId for database queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId for database queries (consistent with system)
     const { name, phone, whatsappNumber, email, type, tags, metadata } = req.body;
     
     if (!name || !whatsappNumber) {
@@ -177,7 +220,7 @@ export const deleteContact = async (req, res) => {
  */
 export const importContacts = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId for DB queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId for DB queries (consistent with system)
     const { contacts } = req.body;
     
     if (!Array.isArray(contacts) || contacts.length === 0) {
@@ -233,6 +276,7 @@ export const importContacts = async (req, res) => {
 
 export default {
   getContacts,
+  getContactByPhone,
   createContact,
   updateContact,
   deleteContact,

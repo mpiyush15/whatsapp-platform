@@ -29,11 +29,12 @@ export const getConversations = async (req, res) => {
     
     const { status, limit = 50 } = req.query;
     
-    console.log('🔍 DEBUG - Get Conversations:');
-    console.log('  accountId:', accountId, '(type: string)');
-    console.log('  workspaceId:', workspaceId, '(type: string)');
-    console.log('  phoneNumberId:', phoneNumberId, '(type: string)');
-    console.log('  Query:', { accountId, workspaceId, phoneNumberId, status });
+    // DEBUG logs disabled - uncomment for troubleshooting
+    // console.log('🔍 DEBUG - Get Conversations:');
+    // console.log('  accountId:', accountId, '(type: string)');
+    // console.log('  workspaceId:', workspaceId, '(type: string)');
+    // console.log('  phoneNumberId:', phoneNumberId, '(type: string)');
+    // console.log('  Query:', { accountId, workspaceId, phoneNumberId, status });
     
     // ✅ CRITICAL: Always scope by phoneNumberId (WATI requirement)
     if (!phoneNumberId) {
@@ -53,7 +54,8 @@ export const getConversations = async (req, res) => {
       .limit(parseInt(limit))
       .lean();
     
-    console.log('  Found:', conversations.length, 'conversations');
+    // DEBUG: Found conversations count
+    // console.log('  Found:', conversations.length, 'conversations');
     
     // ✅ CRITICAL FIX: Send both _id and conversationId to frontend
     const formattedConversations = conversations.map(conv => ({
@@ -477,10 +479,85 @@ export const updateStatus = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/conversations/:conversationId/contact-status - Get contact online status and last seen
+ */
+export const getContactStatus = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { userPhone } = req.query;
+    const accountId = req.account.accountId;
+
+    // DEBUG logs disabled - uncomment for troubleshooting
+    // console.log('🔍 DEBUG - Get Contact Status:');
+    // console.log('  conversationId:', conversationId);
+    // console.log('  userPhone:', userPhone);
+    // console.log('  accountId:', accountId);
+
+    // Find conversation
+    let conversation;
+    
+    // Try by _id first
+    if (conversationId.match(/^[0-9a-fA-F]{24}$/)) {
+      conversation = await Conversation.findById(conversationId).lean();
+    } else {
+      // Try by conversationId format
+      conversation = await Conversation.findOne({ conversationId }).lean();
+    }
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found'
+      });
+    }
+
+    // Get last message time to determine last seen
+    const lastMessage = await Message.findOne({ 
+      conversationId: conversation._id || conversationId,
+      direction: 'inbound'
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+    // Determine if contact is online based on recent activity
+    const now = new Date();
+    const lastMessageTime = lastMessage?.createdAt ? new Date(lastMessage.createdAt) : conversation.lastMessageAt ? new Date(conversation.lastMessageAt) : now;
+    const timeDiffMs = now - lastMessageTime;
+    const timeDiffMinutes = timeDiffMs / (1000 * 60);
+
+    // If last message was within 5 minutes, consider online
+    const isOnline = timeDiffMinutes < 5;
+
+    // DEBUG: Contact status
+    // console.log('✅ Contact Status:');
+    // console.log('  isOnline:', isOnline);
+    // console.log('  lastSeen:', lastMessageTime);
+    // console.log('  timeDiffMinutes:', timeDiffMinutes);
+
+    res.json({
+      success: true,
+      status: {
+        isOnline,
+        lastSeen: lastMessageTime.toISOString(),
+        userPhone: userPhone || conversation.userPhone
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Get contact status error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 export default {
   getConversations,
   getConversationMessages,
   replyToConversation,
   markAsRead,
-  updateStatus
+  updateStatus,
+  getContactStatus
 };

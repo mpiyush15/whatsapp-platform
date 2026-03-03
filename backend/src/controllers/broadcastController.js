@@ -4,15 +4,15 @@ import PhoneNumber from '../models/PhoneNumber.js';
 
 export const createBroadcast = async (req, res) => {
   try {
-    // Get accountId from JWT middleware (ObjectId format for single source of truth)
-    const accountObjectId = req.account._id;
+    // Get accountId from JWT middleware (String format for consistent system usage)
+    const accountId = req.account.accountId;
     let phoneNumberId = req.params.phoneNumberId || req.body.phoneNumberId;
     const data = req.body;
 
     // If phoneNumberId not provided, fetch the first active phone number for the account
     if (!phoneNumberId || phoneNumberId === 'default') {
       const activePhone = await PhoneNumber.findOne({
-        accountId: accountObjectId,  // Use ObjectId for database query
+        accountId: accountId,  // Use String accountId for database query (consistent with system)
         isActive: true
       });
 
@@ -28,9 +28,9 @@ export const createBroadcast = async (req, res) => {
       phoneNumberId = activePhone.phoneNumberId;
     }
 
-    // Pass ObjectId to service, NOT the string accountId
+    // Pass String accountId to service (consistent with system)
     const broadcast = await broadcastService.createBroadcast(
-      accountObjectId,  // ✅ Use ObjectId, not string
+      accountId,  // ✅ Use String accountId (consistent with system)
       phoneNumberId,
       data
     );
@@ -72,8 +72,8 @@ export const createBroadcast = async (req, res) => {
 
 export const getBroadcasts = async (req, res) => {
   try {
-    // Get accountId from JWT middleware - use ObjectId for database queries (single source of truth)
-    const accountId = req.account._id;
+    // Get accountId from JWT middleware - use String accountId (consistent with system)
+    const accountId = req.account.accountId;
     const phoneNumberId = req.params.phoneNumberId || 'any';
     const { status, limit, skip } = req.query;
 
@@ -100,8 +100,8 @@ export const getBroadcasts = async (req, res) => {
 
 export const getBroadcastById = async (req, res) => {
   try {
-    // Get accountId from JWT middleware - use ObjectId for database queries (single source of truth)
-    const accountId = req.account._id;
+    // Get accountId from JWT middleware - use String accountId (consistent with system)
+    const accountId = req.account.accountId;
     
     // Get broadcastId from params - could be from different route formats:
     // 1. GET /api/broadcasts/:broadcastId
@@ -170,7 +170,7 @@ export const updateBroadcast = async (req, res) => {
 
 export const startBroadcast = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId for database queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId (consistent with system)
     const broadcastId = req.params.broadcastId;
 
     // First get the broadcast to extract phoneNumberId
@@ -185,13 +185,14 @@ export const startBroadcast = async (req, res) => {
     }
 
     // Validate broadcast status
-    if (broadcast.status !== 'draft' && broadcast.status !== 'paused') {
+    const allowedStatuses = ['draft', 'paused', 'scheduled'];
+    if (!allowedStatuses.includes(broadcast.status)) {
       return res.status(400).json({
         success: false,
-        message: `Cannot start broadcast in ${broadcast.status} status. Only draft or paused broadcasts can be started.`,
+        message: `Cannot start broadcast in ${broadcast.status} status. Only draft, paused, or scheduled broadcasts can be started.`,
         error: 'INVALID_BROADCAST_STATUS',
         currentStatus: broadcast.status,
-        allowedStatuses: ['draft', 'paused']
+        allowedStatuses
       });
     }
 
@@ -210,7 +211,17 @@ export const startBroadcast = async (req, res) => {
     // Start the broadcast
     const updatedBroadcast = await broadcastService.startBroadcast(accountId, broadcastId);
 
-    // Execute broadcast asynchronously
+    // Check if this is a scheduled broadcast
+    if (updatedBroadcast.status === 'scheduled') {
+      return res.status(200).json({
+        success: true,
+        message: `Broadcast scheduled successfully. It will be sent on ${new Date(updatedBroadcast.scheduling.scheduledTime).toLocaleString()}.`,
+        data: updatedBroadcast,
+        scheduledFor: updatedBroadcast.scheduling.scheduledTime
+      });
+    }
+
+    // For immediate broadcasts, execute asynchronously
     broadcastExecutionService.executeBroadcast(
       accountId,
       broadcastId,
@@ -228,6 +239,7 @@ export const startBroadcast = async (req, res) => {
     let message = 'Failed to start broadcast.';
     let errorCode = 'START_BROADCAST_ERROR';
     let nextStep = 'Please try again.';
+
     
     if (error.message?.includes('permission') || error.message?.includes('Permission')) {
       message = 'Permission denied. You may not have access to this broadcast.';

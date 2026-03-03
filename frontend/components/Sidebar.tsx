@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { 
   LayoutDashboard, MessageSquare, Users, Megaphone, FileText, Bot, Target, 
-  BarChart3, Users2, CreditCard, Settings, ChevronDown, LogOut, Menu, X, Lock, AlertCircle, User
+  BarChart3, Users2, CreditCard, Settings, ChevronDown, LogOut, Menu, X, Lock, AlertCircle, User,
+  Building2, BookOpen, Activity, DollarSign, Receipt, Sliders
 } from 'lucide-react'
 import { authService, UserRole } from '@/lib/auth'
 import { getSidebarItems } from '@/lib/rbac'
@@ -22,13 +23,20 @@ const iconMap = {
   Users2,
   CreditCard,
   Settings,
-  User
+  User,
+  Building2,
+  BookOpen,
+  Activity,
+  DollarSign,
+  Receipt,
+  Sliders
 }
 
 export default function Sidebar() {
   const pathname = usePathname()
   const user = authService.getCurrentUser()
   const [isOpen, setIsOpen] = useState(false)
+  const [superAdminDropdownOpen, setSuperAdminDropdownOpen] = useState(false)
 
   if (!user) return null
 
@@ -127,7 +135,64 @@ export default function Sidebar() {
 
         {/* Navigation */}
         <nav className="px-4 py-6 space-y-2">
+          {/* SuperAdmin Dropdown */}
+          {isSuperAdmin && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setSuperAdminDropdownOpen(!superAdminDropdownOpen)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+              >
+                <Settings size={20} />
+                <span className="text-sm font-medium">Admin Panel</span>
+                <ChevronDown 
+                  size={16} 
+                  className={`ml-auto transition-transform duration-300 ${superAdminDropdownOpen ? 'rotate-180' : ''}`} 
+                />
+              </button>
+              
+              {/* SuperAdmin Items */}
+              {superAdminDropdownOpen && (
+                <div className="bg-gray-800/50 rounded-lg space-y-1 py-2 px-2 border border-gray-700">
+                  {[
+                    { name: "Organizations", icon: "Building2" as const, href: "/dashboard/organizations" },
+                    { name: "Demo Requests", icon: "BookOpen" as const, href: "/dashboard/admin/demo-requests" },
+                    { name: "System Health", icon: "Activity" as const, href: "/dashboard/system-health" },
+                    { name: "Platform Billing", icon: "DollarSign" as const, href: "/dashboard/platform-billing" },
+                    { name: "Transactions", icon: "CreditCard" as const, href: "/dashboard/transactions" },
+                    { name: "Invoices", icon: "Receipt" as const, href: "/dashboard/invoices" },
+                    { name: "Website Settings", icon: "Sliders" as const, href: "/dashboard/website-settings" },
+                  ].map((adminItem) => {
+                    const Icon = iconMap[adminItem.icon as keyof typeof iconMap]
+                    const isActive = pathname === adminItem.href || pathname.startsWith(adminItem.href + '/')
+                    
+                    return (
+                      <Link
+                        key={adminItem.href}
+                        href={adminItem.href}
+                        onClick={() => setIsOpen(false)}
+                        className={`
+                          flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm
+                          ${isActive 
+                            ? 'bg-green-600 text-white' 
+                            : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                          }
+                        `}
+                      >
+                        {Icon && <Icon size={16} />}
+                        <span className="font-medium">{adminItem.name}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Regular Navigation Items */}
           {items.map((item) => {
+            // Skip superadmin-only items since we moved them to dropdown
+            if ((item as any).superAdminOnly) return null
+            
             const Icon = iconMap[item.icon as keyof typeof iconMap]
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
             

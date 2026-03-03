@@ -317,7 +317,7 @@ export default function ChatbotPage() {
   };
 
   const convertLeadToClient = async (leadId: string, responses: any) => {
-    if (!confirm('Convert this lead to a client contact?')) return;
+    if (!confirm('Convert this lead to a contact? You can then message them directly.')) return;
 
     try {
       const response = await fetch(`${API_URL}/chatbots/leads/${leadId}/convert`, {
@@ -327,15 +327,19 @@ export default function ChatbotPage() {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        alert('✅ Lead converted to contact successfully! You can now send them messages.');
         // Refresh leads list
         if (selectedBotForLeads) {
           await fetchLeads(selectedBotForLeads._id);
         }
       } else {
-        console.error('Failed to convert lead');
+        const error = await response.json();
+        alert(`❌ ${error.error || 'Failed to convert lead'}`);
       }
     } catch (error) {
       console.error('Failed to convert lead:', error);
+      alert('❌ Error converting lead');
     }
   };
 
@@ -1206,7 +1210,7 @@ export default function ChatbotPage() {
       {/* Leads Drawer */}
       {showLeadsDrawer && selectedBotForLeads && (
         <div className="fixed inset-0 z-50 overflow-hidden">
-          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowLeadsDrawer(false)} />
+          <div className="absolute inset-0 bg-white/30 backdrop-blur-md" onClick={() => setShowLeadsDrawer(false)} />
           <div className="absolute right-0 top-0 h-full w-full max-w-4xl bg-white shadow-xl flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">
@@ -1241,6 +1245,7 @@ export default function ChatbotPage() {
                     <thead>
                       <tr className="border-b border-gray-200 bg-gray-50">
                         <th className="text-left px-4 py-3 font-semibold text-gray-900">Phone</th>
+                        <th className="text-left px-4 py-3 font-semibold text-gray-900">Responses</th>
                         <th className="text-left px-4 py-3 font-semibold text-gray-900">Status</th>
                         <th className="text-left px-4 py-3 font-semibold text-gray-900">Date</th>
                         <th className="text-left px-4 py-3 font-semibold text-gray-900">Actions</th>
@@ -1249,7 +1254,20 @@ export default function ChatbotPage() {
                     <tbody>
                       {leads.map((lead: any) => (
                         <tr key={lead._id} className="border-b border-gray-200 hover:bg-gray-50">
-                          <td className="px-4 py-3 text-gray-900">{lead.customerPhone}</td>
+                          <td className="px-4 py-3 text-gray-900 font-medium">{lead.customerPhone}</td>
+                          <td className="px-4 py-3 text-gray-700">
+                            <div className="text-sm space-y-1 max-w-xs">
+                              {lead.responses && Object.entries(lead.responses).map(([key, value]) => (
+                                <div key={key} className="flex gap-2">
+                                  <span className="font-medium text-gray-600">{key}:</span>
+                                  <span className="text-gray-800">{String(value)}</span>
+                                </div>
+                              ))}
+                              {(!lead.responses || Object.keys(lead.responses).length === 0) && (
+                                <span className="text-gray-500 italic">No responses</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-3">
                             <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
                               lead.status === 'new' ? 'bg-blue-100 text-blue-800' :
@@ -1264,18 +1282,18 @@ export default function ChatbotPage() {
                             {new Date(lead.createdAt).toLocaleDateString()}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 flex-wrap">
                               {lead.status !== 'converted' && (
                                 <button
                                   onClick={() => convertLeadToClient(lead._id, lead.responses)}
-                                  className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                                  className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 whitespace-nowrap"
                                 >
-                                  Convert
+                                  Add Contact
                                 </button>
                               )}
                               <button
                                 onClick={() => deleteLead(lead._id)}
-                                className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                                className="px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700 whitespace-nowrap"
                               >
                                 Delete
                               </button>

@@ -44,6 +44,7 @@ import oauthRoutes from './routes/oauthRoutes.js';
 import crmRoutes from './routes/crmRoutes.js';
 import discountRoutes from './routes/discountRoutes.js';
 import externalApiRoutes from './routes/externalApiRoutes.js';
+import agentRoutes from './routes/agentRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -54,22 +55,15 @@ const app = express();
 // Initialize Sentry error tracking
 initSentry(app);
 
-// Middleware
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:3002',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:3001',
-  'http://127.0.0.1:3002',
-  'https://whatsapp-platform-nine.vercel.app',
-  'https://mpiyush15-whatsapp-platform.vercel.app',
-  'https://mpiyush15-whatsapp-platform-57rcl0koq-piyushs-projects-5d893f5f.vercel.app',
-  'https://mpiyush15-whatsapp-platform-iq3skf8bi-piyushs-projects-5d893f5f.vercel.app',
-  'https://replysys.com',
-  'https://www.replysys.com',
-  process.env.FRONTEND_URL
-].filter(Boolean);
+// Middleware - CORS Configuration
+// Read allowed origins from environment variable (comma-separated)
+// Fallback to FRONTEND_URL or localhost:3000 if not set
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+console.log('✅ CORS Allowed Origins:', allowedOrigins);
 
 app.use(cors({
   origin: function(origin, callback) {
@@ -92,7 +86,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-phone-number-id'],
   preflightContinue: false,
   optionsSuccessStatus: 200
 }));
@@ -268,6 +262,9 @@ app.use('/api/dashboard', requireJWT, dashboardRoutes);
 
 // Mount CRM routes (JWT AUTH + SUBSCRIPTION REQUIRED - for managing contacts, conversations, analytics)
 app.use('/api/crm', requireJWT, requireSubscription, crmRoutes);
+
+// Mount agent routes (JWT AUTH - for agent management, assignment, invitations)
+app.use('/api/agents', agentRoutes);
 
 // Mount self-service account routes (JWT AUTH - for dashboard users)
 app.use('/api/account', requireJWT, accountRoutes);

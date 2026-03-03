@@ -491,8 +491,8 @@ export const submitTemplateToMeta = async (req, res) => {
  */
 export const syncTemplates = async (req, res) => {
   try {
-    // Use OBJECTID accountId from JWT - PhoneNumber stores accountId as ObjectId now
-    const accountId = req.account._id;  // Use ObjectId (single source of truth)
+    // ✅ CRITICAL FIX: Use String accountId - PhoneNumber stores accountId as String
+    const accountId = req.account.accountId;  // Use String (matches PhoneNumber schema)
     
     // Get phone number config to get WABA ID and access token
     const phoneConfig = await PhoneNumber.findOne({ 

@@ -40,8 +40,7 @@ export const routeAccess = {
   '/dashboard/chatbot': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
   '/dashboard/chatbot/builder': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
   
-  // Chat/Live Chat - Allow USER role for clients
-  '/dashboard/chat': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
+  // Live Chat - Allow USER role for clients
   '/dashboard/live-chat-v2': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
   
   // Campaigns - Allow USER role for clients
@@ -60,6 +59,11 @@ export const routeAccess = {
   '/dashboard/team': [UserRole.SUPERADMIN, UserRole.ADMIN],
   '/dashboard/team/members': [UserRole.SUPERADMIN, UserRole.ADMIN],
   '/dashboard/team/roles': [UserRole.SUPERADMIN, UserRole.ADMIN],
+  
+  // Agents
+  '/dashboard/agents': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
+  '/dashboard/agents/create': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
+  '/dashboard/agents/onboarding': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT],
   
   // Billing
   '/dashboard/billing': [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
@@ -101,12 +105,6 @@ export const getSidebarItems = (role: UserRole) => {
     },
     {
       label: 'Messages',
-      href: '/dashboard/messages',
-      icon: 'MessageSquare',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT]
-    },
-    {
-      label: 'Live Chat V2 (New)',
       href: '/dashboard/live-chat-v2',
       icon: 'MessageSquare',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
@@ -158,6 +156,12 @@ export const getSidebarItems = (role: UserRole) => {
       href: '/dashboard/team',
       icon: 'Users2',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN]
+    },
+    {
+      label: 'Agents',
+      href: '/dashboard/agents',
+      icon: 'Headset',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
     },
     {
       label: 'Billing',

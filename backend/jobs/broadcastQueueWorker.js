@@ -38,29 +38,41 @@ class BroadcastQueueWorker {
 
   /**
    * Main queue processing loop
+   * Handles:
+   * 1. Scheduled broadcasts - executes when scheduled time arrives
+   * 2. Running broadcasts - resumes sending pending messages
    */
   async processQueue() {
     while (this.isRunning) {
       try {
-        // Find pending or running broadcasts
+        // Find pending, running, or scheduled broadcasts
         const broadcasts = await Broadcast.find({
           $or: [
-            { status: 'running', 'stats.pending': { $gt: 0 } },
-            { status: 'draft', scheduling: { $exists: true } }
+            { status: 'running', 'stats.pending': { $gt: 0 } },           // Resume running broadcasts
+            { status: 'scheduled', 'scheduling.scheduledTime': { $exists: true, $lte: new Date() } }, // Process scheduled broadcasts
+            { status: 'draft', scheduling: { $exists: true }, 'scheduling.scheduledTime': { $lte: new Date() } } // Legacy support
           ]
         }).sort({ createdAt: 1 });
 
         for (const broadcast of broadcasts) {
-          // Handle scheduled broadcasts
-          if (broadcast.status === 'draft' && broadcast.scheduling?.scheduledTime) {
+          // Handle scheduled broadcasts (status: 'scheduled')
+          if (broadcast.status === 'scheduled' && broadcast.scheduling?.scheduledTime) {
             const now = new Date();
             if (now >= broadcast.scheduling.scheduledTime) {
+              console.log(`📅 Starting scheduled broadcast ${broadcast._id} (scheduled for ${broadcast.scheduling.scheduledTime})`);
               await this.executeBroadcast(broadcast);
             }
           }
-
+          // Handle draft broadcasts with scheduled time (legacy)
+          else if (broadcast.status === 'draft' && broadcast.scheduling?.scheduledTime) {
+            const now = new Date();
+            if (now >= broadcast.scheduling.scheduledTime) {
+              console.log(`📅 Starting scheduled broadcast ${broadcast._id}`);
+              await this.executeBroadcast(broadcast);
+            }
+          }
           // Resume running broadcasts
-          if (broadcast.status === 'running' && broadcast.stats.pending > 0) {
+          else if (broadcast.status === 'running' && broadcast.stats.pending > 0) {
             console.log(`⏳ Resuming broadcast ${broadcast._id}`);
             await this.executeBroadcast(broadcast);
           }

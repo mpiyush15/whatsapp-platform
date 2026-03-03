@@ -5,6 +5,7 @@ import Message from '../models/Message.js';
 export class BroadcastService {
   /**
    * Create a new broadcast campaign
+   * Supports immediate or scheduled sending
    */
   async createBroadcast(accountId, phoneNumberId, data) {
     const broadcast = new Broadcast({
@@ -16,8 +17,20 @@ export class BroadcastService {
       recipientList: data.recipientList,
       recipients: data.recipients,
       throttleRate: data.throttleRate || 50,
-      createdBy: data.createdBy
+      createdBy: data.createdBy,
+      // Handle scheduling
+      scheduling: {
+        type: data.scheduling?.type || 'immediate', // 'immediate' or 'scheduled'
+        scheduledTime: data.scheduling?.scheduledTime || null
+      }
     });
+
+    // Set status based on scheduling type
+    if (data.scheduling?.type === 'scheduled' && data.scheduling?.scheduledTime) {
+      broadcast.status = 'scheduled';
+    } else {
+      broadcast.status = 'draft';
+    }
 
     await broadcast.save();
     return broadcast;
@@ -109,7 +122,7 @@ export class BroadcastService {
   }
 
   /**
-   * Start broadcast execution
+   * Start broadcast execution (or verify scheduled time for scheduled broadcasts)
    */
   async startBroadcast(accountId, broadcastId) {
     const broadcast = await this.getBroadcastById(accountId, broadcastId);
@@ -118,8 +131,25 @@ export class BroadcastService {
       throw new Error('Broadcast not found');
     }
 
-    if (broadcast.status !== 'draft' && broadcast.status !== 'failed') {
+    // Allow starting from draft or failed statuses
+    // For scheduled broadcasts, status is 'scheduled' and should be allowed
+    const allowedStatuses = ['draft', 'failed', 'scheduled'];
+    if (!allowedStatuses.includes(broadcast.status)) {
       throw new Error(`Cannot start broadcast with status: ${broadcast.status}`);
+    }
+
+    // If this is a scheduled broadcast, validate scheduled time
+    if (broadcast.scheduling?.type === 'scheduled') {
+      const scheduledTime = new Date(broadcast.scheduling.scheduledTime);
+      const now = new Date();
+      
+      if (scheduledTime > now) {
+        // Scheduled time is in the future, keep it scheduled
+        broadcast.status = 'scheduled';
+        await broadcast.save();
+        return broadcast;
+      }
+      // If scheduled time has passed, proceed with immediate execution
     }
 
     const recipients = await this.buildRecipientList(accountId, broadcast.recipients);

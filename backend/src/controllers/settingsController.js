@@ -64,10 +64,11 @@ export const getPhoneNumbers = async (req, res) => {
       }
     }));
     
-    console.log('📊 Returning phone numbers with status:');
-    phoneNumbersWithStatus.forEach((p, i) => {
-      console.log(`  [${i+1}] ${p.displayPhoneNumber} - Active: ${p.isActive}, Quality: ${p.qualityRating}`);
-    });
+    // Verbose logging disabled - uncomment for debugging
+    // console.log('📊 Returning phone numbers with status:');
+    // phoneNumbersWithStatus.forEach((p, i) => {
+    //   console.log(`  [${i+1}] ${p.displayPhoneNumber} - Active: ${p.isActive}, Quality: ${p.qualityRating}`);
+    // });
     
     // ✅ NEW: Include WABA connection status even if no phone numbers exist yet
     const wabaConnected = !!(account?.wabaId && account?.businessId);
