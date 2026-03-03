@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
   },
   /* React strict mode for development */
   reactStrictMode: true,
+  /* Use SWC compiler instead of Turbopack */
+  swcMinify: true,
+  compiler: {
+    removeConsole: process.env.NODE_ENV === "production",
+  },
 };
 
 export default nextConfig;
