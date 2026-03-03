@@ -56,7 +56,7 @@ export default function ContactPage() {
         {/* Hero Section */}
         <div className="bg-gradient-to-br from-green-50 to-white px-4 sm:px-6 lg:px-8 py-16 mb-16">
           <div className="max-w-4xl mx-auto text-center">
-            <h1 className="text-5xl font-bold text-gray-900 mb-4">Get in Touch</h1>
+            <h1 className="text-5xl font-bold text-gray-900 mb-4">Get in Touch with us</h1>
             <p className="text-xl text-gray-600">Have questions? We're here to help. Reach out to our team anytime.</p>
           </div>
         </div>
