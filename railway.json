@@ -1,7 +1,7 @@
 {
   "build": {
     "builder": "nixpacks",
-    "buildCommand": "cd backend && npm install"
+    "buildCommand": "npm install && cd backend && npm install"
   },
   "deploy": {
     "startCommand": "cd backend && npm start",
@@ -10,7 +10,9 @@
     "env": {
       "NODE_ENV": "production",
       "MONGODB_URI": "${{DATABASE_URL}}",
-      "PORT": "5050"
+      "PORT": "5050",
+      "NEXT_PUBLIC_API_URL": "${{NEXT_PUBLIC_API_URL}}",
+      "NEXT_PUBLIC_SOCKET_URL": "${{NEXT_PUBLIC_SOCKET_URL}}"
     }
   }
 }

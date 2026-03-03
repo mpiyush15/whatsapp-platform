@@ -26,6 +26,5 @@
   },
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/.next",
-  "installCommand": "cd frontend && npm install --legacy-peer-deps",
-  "ignoreCommand": "git diff --quiet HEAD~1 frontend/"
+  "installCommand": "cd frontend && npm install --legacy-peer-deps"
 }
