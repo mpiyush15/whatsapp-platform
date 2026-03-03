@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
   },
   /* React strict mode for development */
   reactStrictMode: true,
+  /* Disable Turbopack to avoid native module issues in Vercel */
+  experimental: {
+    turbopack: false,
+  },
 };
 
 export default nextConfig;
