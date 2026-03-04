@@ -5,6 +5,7 @@ import Conversation from '../models/Conversation.js';
 import Contact from '../models/Contact.js';
 import PhoneNumber from '../models/PhoneNumber.js';
 import Account from '../models/Account.js';
+import FailedMessage from '../models/FailedMessage.js';
 import { downloadAndUploadMedia, getMediaTypeFromMime } from '../services/s3Service.js';
 import { broadcastNewMessage, broadcastConversationUpdate, broadcastReceivedMessage } from '../services/socketService.js';
 
@@ -455,6 +456,7 @@ export const handleWebhook = async (req, res) => {
                       }
                       break;
                     case 'location':
+                      messageType = 'media'; // Map location to media type since it's not a separate enum
                       content = {
                         latitude: message.location.latitude,
                         longitude: message.location.longitude,
@@ -464,6 +466,7 @@ export const handleWebhook = async (req, res) => {
                       console.log('Location:', content);
                       break;
                     case 'interactive':
+                      messageType = 'interactive'; // Keep as is, already in enum
                       if (message.interactive.type === 'button_reply') {
                         content = {
                           interactiveType: 'button_reply',
@@ -480,9 +483,41 @@ export const handleWebhook = async (req, res) => {
                       }
                       console.log('Interactive:', content);
                       break;
+                    case 'sticker':
+                      messageType = 'media'; // Map sticker to media type
+                      content = {
+                        mediaId: message.sticker.id,
+                        mimeType: message.sticker.mime_type,
+                        isAnimated: message.sticker.is_animated || false
+                      };
+                      console.log('Sticker ID:', message.sticker.id);
+                      
+                      // Download and upload sticker to S3
+                      try {
+                        console.log('📥 Downloading sticker from WhatsApp and uploading to S3...');
+                        const mediaData = await downloadAndUploadMedia(
+                          message.sticker.id,
+                          phoneConfig.accessToken,
+                          accountId,
+                          'sticker'
+                        );
+                        
+                        content.mediaUrl = mediaData.s3Url;
+                        content.s3Key = mediaData.s3Key;
+                        content.filename = mediaData.filename;
+                        content.fileSize = mediaData.fileSize;
+                        content.sha256 = mediaData.sha256;
+                        content.mediaType = 'sticker';
+                        
+                        console.log('✅ Sticker saved to S3:', mediaData.s3Url);
+                      } catch (mediaError) {
+                        console.error('❌ Failed to download/upload sticker:', mediaError.message);
+                      }
+                      break;
                     default:
                       console.log('⚠️ Unsupported message type:', message.type);
-                      content = { raw: message };
+                      messageType = 'text'; // Default to text for unknown types
+                      content = { text: message[message.type]?.body || JSON.stringify(message[message.type] || message) };
                   }
                   
                   // ✅ CRITICAL FIX: Create conversation first to get MongoDB _id
@@ -554,6 +589,17 @@ export const handleWebhook = async (req, res) => {
                     lastMessagePreview = '🎵 Audio Message';
                   } else if (messageType === 'document') {
                     lastMessagePreview = '📄 Document: ' + (content.filename || 'Document');
+                  } else if (messageType === 'media') {
+                    // Handle media subtype (location, sticker, etc.)
+                    if (content.mediaType === 'sticker') {
+                      lastMessagePreview = '🎨 Sticker';
+                    } else if (content.latitude && content.longitude) {
+                      lastMessagePreview = '📍 Location';
+                    } else {
+                      lastMessagePreview = '📎 Media';
+                    }
+                  } else if (messageType === 'interactive') {
+                    lastMessagePreview = '🔘 Interactive Message';
                   } else {
                     lastMessagePreview = `[${messageType}]`;
                   }
@@ -643,50 +689,87 @@ export const handleWebhook = async (req, res) => {
                     // Don't fail message save if contact creation fails
                   }
                   
-                  const savedMessage = await Message.create(inboxMessage);
-                  console.log('✅ Saved incoming message to database:', savedMessage._id);
-                  
-                  // 📡 Broadcast received message via Socket.io for real-time updates
-                  if (io) {
-                    // Get contact name if available - use whatsappNumber field
-                    const formattedSenderPhone = message.from.replace(/[^0-9]/g, '');
-                    const contact = await Contact.findOne({
-                      accountId: targetAccountId,
-                      whatsappNumber: formattedSenderPhone
-                    });
-                    const contactName = contact?.name || null;
+                  try {
+                    const savedMessage = await Message.create(inboxMessage);
+                    console.log('✅ Saved incoming message to database:', savedMessage._id);
                     
-                    // Broadcast the new received message
-                    broadcastReceivedMessage(io, savedMessage, targetAccountId, contactName);
-                    console.log('📥 Broadcasted received message via Socket.io:', {
-                      messageId: savedMessage._id,
-                      from: message.from,
-                      contactName: contactName || 'Unknown'
-                    });
-                  }
-                  
-                  // Broadcast new message via Socket.io for real-time updates
-                  if (io) {
-                    // Use MongoDB _id for broadcasting (must match frontend expectations)
-                    const broadcastConversationId = conversationDoc._id.toString();
-                    const messageObject = savedMessage.toObject();
-                    
-                    // Ensure createdAt is in ISO format for consistency
-                    if (!messageObject.createdAt) {
-                      messageObject.createdAt = new Date().toISOString();
+                    // 📡 Broadcast received message via Socket.io for real-time updates
+                    if (io) {
+                      // Get contact name if available - use whatsappNumber field
+                      const formattedSenderPhone = message.from.replace(/[^0-9]/g, '');
+                      const contact = await Contact.findOne({
+                        accountId: targetAccountId,
+                        whatsappNumber: formattedSenderPhone
+                      });
+                      const contactName = contact?.name || null;
+                      
+                      // Broadcast the new received message
+                      broadcastReceivedMessage(io, savedMessage, targetAccountId, contactName);
+                      console.log('📥 Broadcasted received message via Socket.io:', {
+                        messageId: savedMessage._id,
+                        from: message.from,
+                        contactName: contactName || 'Unknown'
+                      });
                     }
                     
-                    // Add conversationId to message for frontend matching
-                    messageObject.conversationId = broadcastConversationId;
+                    // Broadcast new message via Socket.io for real-time updates
+                    if (io) {
+                      // Use MongoDB _id for broadcasting (must match frontend expectations)
+                      const broadcastConversationId = conversationDoc._id.toString();
+                      const messageObject = savedMessage.toObject();
+                      
+                      // Ensure createdAt is in ISO format for consistency
+                      if (!messageObject.createdAt) {
+                        messageObject.createdAt = new Date().toISOString();
+                      }
+                      
+                      // Add conversationId to message for frontend matching
+                      messageObject.conversationId = broadcastConversationId;
+                      
+                      broadcastNewMessage(io, broadcastConversationId, messageObject);
+                      console.log('📡 Broadcasted new message via Socket.io:', broadcastConversationId);
+                      console.log('   Broadcast Details:', {
+                        conversationId: broadcastConversationId,
+                        messageId: messageObject._id,
+                        from: message.from,
+                        timestamp: messageObject.createdAt
+                      });
+                    }
+                  } catch (messageError) {
+                    console.error('❌ Error saving message:', messageError.message);
                     
-                    broadcastNewMessage(io, broadcastConversationId, messageObject);
-                    console.log('📡 Broadcasted new message via Socket.io:', broadcastConversationId);
-                    console.log('   Broadcast Details:', {
-                      conversationId: broadcastConversationId,
-                      messageId: messageObject._id,
-                      from: message.from,
-                      timestamp: messageObject.createdAt
-                    });
+                    // Log failed message for retry
+                    try {
+                      const failedMsg = await FailedMessage.create({
+                        accountId: targetAccountId,
+                        phoneNumberId,
+                        conversationId: conversationDoc._id.toString(),
+                        waMessageId: message.id,
+                        userPhone: message.from,
+                        rawMessageData: {
+                          type: messageType,
+                          from: message.from,
+                          id: message.id,
+                          timestamp: message.timestamp,
+                          content: content
+                        },
+                        errorType: messageError.name || 'ValidationError',
+                        errorMessage: messageError.message,
+                        errorStack: messageError.stack,
+                        status: 'pending',
+                        nextRetryAt: new Date(Date.now() + 5 * 60 * 1000) // Retry in 5 minutes
+                      });
+                      
+                      console.log('📋 Logged failed message for retry:', {
+                        failedMessageId: failedMsg._id,
+                        originalMessageId: message.id,
+                        reason: messageError.message
+                      });
+                    } catch (logError) {
+                      console.error('⚠️  Could not log failed message:', logError.message);
+                    }
+                    
+                    // Continue processing despite message save failure
                   }
                   
                   // Check for keyword auto-reply or workflow response

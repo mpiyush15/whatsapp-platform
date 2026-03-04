@@ -32,4 +32,9 @@ router.post('/send-media', messageLimiter, upload.single('file'), handleMulterEr
 router.get('/', messageController.getMessages);
 router.get('/:id', messageController.getMessage);
 
+// Failed messages
+router.get('/failed/list', messageController.getFailedMessages);
+router.post('/failed/:failedMessageId/retry', messageController.retryFailedMessage);
+router.delete('/failed/:failedMessageId', messageController.deleteFailedMessage);
+
 export default router;

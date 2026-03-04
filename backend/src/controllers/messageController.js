@@ -1,5 +1,6 @@
 import whatsappService from '../services/whatsappService.js';
 import Message from '../models/Message.js';
+import FailedMessage from '../models/FailedMessage.js';
 import { uploadMediaToS3 } from '../services/s3Service.js';
 import { broadcastNewMessage, broadcastConversationUpdate, broadcastMessageStatus, broadcastSentMessage } from '../services/socketService.js';
 
@@ -424,10 +425,164 @@ export const sendMediaMessage = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/messages/failed/list - Get failed messages for account
+ */
+export const getFailedMessages = async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const { status = 'pending', limit = 50, skip = 0 } = req.query;
+
+    const failedMessages = await FailedMessage.find({
+      accountId,
+      ...(status && { status })
+    })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(skip));
+
+    const total = await FailedMessage.countDocuments({
+      accountId,
+      ...(status && { status })
+    });
+
+    res.json({
+      success: true,
+      failedMessages,
+      total,
+      count: failedMessages.length
+    });
+  } catch (error) {
+    console.error('❌ Error fetching failed messages:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * POST /api/messages/failed/:failedMessageId/retry - Retry a failed message
+ */
+export const retryFailedMessage = async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const { failedMessageId } = req.params;
+
+    const failedMsg = await FailedMessage.findOne({
+      _id: failedMessageId,
+      accountId
+    });
+
+    if (!failedMsg) {
+      return res.status(404).json({
+        success: false,
+        message: 'Failed message not found'
+      });
+    }
+
+    if (failedMsg.retryCount >= 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum retry attempts reached (5). Please delete and try again.'
+      });
+    }
+
+    try {
+      // Attempt to create message again
+      const messageData = {
+        accountId: failedMsg.accountId,
+        phoneNumberId: failedMsg.phoneNumberId,
+        conversationId: failedMsg.conversationId,
+        waMessageId: failedMsg.waMessageId,
+        recipientPhone: failedMsg.userPhone,
+        messageType: failedMsg.rawMessageData.type,
+        content: failedMsg.rawMessageData.content,
+        status: 'delivered',
+        direction: 'inbound',
+        sentAt: new Date(parseInt(failedMsg.rawMessageData.timestamp) * 1000),
+        deliveredAt: new Date(parseInt(failedMsg.rawMessageData.timestamp) * 1000)
+      };
+
+      const savedMessage = await Message.create(messageData);
+
+      // Mark as resolved
+      failedMsg.status = 'resolved';
+      failedMsg.resolvedAt = new Date();
+      failedMsg.resolvedMessage = savedMessage._id;
+      await failedMsg.save();
+
+      res.json({
+        success: true,
+        message: 'Message recovered and saved successfully',
+        savedMessage,
+        failedMessage: failedMsg
+      });
+    } catch (retryError) {
+      // Update retry count
+      failedMsg.retryCount += 1;
+      failedMsg.lastRetryAt = new Date();
+      failedMsg.nextRetryAt = new Date(Date.now() + 5 * 60 * 1000);
+      failedMsg.status = failedMsg.retryCount >= 5 ? 'failed' : 'retrying';
+      failedMsg.errorMessage = retryError.message;
+      await failedMsg.save();
+
+      res.status(400).json({
+        success: false,
+        message: 'Retry failed with same error',
+        error: retryError.message,
+        failedMessage: failedMsg
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error retrying failed message:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * DELETE /api/messages/failed/:failedMessageId - Delete a failed message record
+ */
+export const deleteFailedMessage = async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const { failedMessageId } = req.params;
+
+    const result = await FailedMessage.deleteOne({
+      _id: failedMessageId,
+      accountId
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Failed message not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Failed message deleted'
+    });
+  } catch (error) {
+    console.error('❌ Error deleting failed message:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 export default {
   sendTextMessage,
   sendTemplateMessage,
   getMessages,
   getMessage,
-  sendMediaMessage
+  sendMediaMessage,
+  getFailedMessages,
+  retryFailedMessage,
+  deleteFailedMessage
 };

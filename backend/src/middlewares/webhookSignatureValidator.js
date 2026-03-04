@@ -10,7 +10,17 @@ import crypto from 'crypto';
 export const validateWebhookSignature = (req, res, next) => {
   // Get signature from header
   const signature = req.headers['x-hub-signature-256'];
-  const appSecret = process.env.META_APP_SECRET || 'pixels_app_secret_2025';
+  const appSecret = process.env.META_APP_SECRET;
+  
+  // Validate that app secret is configured
+  if (!appSecret) {
+    console.error('❌ CRITICAL: META_APP_SECRET environment variable not set');
+    return res.status(500).json({
+      success: false,
+      code: 'MISSING_APP_SECRET',
+      message: 'Webhook validation failed: missing META_APP_SECRET'
+    });
+  }
   
   // Get raw body (must be string/buffer, not parsed JSON)
   const rawBody = req.rawBody || JSON.stringify(req.body);

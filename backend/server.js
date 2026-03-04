@@ -1,8 +1,8 @@
 import app from './src/app.js';
 import mongoose from 'mongoose';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
 import dotenv from 'dotenv';
+import { initSocketIO } from './src/services/socketService.js';
 
 // Load environment variables
 dotenv.config();
@@ -13,18 +13,11 @@ const MONGO_URI = process.env.MONGODB_URI;
 // Create HTTP server
 const httpServer = createServer(app);
 
-// Setup Socket.io with CORS from environment variable
-const socketCorsOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000')
-  .split(',')
-  .map(origin => origin.trim())
-  .filter(Boolean);
+// Initialize Socket.io
+const io = initSocketIO(httpServer);
 
-const io = new Server(httpServer, {
-  cors: {
-    origin: socketCorsOrigins,
-    methods: ['GET', 'POST']
-  }
-});
+// Make io available to routes/controllers
+app.locals.io = io;
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI)

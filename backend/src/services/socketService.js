@@ -200,6 +200,77 @@ export const initSocketIO = (server) => {
     });
 
     /**
+     * 🔴 HANDLE MESSAGE SEND VIA SOCKET (REALTIME)
+     * Receives message from frontend, sends to backend API, broadcasts response
+     */
+    socket.on('send_message', async (data, callback) => {
+      const { conversationId, phoneNumberId, recipientPhone, message } = data;
+      console.log('📨 Socket send_message received:', {
+        conversationId,
+        recipientPhone,
+        messageLength: message?.length || 0,
+        accountId: socket.accountId
+      });
+
+      try {
+        // Validate input
+        if (!conversationId || !phoneNumberId || !recipientPhone || !message) {
+          console.error('❌ send_message: Missing required fields');
+          return callback({ success: false, message: 'Missing required fields' });
+        }
+
+        // ✅ Verify conversation ownership
+        const conversation = await Conversation.findById(conversationId).select('accountId _id').lean();
+        
+        if (!conversation) {
+          console.error('❌ send_message: Conversation not found');
+          return callback({ success: false, message: 'Conversation not found' });
+        }
+
+        const conversationAccountId = String(conversation.accountId);
+        const socketAccountId = String(socket.accountId);
+        
+        if (conversationAccountId !== socketAccountId) {
+          console.error('❌ SECURITY ALERT: Cross-account send_message attempt!', {
+            socketId: socket.id,
+            email: socket.email,
+            conversationId,
+            timestamp: new Date().toISOString()
+          });
+          return callback({ success: false, message: 'Unauthorized' });
+        }
+
+        // ✅ Send message via API endpoint to backend controller
+        // This ensures all business logic (WhatsApp API call, DB save, etc.) is centralized
+        const response = await fetch(`http://localhost:${process.env.PORT || 5050}/api/messages/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${data.token || socket.handshake.auth.token}`
+          },
+          body: JSON.stringify({
+            phoneNumberId,
+            recipientPhone,
+            message
+          })
+        });
+
+        const apiResponse = await response.json();
+
+        if (apiResponse.success) {
+          console.log('✅ Message sent successfully via socket');
+          callback({ success: true, message: 'Message sent' });
+        } else {
+          console.error('❌ API failed to send message:', apiResponse);
+          callback({ success: false, message: apiResponse.message || 'Failed to send message' });
+        }
+      } catch (error) {
+        console.error('❌ Error in send_message:', error.message);
+        callback({ success: false, message: 'Error sending message: ' + error.message });
+      }
+    });
+
+    /**
      * Subscribe to all conversations for the user
      */
     socket.on('subscribe_conversations', () => {

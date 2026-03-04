@@ -301,8 +301,29 @@ export default function LiveChatV2() {
       
       if (data.success && data.conversations) {
         console.log('✅ Fetched conversations:', data.conversations.length);
+        // Merge with existing conversations to preserve unread count = 0 for open conversations
+        const fetchedMap = new Map(data.conversations.map((c: Conversation) => [c._id, c]));
+        const merged = conversations.map(existing => {
+          const fetched = fetchedMap.get(existing._id);
+          // If conversation exists locally with unreadCount = 0 (marked as read), keep it
+          if (existing.unreadCount === 0 && fetched) {
+            return {
+              ...(fetched as Conversation),
+              unreadCount: 0
+            } as Conversation;
+          }
+          return (fetched || existing) as Conversation;
+        });
+        
+        // Add any new conversations from API that don't exist locally
+        data.conversations.forEach((conv: Conversation) => {
+          if (!merged.find((c: Conversation) => c._id === conv._id)) {
+            merged.push(conv);
+          }
+        });
+        
         // Sort by most recent first
-        const sorted = data.conversations.sort((a: Conversation, b: Conversation) => {
+        const sorted = merged.sort((a: Conversation, b: Conversation) => {
           return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
         });
         setConversations(sorted);
@@ -586,31 +607,53 @@ export default function LiveChatV2() {
     setMessages(prev => [...prev, optimisticMessage]);
     
     try {
-      const response = await fetch(`${API_URL}/messages/send`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
+      // ✅ Send via socket first (realtime)
+      if (socket && socket.connected) {
+        socket.emit('send_message', {
+          conversationId: selectedConversation._id,
           phoneNumberId: selectedConversation.phoneNumberId,
           recipientPhone: selectedConversation.userPhone,
           message: messageText
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        // Message will be updated via socket.io broadcast
+        }, (response: any) => {
+          console.log('📤 Socket send response:', response);
+          if (response?.success) {
+            // Message will be updated via socket.on('message.sent')
+          } else {
+            // Remove optimistic message on failure
+            setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
+            alert(`Failed to send: ${response?.message || 'Unknown error'}`);
+          }
+          setIsSending(false);
+        });
       } else {
-        // Remove optimistic message on failure
-        setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
-        alert(`Failed to send: ${data.message}`);
+        // Fallback to API if socket not connected
+        console.warn('⚠️ Socket not connected, falling back to API');
+        const response = await fetch(`${API_URL}/messages/send`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            phoneNumberId: selectedConversation.phoneNumberId,
+            recipientPhone: selectedConversation.userPhone,
+            message: messageText
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          // Message will be updated via socket.io broadcast
+        } else {
+          // Remove optimistic message on failure
+          setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
+          alert(`Failed to send: ${data.message}`);
+        }
+        setIsSending(false);
       }
     } catch (error) {
       console.error('❌ Send error:', error);
       // Remove optimistic message on error
       setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
       alert('Failed to send message');
-    } finally {
       setIsSending(false);
     }
   };
@@ -703,24 +746,90 @@ export default function LiveChatV2() {
       console.error('🔴 Socket error:', error);
     });
     
-    newSocket.on('message.received', (data: Message) => {
+    setSocket(newSocket);
+    
+    return () => {
+      newSocket.disconnect();
+    };
+  }, []);
+
+  // 🔴 SOCKET HANDLERS - Separate effect to capture current state
+  useEffect(() => {
+    if (!socket) return;
+
+    // Remove old listeners to prevent duplicates
+    socket.off('message.received');
+    socket.off('message.sent');
+    socket.off('message_status');
+    socket.off('contact_status');
+    socket.off('contact_online');
+    socket.off('contact_offline');
+    socket.off('contact_typing');
+    socket.off('contact_typing_stopped');
+
+    // Register fresh handlers with current state
+    socket.on('message.received', (data: Message) => {
       console.log('📨 Message received:', data);
-      if (selectedConversation && data.conversationId === selectedConversation._id) {
-        setMessages(prev => [...prev, data]);
-      }
+      
+      // Add to current conversation if open
+      setMessages(prev => {
+        const exists = prev.some(m => m._id === data._id);
+        if (exists) return prev;
+        return [...prev, data];
+      });
+      
+      // Auto-scroll to latest message
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
+      
+      // Update conversation list
+      setConversations(prev =>
+        prev
+          .map(conv =>
+            conv._id === data.conversationId
+              ? {
+                  ...conv,
+                  lastMessageAt: data.createdAt,
+                  lastMessagePreview: data.content.text || `[${data.messageType.toUpperCase()}]`,
+                  unreadCount: selectedConversation?._id === data.conversationId ? 0 : (conv.unreadCount || 0) + 1
+                }
+              : conv
+          )
+          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+      );
     });
     
-    newSocket.on('message.sent', (data: Message) => {
+    socket.on('message.sent', (data: Message) => {
       console.log('📤 Message sent:', data);
-      if (selectedConversation && data.conversationId === selectedConversation._id) {
-        setMessages(prev => {
-          const exists = prev.some(m => m._id === data._id);
-          return exists ? prev.map(m => m._id === data._id ? data : m) : [...prev, data];
-        });
-      }
+      
+      // Update message in current chat
+      setMessages(prev => {
+        const exists = prev.some(m => m._id === data._id);
+        if (exists) {
+          return prev.map(m => m._id === data._id ? { ...m, ...data } : m);
+        }
+        return [...prev, data];
+      });
+      
+      // Update conversation list
+      setConversations(prev =>
+        prev
+          .map(conv =>
+            conv._id === data.conversationId
+              ? {
+                  ...conv,
+                  lastMessageAt: data.createdAt,
+                  lastMessagePreview: data.content.text || `[${data.messageType.toUpperCase()}]`,
+                  unreadCount: selectedConversation?._id === data.conversationId ? 0 : (conv.unreadCount || 0)
+                }
+              : conv
+          )
+          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+      );
     });
     
-    newSocket.on('message_status', (data: any) => {
+    socket.on('message_status', (data: any) => {
       console.log('🔄 Message status:', data);
       setMessages(prev =>
         prev.map(m =>
@@ -731,8 +840,7 @@ export default function LiveChatV2() {
       );
     });
 
-    // Listen for contact status changes
-    newSocket.on('contact_status', (data: any) => {
+    socket.on('contact_status', (data: any) => {
       console.log('👤 Contact status:', data);
       setContactStatus({
         isOnline: data.isOnline,
@@ -740,8 +848,7 @@ export default function LiveChatV2() {
       });
     });
 
-    // Listen for contact online event
-    newSocket.on('contact_online', (data: any) => {
+    socket.on('contact_online', (data: any) => {
       console.log('🟢 Contact online:', data);
       setContactStatus({
         isOnline: true,
@@ -749,8 +856,7 @@ export default function LiveChatV2() {
       });
     });
 
-    // Listen for contact offline event
-    newSocket.on('contact_offline', (data: any) => {
+    socket.on('contact_offline', (data: any) => {
       console.log('🔴 Contact offline:', data);
       setContactStatus({
         isOnline: false,
@@ -758,25 +864,28 @@ export default function LiveChatV2() {
       });
     });
 
-    // Listen for typing indicator
-    newSocket.on('contact_typing', (data: any) => {
+    socket.on('contact_typing', (data: any) => {
       console.log('✍️ Contact typing:', data);
       setIsTyping(true);
       setTimeout(() => setIsTyping(false), 3000);
     });
 
-    // Listen for typing stopped
-    newSocket.on('contact_typing_stopped', () => {
+    socket.on('contact_typing_stopped', () => {
       console.log('⏹️ Contact stopped typing');
       setIsTyping(false);
     });
-    
-    setSocket(newSocket);
-    
+
     return () => {
-      newSocket.disconnect();
+      socket.off('message.received');
+      socket.off('message.sent');
+      socket.off('message_status');
+      socket.off('contact_status');
+      socket.off('contact_online');
+      socket.off('contact_offline');
+      socket.off('contact_typing');
+      socket.off('contact_typing_stopped');
     };
-  }, []);
+  }, [socket, selectedConversation]);
 
   // 🔴 FETCH CONVERSATIONS WHEN PHONE CHANGES
   useEffect(() => {
@@ -844,51 +953,51 @@ export default function LiveChatV2() {
     switch (messageType) {
       case 'image':
         return (
-          <div className="max-w-xs">
-            <img src={content.url} alt="Image" className="rounded-lg w-full" />
-            {content.caption && <p className="text-sm mt-1">{content.caption}</p>}
+          <div className="max-w-xs overflow-hidden">
+            <img src={content.url} alt="Image" className="rounded-lg w-full max-h-64 object-cover" />
+            {content.caption && <p className="text-sm mt-1 break-words">{content.caption}</p>}
           </div>
         );
       case 'video':
         return (
-          <div className="max-w-xs">
-            <video src={content.url} controls className="rounded-lg w-full" />
-            {content.caption && <p className="text-sm mt-1">{content.caption}</p>}
+          <div className="max-w-xs overflow-hidden">
+            <video src={content.url} controls className="rounded-lg w-full max-h-64 object-cover" />
+            {content.caption && <p className="text-sm mt-1 break-words">{content.caption}</p>}
           </div>
         );
       case 'audio':
         return (
-          <div className="w-64">
+          <div className="w-64 overflow-hidden">
             <audio src={content.url} controls className="w-full" />
           </div>
         );
       case 'document':
         return (
-          <a href={content.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-500 underline">
-            <Download className="h-4 w-4" />
-            {content.filename || 'Document'}
+          <a href={content.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-500 underline break-words">
+            <Download className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">{content.filename || 'Document'}</span>
           </a>
         );
       default:
-        return <p className="text-sm break-words">{content.text}</p>;
+        return <p className="text-sm break-words whitespace-pre-wrap">{content.text}</p>;
     }
   };
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+<div className="flex h-screen w-screen overflow-hidden bg-white">
       {/* SIDEBAR - Chat List */}
-      <div className={`${isMobileView && selectedConversation ? 'hidden' : 'w-full md:w-80'} bg-white border-r border-gray-300 flex flex-col h-screen overflow-hidden`}>
+      <div className={`${isMobileView && selectedConversation ? 'hidden' : 'w-64'} flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden`}>
           {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-300 bg-white flex-shrink-0">
+          <div className="px-4 py-3 border-b border-gray-200 bg-white flex-shrink-0">
             <h1 className="text-2xl font-bold text-gray-900">Chats</h1>
           </div>
 
           {/* Phone Selector */}
-          <div className="px-3 py-2 border-b border-gray-300 flex-shrink-0">
+          <div className="px-4 py-2 border-b border-gray-200 flex-shrink-0">
             <select
               value={selectedPhoneId}
               onChange={(e) => setSelectedPhoneId(e.target.value)}
-              className="w-full p-2 border border-gray-400 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition"
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition bg-white"
             >
               <option value="">Select phone number</option>
               {phoneNumbers.map(phone => (
@@ -900,15 +1009,15 @@ export default function LiveChatV2() {
           </div>
 
           {/* Search Bar */}
-          <div className="px-3 py-2 border-b border-gray-300 flex-shrink-0">
+          <div className="px-4 py-2 border-b border-gray-200 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
               <input
                 type="text"
-                placeholder="Search or start a new chat"
+                placeholder="Search chats"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-400 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition bg-gray-50"
+                className="w-full pl-9 pr-4 py-1.5 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition bg-gray-50"
               />
             </div>
           </div>
@@ -932,15 +1041,17 @@ export default function LiveChatV2() {
                   <button
                     key={conv._id}
                     onClick={() => setSelectedConversation(conv)}
-                    className="w-full px-3 py-2 border-b border-gray-200 hover:bg-gray-50 text-left transition duration-100"
+                    className={`w-full px-3 py-3 border-b border-gray-100 hover:bg-gray-50 text-left transition duration-100 ${
+                      selectedConversation?._id === conv._id ? 'bg-gray-100' : ''
+                    }`}
                   >
-                    <div className="flex justify-between items-start gap-2">
+                    <div className="flex justify-between items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm text-gray-900 truncate">{contactName}</p>
-                        <p className="text-xs text-gray-500 truncate mt-0.5 line-clamp-1">{conv.lastMessagePreview}</p>
+                        <p className="text-xs text-gray-600 truncate mt-0.5 line-clamp-1">{conv.lastMessagePreview}</p>
                       </div>
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <p className="text-xs text-gray-400 whitespace-nowrap">
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <p className="text-xs text-gray-500 whitespace-nowrap">
                           {new Date(conv.lastMessageAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                         </p>
                         {conv.unreadCount && conv.unreadCount > 0 ? (
@@ -959,29 +1070,29 @@ export default function LiveChatV2() {
 
       {/* MAIN CHAT AREA - Show on Desktop when selected, or Mobile when selected */}
       {selectedConversation && (
-        <div className="flex-1 flex flex-col bg-white h-screen overflow-hidden">
-          {/* Header */}
-          <div className="sticky top-0 z-30 flex items-center justify-between px-3 py-1.5 border-b border-gray-300 bg-white">
-            <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="flex-1 flex flex-col bg-white overflow-hidden overflow-x-hidden min-w-0">
+          {/* Header - WhatsApp Style */}
+          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white z-10 shadow-sm">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
               {isMobileView && (
                 <button
                   onClick={() => setSelectedConversation(null)}
                   className="p-1 hover:bg-gray-100 rounded-full flex-shrink-0 md:hidden"
                   title="Back to chats"
                 >
-                  <ArrowLeft className="h-4 w-4 text-gray-700" />
+                  <ArrowLeft className="h-4 w-4 text-gray-600" />
                 </button>
               )}
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <p className="font-semibold text-gray-900 text-sm truncate">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-gray-800 text-base truncate">
                     {contactNamesMap[selectedConversation.userPhone] || selectedConversation.userPhone}
                   </p>
                   {contactStatus?.isOnline && (
-                    <div className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500 animate-pulse"></div>
+                    <div className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500"></div>
                   )}
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 mt-0.5">
                   {isTyping ? (
                     <span className="text-green-600 font-medium">typing...</span>
                   ) : contactStatus?.isOnline ? (
@@ -994,18 +1105,18 @@ export default function LiveChatV2() {
             </div>
             
             <div className="flex gap-0 flex-shrink-0">
-              <button className="p-1.5 hover:bg-gray-100 rounded-full transition" title="Call">
-                <Phone className="h-4 w-4 text-gray-600" />
+              <button className="p-2 hover:bg-gray-100 rounded-full transition" title="Call">
+                <Phone className="h-5 w-5 text-gray-600" />
               </button>
-              <button className="p-1.5 hover:bg-gray-100 rounded-full transition" title="Video">
-                <Video className="h-4 w-4 text-gray-600" />
+              <button className="p-2 hover:bg-gray-100 rounded-full transition" title="Video">
+                <Video className="h-5 w-5 text-gray-600" />
               </button>
               <button 
                 onClick={() => setShowDetailsPanel(!showDetailsPanel)}
-                className="p-1.5 hover:bg-gray-100 rounded-full transition"
+                className="p-2 hover:bg-gray-100 rounded-full transition"
                 title="More options"
               >
-                <MoreVertical className="h-4 w-4 text-gray-600" />
+                <MoreVertical className="h-5 w-5 text-gray-600" />
               </button>
             </div>
           </div>
@@ -1013,7 +1124,7 @@ export default function LiveChatV2() {
           {/* Messages Container */}
           <div 
             ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto px-2 py-1.5 space-y-1.5 bg-white"
+            className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-1.5 bg-white min-w-0 scroll-smooth"
             onScroll={(e) => {
               const target = e.currentTarget;
               if (target.scrollTop === 0 && hasMoreMessages) {
@@ -1036,30 +1147,30 @@ export default function LiveChatV2() {
                   const isOutbound = msg.direction === 'outbound';
                   
                   return (
-                    <div key={msg._id}>
+                    <div key={msg._id} className="w-full">
                       {showDate && (
-                        <div className="flex justify-center my-1.5">
+                        <div className="flex justify-center my-1 px-1">
                           <span className="text-xs bg-white text-gray-500 px-2.5 py-0.5 rounded-full border border-gray-200 font-medium">
                             {formatDate(msg.createdAt)}
                           </span>
                         </div>
                       )}
-                      <div className={`flex relative group ${isOutbound ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`flex relative group ${isOutbound ? 'justify-end' : 'justify-start'} w-full px-1`}>
                         <div
-                          className={`max-w-xs md:max-w-md px-2.5 py-1.5 rounded-lg shadow-sm transition ${
+                          className={`max-w-xs md:max-w-md px-3 py-2 rounded-lg shadow-sm transition break-words overflow-hidden ${
                             isOutbound
-                              ? 'bg-green-100 text-gray-900 rounded-br-none'
-                              : 'bg-gray-100 text-gray-900 rounded-bl-none'
+                              ? 'bg-green-500 text-white rounded-br-none'
+                              : 'bg-white text-gray-900 rounded-bl-none border border-gray-100'
                           }`}
                           onMouseEnter={() => setShowMessageMenu(msg._id)}
                           onMouseLeave={() => setShowMessageMenu(null)}
                         >
                           {msg.direction === 'inbound' && msg.senderName && (
-                            <p className="text-xs font-semibold text-gray-700 mb-0.5">{msg.senderName}</p>
+                            <p className="text-xs font-semibold text-gray-600 mb-1">{msg.senderName}</p>
                           )}
                           {renderMessageContent(msg)}
-                          <div className="flex items-center gap-1 mt-0.5 text-xs justify-between">
-                            <span className="text-gray-600">
+                          <div className="flex items-center gap-1 mt-1 text-xs justify-between">
+                            <span className={isOutbound ? 'text-green-100' : 'text-gray-500'}>
                               {formatTime(msg.createdAt)}
                             </span>
                             {isOutbound && (
@@ -1126,14 +1237,14 @@ export default function LiveChatV2() {
           )}
 
           {/* Input Area */}
-          <div className="flex-shrink-0 px-2 py-1.5 border-t border-gray-300 bg-white z-20">
-            <div className="flex gap-1.5 items-end">
-              <button 
+          <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-white relative z-20 h-auto min-h-[62px]">
+            <div className="flex gap-2 items-end">
+              <button
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-1.5 hover:bg-gray-100 rounded-full transition flex-shrink-0"
+                className="p-2 hover:bg-gray-100 rounded-full transition flex-shrink-0"
                 title="Emojis"
               >
-                <Smile className="h-4 w-4 text-green-600" />
+                <Smile className="h-5 w-5 text-green-500" />
               </button>
               
               <input
@@ -1144,10 +1255,10 @@ export default function LiveChatV2() {
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-1.5 hover:bg-gray-100 rounded-full transition flex-shrink-0"
+                className="p-2 hover:bg-gray-100 rounded-full transition flex-shrink-0"
                 title="Attach file"
               >
-                <Paperclip className="h-4 w-4 text-green-600" />
+                <Paperclip className="h-5 w-5 text-green-500" />
               </button>
 
               <div className="flex-1 relative">
@@ -1164,33 +1275,33 @@ export default function LiveChatV2() {
                       sendMessage();
                     }
                   }}
-                  placeholder="Type a message"
+                  placeholder="Type a message..."
                   rows={1}
-                  className="w-full px-3 py-1.5 border border-gray-400 rounded-full text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-600 transition max-h-20"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-full text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition max-h-24 bg-white"
                 />
               </div>
 
               <button
                 onClick={sendMessage}
                 disabled={isSending || !newMessage.trim()}
-                className="p-1.5 hover:bg-gray-100 rounded-full transition disabled:opacity-50 flex-shrink-0"
+                className="p-2 hover:bg-green-100 rounded-full transition disabled:opacity-40 flex-shrink-0 disabled:hover:bg-transparent"
                 title="Send message"
               >
-                <Send className="h-4 w-4 text-green-600" />
+                <Send className="h-5 w-5 text-green-500" />
               </button>
             </div>
 
             {/* Emoji Picker */}
             {showEmojiPicker && (
-              <div className="mt-1 bg-white border border-gray-300 rounded-lg shadow-xl p-1.5 absolute bottom-20 left-2 right-2 md:left-auto md:right-4 z-50 max-h-48 overflow-y-auto">
-                <div className="grid grid-cols-8 gap-0.5">
+              <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 absolute bottom-20 left-0 right-0 md:left-auto md:right-4 md:w-max z-50 max-h-48 overflow-y-auto">
+                <div className="grid grid-cols-8 gap-1">
                   {['😀', '😂', '❤️', '😍', '🔥', '👍', '😭', '😱', '🎉', '💯', '👏', '🙏', '😊', '😘', '🤔', '😎', '🤩', '😴', '🤮', '😡', '😠', '🥺'].map((emoji) => (
                     <button
                       key={emoji}
                       onClick={() => {
                         setNewMessage(newMessage + emoji);
                       }}
-                      className="p-1 hover:bg-gray-100 rounded-lg text-lg transition"
+                      className="p-1.5 hover:bg-gray-100 rounded-lg text-lg transition"
                     >
                       {emoji}
                     </button>
@@ -1204,7 +1315,7 @@ export default function LiveChatV2() {
 
       {/* EMPTY STATE - Show on Desktop when no conversation selected */}
       {!selectedConversation && !isMobileView && (
-        <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-gray-50 to-green-50">
+        <div className="flex-1 flex items-center justify-center bg-white">
           <div className="text-center">
             <div className="text-6xl mb-4">💬</div>
             <p className="text-gray-600 font-semibold text-lg">Select a conversation</p>
