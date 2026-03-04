@@ -14,7 +14,7 @@ const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
  */
 export const getTemplates = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId for database queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId (matches source of truth)
     const { status, category } = req.query;
     
     const query = { accountId, deleted: false };
@@ -54,7 +54,7 @@ export const getTemplates = async (req, res) => {
  */
 export const getTemplate = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId for database queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId (matches source of truth)
     const { id } = req.params;
     
     const template = await Template.findOne({ 
@@ -89,7 +89,7 @@ export const getTemplate = async (req, res) => {
  */
 export const createTemplate = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId for DB queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId (matches source of truth)
     const { name, language, category, content, variables, components, hasMedia, mediaType, mediaUrl, headerText, footerText } = req.body;
     
     // Handle file upload
@@ -224,7 +224,7 @@ export const createTemplate = async (req, res) => {
  */
 export const updateTemplate = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId accountId for DB queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId (matches source of truth)
     const { id } = req.params;
     const { name, language, category, content, variables, components } = req.body;
     
@@ -278,7 +278,7 @@ export const updateTemplate = async (req, res) => {
  */
 export const deleteTemplate = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId accountId for DB queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId (matches source of truth)
     const { id } = req.params;
     
     const template = await Template.findOne({ 
@@ -319,7 +319,7 @@ export const deleteTemplate = async (req, res) => {
  */
 export const submitTemplateToMeta = async (req, res) => {
   try {
-    const accountId = req.account._id; // Use ObjectId accountId for database queries (single source of truth)
+    const accountId = req.account.accountId; // Use String accountId (matches source of truth)
     const { id } = req.params;
 
     // Get template
