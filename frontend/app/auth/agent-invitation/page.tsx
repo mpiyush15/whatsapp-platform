@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Mail, Lock, User, CheckCircle, AlertCircle, Loader } from 'lucide-react'
 import { API_URL } from '@/lib/config/api'
 
-export default function AgentInvitationPage() {
+function AgentInvitationContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const token = searchParams.get('token')
@@ -316,5 +316,20 @@ export default function AgentInvitationPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AgentInvitationPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
+          <Loader className="w-6 h-6 text-green-600 mx-auto animate-spin" />
+          <p className="text-gray-600 mt-4">Loading...</p>
+        </div>
+      </div>
+    }>
+      <AgentInvitationContent />
+    </Suspense>
   )
 }
