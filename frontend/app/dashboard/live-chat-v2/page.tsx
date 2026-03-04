@@ -301,7 +301,11 @@ export default function LiveChatV2() {
       
       if (data.success && data.conversations) {
         console.log('✅ Fetched conversations:', data.conversations.length);
-        setConversations(data.conversations);
+        // Sort by most recent first
+        const sorted = data.conversations.sort((a: Conversation, b: Conversation) => {
+          return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+        });
+        setConversations(sorted);
       } else {
         console.warn('⚠️ No conversations found:', data);
         setConversations([]);
@@ -317,6 +321,35 @@ export default function LiveChatV2() {
       setIsLoading(false);
     }
   }, [selectedPhoneId]);
+
+  // 🔴 MARK CONVERSATION AS READ
+  const markConversationAsRead = useCallback(async (conversationId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token || !conversationId) return;
+
+      await fetch(`${API_URL}/conversations/${conversationId}/mark-read`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      // Update conversations list to remove unread count
+      setConversations(prev =>
+        prev.map(conv =>
+          conv._id === conversationId
+            ? { ...conv, unreadCount: 0 }
+            : conv
+        ).sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+      );
+
+      console.log('✅ Conversation marked as read');
+    } catch (error) {
+      console.error('❌ Error marking conversation as read:', error);
+    }
+  }, []);
 
   // 🔴 FETCH MESSAGES FOR CONVERSATION
   const fetchMessages = useCallback(async (conversationId: string, phoneNumberId: string, page: number = 0, append: boolean = false) => {
@@ -536,6 +569,21 @@ export default function LiveChatV2() {
     if (!newMessage.trim() || !selectedConversation || isSending) return;
     
     setIsSending(true);
+    const messageText = newMessage;
+    setNewMessage(''); // Clear input immediately for better UX
+    
+    // ✅ Optimistic update: Show message immediately
+    const optimisticMessage: Message = {
+      _id: `temp-${Date.now()}`,
+      conversationId: selectedConversation._id,
+      content: { text: messageText },
+      direction: 'outbound',
+      status: 'queued',
+      messageType: 'text',
+      createdAt: new Date().toISOString()
+    };
+    
+    setMessages(prev => [...prev, optimisticMessage]);
     
     try {
       const response = await fetch(`${API_URL}/messages/send`, {
@@ -544,20 +592,23 @@ export default function LiveChatV2() {
         body: JSON.stringify({
           phoneNumberId: selectedConversation.phoneNumberId,
           recipientPhone: selectedConversation.userPhone,
-          message: newMessage
+          message: messageText
         })
       });
       
       const data = await response.json();
       
       if (data.success) {
-        setNewMessage('');
-        // Message will be added via socket.io broadcast
+        // Message will be updated via socket.io broadcast
       } else {
+        // Remove optimistic message on failure
+        setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
         alert(`Failed to send: ${data.message}`);
       }
     } catch (error) {
       console.error('❌ Send error:', error);
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
       alert('Failed to send message');
     } finally {
       setIsSending(false);
@@ -748,6 +799,9 @@ export default function LiveChatV2() {
       // Fetch contact status from API
       fetchContactStatus(selectedConversation.userPhone, selectedConversation._id);
       
+      // Mark conversation as read
+      markConversationAsRead(selectedConversation._id);
+      
       // Subscribe to conversation room
       socket?.emit('join_conversation', selectedConversation._id);
 
@@ -821,21 +875,20 @@ export default function LiveChatV2() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <div className="flex h-screen bg-white overflow-hidden">
       {/* SIDEBAR - Chat List */}
-      <div className={`${isMobileView && selectedConversation ? 'hidden' : 'w-full md:w-96 lg:w-80'} bg-white border-r border-gray-200 flex flex-col`}>
-          {/* Header with gradient */}
-          <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50">
-            <h1 className="text-2xl font-bold text-gray-900">💬 Live Chat</h1>
-            <p className="text-xs text-gray-600 mt-1">Real-time messaging</p>
+      <div className={`${isMobileView && selectedConversation ? 'hidden' : 'w-full md:w-80'} bg-white border-r border-gray-300 flex flex-col h-screen overflow-hidden`}>
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-gray-300 bg-white flex-shrink-0">
+            <h1 className="text-2xl font-bold text-gray-900">Chats</h1>
           </div>
 
           {/* Phone Selector */}
-          <div className="p-3 border-b border-gray-200">
+          <div className="px-3 py-2 border-b border-gray-300 flex-shrink-0">
             <select
               value={selectedPhoneId}
               onChange={(e) => setSelectedPhoneId(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition"
+              className="w-full p-2 border border-gray-400 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition"
             >
               <option value="">Select phone number</option>
               {phoneNumbers.map(phone => (
@@ -847,15 +900,15 @@ export default function LiveChatV2() {
           </div>
 
           {/* Search Bar */}
-          <div className="p-3 border-b border-gray-200">
+          <div className="px-3 py-2 border-b border-gray-300 flex-shrink-0">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
               <input
                 type="text"
-                placeholder="Search..."
+                placeholder="Search or start a new chat"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-500 transition"
+                className="w-full pl-10 pr-4 py-2 border border-gray-400 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-600 transition bg-gray-50"
               />
             </div>
           </div>
@@ -879,19 +932,19 @@ export default function LiveChatV2() {
                   <button
                     key={conv._id}
                     onClick={() => setSelectedConversation(conv)}
-                    className="w-full p-4 border-b border-gray-100 hover:bg-gray-50 text-left transition duration-150 active:bg-gray-100"
+                    className="w-full px-3 py-2 border-b border-gray-200 hover:bg-gray-50 text-left transition duration-100"
                   >
-                    <div className="flex justify-between items-start gap-3">
+                    <div className="flex justify-between items-start gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-900 truncate">{contactName}</p>
-                        <p className="text-xs text-gray-500 truncate mt-0.5">{conv.lastMessagePreview}</p>
+                        <p className="font-medium text-sm text-gray-900 truncate">{contactName}</p>
+                        <p className="text-xs text-gray-500 truncate mt-0.5 line-clamp-1">{conv.lastMessagePreview}</p>
                       </div>
-                      <div className="text-right flex-shrink-0">
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
                         <p className="text-xs text-gray-400 whitespace-nowrap">
                           {new Date(conv.lastMessageAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                         </p>
                         {conv.unreadCount && conv.unreadCount > 0 ? (
-                          <div className="mt-1 inline-block bg-green-500 text-white text-xs font-semibold rounded-full w-5 h-5 flex items-center justify-center">
+                          <div className="bg-green-500 text-white text-xs font-semibold rounded-full h-5 w-5 flex items-center justify-center flex-shrink-0">
                             {conv.unreadCount > 9 ? '9+' : conv.unreadCount}
                           </div>
                         ) : null}
@@ -906,51 +959,53 @@ export default function LiveChatV2() {
 
       {/* MAIN CHAT AREA - Show on Desktop when selected, or Mobile when selected */}
       {selectedConversation && (
-        <div className="flex-1 flex flex-col bg-white w-full h-full overflow-hidden">
-          {/* Header with gradient */}
-          <div className="flex-shrink-0 sticky top-0 z-50 flex items-center justify-between p-3 md:p-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50">
-            <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+        <div className="flex-1 flex flex-col bg-white h-screen overflow-hidden">
+          {/* Header */}
+          <div className="sticky top-0 z-30 flex items-center justify-between px-3 py-1.5 border-b border-gray-300 bg-white">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
               {isMobileView && (
                 <button
                   onClick={() => setSelectedConversation(null)}
-                  className="p-2 hover:bg-gray-200 rounded-lg flex-shrink-0 md:hidden"
+                  className="p-1 hover:bg-gray-100 rounded-full flex-shrink-0 md:hidden"
                   title="Back to chats"
                 >
-                  <ArrowLeft className="h-5 w-5 text-gray-600" />
+                  <ArrowLeft className="h-4 w-4 text-gray-700" />
                 </button>
               )}
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold text-gray-900 text-sm md:text-base truncate">
+                <div className="flex items-center gap-1.5">
+                  <p className="font-semibold text-gray-900 text-sm truncate">
                     {contactNamesMap[selectedConversation.userPhone] || selectedConversation.userPhone}
                   </p>
-                  <div className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${contactStatus?.isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                  {contactStatus?.isOnline && (
+                    <div className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500 animate-pulse"></div>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500">
                   {isTyping ? (
-                    <span className="text-blue-600 font-medium">Typing...</span>
+                    <span className="text-green-600 font-medium">typing...</span>
                   ) : contactStatus?.isOnline ? (
-                    'Online now'
+                    'online'
                   ) : (
-                    `Last seen ${contactStatus?.lastSeen ? formatLastSeen(contactStatus.lastSeen) : 'long ago'}`
+                    `last seen ${contactStatus?.lastSeen ? formatLastSeen(contactStatus.lastSeen) : 'long ago'}`
                   )}
                 </p>
               </div>
             </div>
             
-            <div className="flex gap-1 md:gap-2 flex-shrink-0">
-              <button className="p-2 hover:bg-gray-200 rounded-full transition" title="Call">
-                <Phone className="h-5 w-5 text-gray-600" />
+            <div className="flex gap-0 flex-shrink-0">
+              <button className="p-1.5 hover:bg-gray-100 rounded-full transition" title="Call">
+                <Phone className="h-4 w-4 text-gray-600" />
               </button>
-              <button className="p-2 hover:bg-gray-200 rounded-full transition" title="Video">
-                <Video className="h-5 w-5 text-gray-600" />
+              <button className="p-1.5 hover:bg-gray-100 rounded-full transition" title="Video">
+                <Video className="h-4 w-4 text-gray-600" />
               </button>
               <button 
                 onClick={() => setShowDetailsPanel(!showDetailsPanel)}
-                className="p-2 hover:bg-gray-200 rounded-full transition"
+                className="p-1.5 hover:bg-gray-100 rounded-full transition"
                 title="More options"
               >
-                <MoreVertical className="h-5 w-5 text-gray-600" />
+                <MoreVertical className="h-4 w-4 text-gray-600" />
               </button>
             </div>
           </div>
@@ -958,7 +1013,7 @@ export default function LiveChatV2() {
           {/* Messages Container */}
           <div 
             ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1 md:space-y-2 bg-gradient-to-b from-gray-50 to-white"
+            className="flex-1 overflow-y-auto px-2 py-1.5 space-y-1.5 bg-white"
             onScroll={(e) => {
               const target = e.currentTarget;
               if (target.scrollTop === 0 && hasMoreMessages) {
@@ -983,28 +1038,28 @@ export default function LiveChatV2() {
                   return (
                     <div key={msg._id}>
                       {showDate && (
-                        <div className="flex justify-center my-3 md:my-4">
-                          <span className="text-xs bg-white text-gray-500 px-3 py-1 rounded-full border border-gray-200 font-medium">
+                        <div className="flex justify-center my-1.5">
+                          <span className="text-xs bg-white text-gray-500 px-2.5 py-0.5 rounded-full border border-gray-200 font-medium">
                             {formatDate(msg.createdAt)}
                           </span>
                         </div>
                       )}
                       <div className={`flex relative group ${isOutbound ? 'justify-end' : 'justify-start'}`}>
                         <div
-                          className={`max-w-xs md:max-w-md px-3 md:px-4 py-2 rounded-2xl shadow-sm hover:shadow-md transition ${
+                          className={`max-w-xs md:max-w-md px-2.5 py-1.5 rounded-lg shadow-sm transition ${
                             isOutbound
-                              ? 'bg-gradient-to-r from-green-400 to-green-500 text-white rounded-br-none'
-                              : 'bg-white text-gray-900 border border-gray-200 rounded-bl-none'
+                              ? 'bg-green-100 text-gray-900 rounded-br-none'
+                              : 'bg-gray-100 text-gray-900 rounded-bl-none'
                           }`}
                           onMouseEnter={() => setShowMessageMenu(msg._id)}
                           onMouseLeave={() => setShowMessageMenu(null)}
                         >
                           {msg.direction === 'inbound' && msg.senderName && (
-                            <p className="text-xs font-semibold text-green-700 mb-1 opacity-80">{msg.senderName}</p>
+                            <p className="text-xs font-semibold text-gray-700 mb-0.5">{msg.senderName}</p>
                           )}
                           {renderMessageContent(msg)}
-                          <div className="flex items-center gap-1 mt-1 text-xs justify-between">
-                            <span className={isOutbound ? 'text-green-100' : 'text-gray-500'}>
+                          <div className="flex items-center gap-1 mt-0.5 text-xs justify-between">
+                            <span className="text-gray-600">
                               {formatTime(msg.createdAt)}
                             </span>
                             {isOutbound && (
@@ -1035,35 +1090,35 @@ export default function LiveChatV2() {
 
           {/* File Preview */}
           {showFilePreview && (
-            <div className="flex-shrink-0 sticky bottom-20 z-30 p-3 md:p-4 border-b border-gray-200 bg-gray-50">
-              <div className="flex gap-3 items-end bg-white rounded-lg p-3 border border-gray-200">
+            <div className="flex-shrink-0 z-30 px-2 py-1.5 border-b border-gray-200 bg-gray-50">
+              <div className="flex gap-2 items-end bg-white rounded-lg p-2 border border-gray-200">
                 {showFilePreview.preview && (
-                  <img src={showFilePreview.preview} alt="Preview" className="h-16 w-16 rounded-lg object-cover flex-shrink-0" />
+                  <img src={showFilePreview.preview} alt="Preview" className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
                 )}
                 {!showFilePreview.preview && (
-                  <div className="h-16 w-16 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
-                    <FileIcon className="h-8 w-8 text-gray-400" />
+                  <div className="h-12 w-12 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
+                    <FileIcon className="h-6 w-6 text-gray-400" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{showFilePreview.file.name}</p>
+                  <p className="text-xs font-semibold text-gray-900 truncate">{showFilePreview.file.name}</p>
                   <p className="text-xs text-gray-500">{(showFilePreview.file.size / 1024 / 1024).toFixed(2)} MB</p>
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
+                <div className="flex gap-1 flex-shrink-0">
                   <button
                     onClick={() => setShowFilePreview(null)}
-                    className="p-2 hover:bg-gray-200 rounded-lg transition"
+                    className="p-1.5 hover:bg-gray-200 rounded-lg transition"
                     title="Cancel"
                   >
-                    <X className="h-5 w-5 text-gray-600" />
+                    <X className="h-4 w-4 text-gray-600" />
                   </button>
                   <button
                     onClick={() => sendFile(showFilePreview.file)}
                     disabled={isSending}
-                    className="p-2 hover:bg-green-100 rounded-lg transition disabled:opacity-50"
+                    className="p-1.5 hover:bg-green-100 rounded-lg transition disabled:opacity-50"
                     title="Send"
                   >
-                    <Send className="h-5 w-5 text-green-500" />
+                    <Send className="h-4 w-4 text-green-500" />
                   </button>
                 </div>
               </div>
@@ -1071,14 +1126,14 @@ export default function LiveChatV2() {
           )}
 
           {/* Input Area */}
-          <div className="flex-shrink-0 sticky bottom-0 z-40 p-2 md:p-4 border-t border-gray-200 bg-white">
-            <div className="flex gap-2 items-end">
+          <div className="flex-shrink-0 px-2 py-1.5 border-t border-gray-300 bg-white z-20">
+            <div className="flex gap-1.5 items-end">
               <button 
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-2 hover:bg-gray-100 rounded-full transition flex-shrink-0"
+                className="p-1.5 hover:bg-gray-100 rounded-full transition flex-shrink-0"
                 title="Emojis"
               >
-                <Smile className="h-5 w-5 text-gray-600" />
+                <Smile className="h-4 w-4 text-green-600" />
               </button>
               
               <input
@@ -1089,10 +1144,10 @@ export default function LiveChatV2() {
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 hover:bg-gray-100 rounded-full transition flex-shrink-0"
+                className="p-1.5 hover:bg-gray-100 rounded-full transition flex-shrink-0"
                 title="Attach file"
               >
-                <Paperclip className="h-5 w-5 text-gray-600" />
+                <Paperclip className="h-4 w-4 text-green-600" />
               </button>
 
               <div className="flex-1 relative">
@@ -1109,33 +1164,33 @@ export default function LiveChatV2() {
                       sendMessage();
                     }
                   }}
-                  placeholder="Type message... (Shift+Enter for new line)"
+                  placeholder="Type a message"
                   rows={1}
-                  className="w-full p-2 md:p-3 border border-gray-300 rounded-2xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-500 transition max-h-24"
+                  className="w-full px-3 py-1.5 border border-gray-400 rounded-full text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green-600 transition max-h-20"
                 />
               </div>
 
               <button
                 onClick={sendMessage}
                 disabled={isSending || !newMessage.trim()}
-                className="p-2 hover:bg-green-100 rounded-full transition disabled:opacity-50 flex-shrink-0"
+                className="p-1.5 hover:bg-gray-100 rounded-full transition disabled:opacity-50 flex-shrink-0"
                 title="Send message"
               >
-                <Send className="h-5 w-5 text-green-500" />
+                <Send className="h-4 w-4 text-green-600" />
               </button>
             </div>
 
             {/* Emoji Picker */}
             {showEmojiPicker && (
-              <div className="mt-2 bg-white border border-gray-300 rounded-lg shadow-xl p-2 absolute bottom-20 left-2 right-2 md:left-auto md:right-4 z-50 max-h-64 overflow-y-auto">
-                <div className="grid grid-cols-8 gap-1">
+              <div className="mt-1 bg-white border border-gray-300 rounded-lg shadow-xl p-1.5 absolute bottom-20 left-2 right-2 md:left-auto md:right-4 z-50 max-h-48 overflow-y-auto">
+                <div className="grid grid-cols-8 gap-0.5">
                   {['😀', '😂', '❤️', '😍', '🔥', '👍', '😭', '😱', '🎉', '💯', '👏', '🙏', '😊', '😘', '🤔', '😎', '🤩', '😴', '🤮', '😡', '😠', '🥺'].map((emoji) => (
                     <button
                       key={emoji}
                       onClick={() => {
                         setNewMessage(newMessage + emoji);
                       }}
-                      className="p-2 hover:bg-gray-100 rounded-lg text-xl transition"
+                      className="p-1 hover:bg-gray-100 rounded-lg text-lg transition"
                     >
                       {emoji}
                     </button>
@@ -1177,7 +1232,9 @@ export default function LiveChatV2() {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Status</p>
               <div className="flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${contactStatus?.isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                {contactStatus?.isOnline && (
+                  <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                )}
                 <p className={`text-sm font-medium ${contactStatus?.isOnline ? 'text-green-700' : 'text-gray-600'}`}>
                   {isTyping ? 'Typing...' : contactStatus?.isOnline ? 'Online' : 'Offline'}
                 </p>
