@@ -544,7 +544,7 @@ export default function LiveChatV2() {
         body: JSON.stringify({
           phoneNumberId: selectedConversation.phoneNumberId,
           recipientPhone: selectedConversation.userPhone,
-          messageText: newMessage
+          message: newMessage
         })
       });
       

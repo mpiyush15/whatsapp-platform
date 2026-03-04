@@ -85,7 +85,7 @@ export const createAgent = async (req, res) => {
     console.log('✅ Agent created:', agent.agentId);
     
     // Send invitation email
-    const invitationUrl = `${process.env.FRONTEND_URL}/agent-onboarding?token=${invitationToken}&email=${email}`;
+    const invitationUrl = `${process.env.FRONTEND_URL}/auth/agent-invitation?token=${invitationToken}`;
     
     console.log('\n📧 INVITATION LINK (for testing):');
     console.log(`   ${invitationUrl}`);
@@ -387,12 +387,28 @@ export const acceptInvitation = async (req, res) => {
     agent.status = 'active';
     agent.invitationToken = null; // Clear token
     await agent.save();
-    
+
     console.log('✅ Agent invitation accepted:', agent.agentId);
+
+    // Generate JWT token for immediate login (optional - users can also login manually)
+    const jwt = require('jsonwebtoken');
+    const { JWT_SECRET } = require('../config/jwt.js');
     
+    const token = jwt.sign(
+      {
+        userId: user._id,
+        email: user.email,
+        accountId: user.accountId,
+        role: user.role
+      },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
     res.json({
       success: true,
       message: 'Account created successfully!',
+      token,
       agent: {
         agentId: agent.agentId,
         name: agent.name,
