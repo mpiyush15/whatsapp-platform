@@ -478,20 +478,6 @@ export default function AccountPage() {
             )}
           </div>
         )}
-                      {sub.status === 'active'
-                        ? `Your ${sub.planName} plan is active and will renew on ${formatDate(sub.endDate)}`
-                        : `Your ${sub.planName} plan ${sub.status === 'expired' ? 'has expired' : 'is inactive'}`}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-                <p className="text-gray-600 text-sm">No subscriptions found</p>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* USAGE TAB */}
         {activeTab === 'usage' && (
