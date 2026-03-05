@@ -831,7 +831,7 @@ export const handleWebhook = async (req, res) => {
                   console.log('\n🔍 QUERY 2 (FALLBACK): Existing WABA ID with strict type verification');
                   
                   if (wabaId) {
-                    const existingByWaba = await Account.findOne({ wabaId });
+                    let existingByWaba = await Account.findOne({ wabaId });
                     
                     if (existingByWaba) {
                       console.log(`   Found account with WABA: ${existingByWaba.accountId} (${existingByWaba.role}/${existingByWaba.type})`);
