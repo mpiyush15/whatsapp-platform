@@ -149,7 +149,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     { name: "Broadcasts", icon: Megaphone, href: "/dashboard/broadcasts", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
     { name: "Contacts", icon: Users, href: "/dashboard/contacts", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
     { name: "Templates", icon: FileText, href: "/dashboard/templates", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER] },
-    { name: "Live Chat", icon: MessageSquare, href: "/dashboard/live-chat-v2", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+    { name: "Live Chat", icon: MessageSquare, href: "/dashboard/live-chat", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
     { name: "Campaigns", icon: Calendar, href: "/dashboard/campaigns", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER] },
     
     // Admin-only pages

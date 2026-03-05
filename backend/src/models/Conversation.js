@@ -85,6 +85,56 @@ const conversationSchema = new mongoose.Schema({
   tags: [String],
   notes: String,
   
+  // Conversation type for categorization
+  conversationType: {
+    type: String,
+    enum: ['customer', 'support', 'sales', 'feedback'],
+    default: 'customer'
+  },
+  
+  // Assignment history - track all agents who handled this conversation
+  assignmentHistory: [{
+    agentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Agent'
+    },
+    assignedAt: Date,
+    unassignedAt: Date,
+    reason: String // 'completed', 'transferred', 'abandoned', etc.
+  }],
+  
+  // Internal team notes (visible only to agents)
+  internalNotes: {
+    type: String,
+    maxlength: 1000
+  },
+  
+  // Who last read this conversation
+  lastReadBy: {
+    agentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Agent'
+    },
+    readAt: Date
+  },
+  
+  // Message metrics
+  messageCount: {
+    type: Number,
+    default: 0
+  },
+  
+  // Performance tracking (in milliseconds)
+  responseTime: Number,      // Avg time to respond to customer
+  resolutionTime: Number,    // Time from creation to closure
+  
+  // Custom attributes for flexibility (can extend with account-specific fields)
+  customAttributes: {
+    type: Map,
+    of: String,
+    default: new Map()
+  },
+  
   // Last interaction tracking
   lastReadAt: Date,
   lastRepliedAt: Date

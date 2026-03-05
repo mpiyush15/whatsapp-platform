@@ -50,6 +50,40 @@ const contactSchema = new mongoose.Schema({
   metadata: {
     type: mongoose.Schema.Types.Mixed,
     default: {}
+  },
+  
+  // Profile picture URL
+  profilePictureUrl: String,
+  
+  // CRM notes about this contact (different from internal notes)
+  notes: String,
+  
+  // Conversation metrics
+  conversationCount: {
+    type: Number,
+    default: 0
+  },
+  
+  // Contact engagement tracking
+  lastContactedAt: Date,
+  firstContactAt: {
+    type: Date,
+    default: Date.now
+  },
+  
+  // Custom attributes for flexibility (account-specific fields)
+  customAttributes: {
+    type: Map,
+    of: String,
+    default: new Map()
+  },
+  
+  // Engagement score for prioritization (0-100)
+  engagementScore: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
   }
 }, {
   timestamps: true

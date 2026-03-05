@@ -161,60 +161,26 @@ export const verifyWebhook = (req, res) => {
  * Only trusted webhooks from Meta reach this handler
  */
 export const handleWebhook = async (req, res) => {
-  console.log('\n🔔🔔🔔 WEBHOOK HIT! 🔔🔔🔔 Timestamp:', new Date().toISOString());
-  console.log('✅ SECURITY: Signature validation passed - request is from Meta');
-  
   try {
     const body = req.body;
-    
-    console.log('📥 ========== WEBHOOK RECEIVED ==========');
-    console.log('Timestamp:', new Date().toISOString());
-    console.log('Full Body:', JSON.stringify(body, null, 2));
     
     // Acknowledge receipt immediately (CRITICAL for Meta)
     res.sendStatus(200);
     
     // Process webhook data asynchronously
     if (body.object === 'whatsapp_business_account') {
-      console.log('✅ Valid WhatsApp webhook object');
       
       for (const entry of body.entry) {
-        console.log('📦 Processing entry:', entry.id);
         
         for (const change of entry.changes) {
-          console.log('🔄 Change field:', change.field);
           
           if (change.field === 'messages') {
             const value = change.value;
-            console.log('📨 Messages value:', JSON.stringify(value, null, 2));
             
             // ========== HANDLE STATUS UPDATES ==========
             if (value.statuses) {
-              console.log(`🔔 ${value.statuses.length} status update(s) received`);
               
               for (const statusUpdate of value.statuses) {
-                console.log('📊 ========== STATUS UPDATE DETAILS ==========');
-                console.log('  - Message ID:', statusUpdate.id);
-                console.log('  - Status:', statusUpdate.status);
-                console.log('  - Timestamp:', statusUpdate.timestamp);
-                console.log('  - Recipient ID:', statusUpdate.recipient_id);
-                
-                if (statusUpdate.errors && statusUpdate.errors.length > 0) {
-                  console.log('  - Errors:', JSON.stringify(statusUpdate.errors, null, 2));
-                }
-                
-                if (statusUpdate.status === 'failed') {
-                  console.log('  🔍 ========== FAILURE ANALYSIS ==========');
-                  console.log('  Possible reasons for failure:');
-                  console.log('  1. Phone number not on WhatsApp');
-                  console.log('  2. Invalid phone number format');
-                  console.log('  3. 24-hour messaging window expired');
-                  console.log('  4. Account quality/rate limiting');
-                  console.log('  5. Template message required');
-                  console.log('  =========================================');
-                }
-                
-                console.log('===============================================');
                 
                 // Update message status in database and broadcast via socket.io
                 await whatsappService.handleStatusUpdate(
@@ -222,10 +188,8 @@ export const handleWebhook = async (req, res) => {
                   statusUpdate.status,
                   statusUpdate.timestamp,
                   statusUpdate.errors?.[0] || {},
-                  io  // 🔴 PASS SOCKET.IO INSTANCE FOR BROADCAST
+                  io
                 );
-                
-                console.log(`✅ Status updated in database: ${statusUpdate.status}`);
               }
             } else {
               console.log('⚠️ No status updates in this webhook');
@@ -233,62 +197,45 @@ export const handleWebhook = async (req, res) => {
             
             // ========== HANDLE INCOMING MESSAGES ==========
             if (value.messages) {
-              console.log('📬 ========== INCOMING MESSAGES ==========');
-              console.log(`Number of messages: ${value.messages.length}`);
               
               // Get phone number ID from metadata
               const phoneNumberId = value.metadata?.phone_number_id;
-              const displayPhoneNumber = value.metadata?.display_phone_number;
-              
-              console.log('Phone Number ID:', phoneNumberId);
-              console.log('Display Phone Number:', displayPhoneNumber);
               
               if (!phoneNumberId) {
-                console.log('❌ No phone number ID in webhook - cannot process');
                 continue;
               }
               
-              // ✅ CRITICAL FIX: Find account by WABA ID FIRST
-              const wabaId = entry.id;  // Meta sends WABA ID as entry.id
-              console.log('📍 WABA ID from webhook:', wabaId);
+              // ✅ Find account by WABA ID
+              const wabaId = entry.id;
               
               let targetAccountId = null;
               let targetAccount = null;
               
-              // Step 1: Find account by WABA ID (PRIMARY)
               const account = await Account.findOne({ wabaId });
               if (account) {
-                targetAccountId = account.accountId;  // Use String accountId, not ObjectId
+                targetAccountId = account.accountId;
                 targetAccount = account;
-                console.log('✅ Account found by WABA ID:', targetAccountId);
               } else {
-                console.log('⚠️ WABA ID not found in Account:', wabaId);
-                // Step 1B: Fallback - find by phoneNumberId (for backward compatibility)
                 const fallbackPhone = await PhoneNumber.findOne({ 
                   phoneNumberId,
                   isActive: true 
                 });
                 if (!fallbackPhone) {
-                  console.log('❌ Phone number not configured in system:', phoneNumberId);
                   continue;
                 }
                 const fallbackAccount = await Account.findById(fallbackPhone.accountId);
                 if (!fallbackAccount) {
-                  console.log('❌ Account not found for phone config');
                   continue;
                 }
                 targetAccountId = fallbackPhone.accountId;
                 targetAccount = fallbackAccount;
-                console.log('⚠️ Using fallback: Found account via phoneNumberId:', targetAccountId);
               }
               
-              // Verify we have account
               if (!targetAccountId) {
-                console.log('❌ CRITICAL: Could not determine account for message');
                 continue;
               }
               
-              // Step 2: Get phone config with account verification
+              // Get phone config
               const phoneConfig = await PhoneNumber.findOne({ 
                 accountId: targetAccountId,
                 phoneNumberId,
@@ -296,7 +243,6 @@ export const handleWebhook = async (req, res) => {
               }).select('+accessToken');
               
               if (!phoneConfig) {
-                console.log('❌ Phone number not configured for this account:', phoneNumberId);
                 continue;
               }
               

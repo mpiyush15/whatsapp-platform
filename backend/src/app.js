@@ -46,6 +46,11 @@ import discountRoutes from './routes/discountRoutes.js';
 import externalApiRoutes from './routes/externalApiRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
 
+// Import live chat routes
+import liveChatConversationRoutes from './routes/liveChat-conversationRoutes.js';
+import liveChatMessageRoutes from './routes/liveChat-messageRoutes.js';
+import liveChatTagRoutes from './routes/liveChat-tagRoutes.js';
+
 // Load environment variables
 dotenv.config();
 
@@ -56,41 +61,25 @@ const app = express();
 initSentry(app);
 
 // Middleware - CORS Configuration
-// Read allowed origins from environment variable (comma-separated)
-// Fallback to FRONTEND_URL or localhost:3000 if not set
 const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000')
   .split(',')
-  .map(origin => origin.trim())
+  .map(origin => origin.trim().replace(/\/$/, ''))
   .filter(Boolean);
-
-console.log('✅ CORS Allowed Origins:', allowedOrigins);
 
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
     if (!origin) return callback(null, true);
     
-    // Development: allow any localhost origin
-    if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    
+    if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1') ||
+        normalizedOrigin.includes('vercel.app') ||
+        normalizedOrigin.includes('whatsapp-platform') ||
+        allowedOrigins.includes(normalizedOrigin)) {
       return callback(null, true);
     }
     
-    // Production: allow Vercel deployments and configured origins
-    if (origin && (
-      origin.includes('vercel.app') ||  // Allow all Vercel deployments
-      origin.includes('whatsapp-platform') ||  // Allow our domain
-      allowedOrigins.indexOf(origin) !== -1
-    )) {
-      return callback(null, true);
-    }
-    
-    if (!origin) {
-      callback(null, true);
-    } else {
-      console.log('⚠️ CORS rejected origin:', origin);
-      // Log but don't block - let it pass for now
-      callback(null, true);
-    }
+    callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -99,18 +88,38 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// JSON and URL-encoded body parsing (JWT is stateless - no session needed)
-// Increase limit to 100MB for media uploads
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
-
-// Capture raw body for webhook signature validation (AFTER json parsing)
+// ✅ CRITICAL: Custom body parser that captures raw body AND parses JSON
 app.use((req, res, next) => {
-  if (req.is('application/json')) {
-    req.rawBody = JSON.stringify(req.body);
-  }
-  next();
+  let data = Buffer.alloc(0);
+  
+  req.on('data', chunk => {
+    data = Buffer.concat([data, chunk]);
+  });
+  
+  req.on('end', () => {
+    req.rawBody = data.toString('utf-8');
+    
+    // Now parse the JSON
+    try {
+      if (req.get('content-type')?.includes('application/json')) {
+        req.body = JSON.parse(req.rawBody);
+      } else if (req.get('content-type')?.includes('application/x-www-form-urlencoded')) {
+        const qs = require('querystring');
+        req.body = qs.parse(req.rawBody);
+      } else {
+        req.body = req.rawBody;
+      }
+    } catch (e) {
+      req.body = {};
+    }
+    
+    next();
+  });
 });
+
+// Keep express.json() for fallback, but it won't process since body is already parsed
+// app.use(express.json({ limit: '100mb' }));
+// app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Subdomain detection middleware (RUNS FIRST - extracts workspace context from URL)
 app.use(subdomainDetectionMiddleware);
@@ -270,6 +279,11 @@ app.use('/api/dashboard', requireJWT, dashboardRoutes);
 
 // Mount CRM routes (JWT AUTH + SUBSCRIPTION REQUIRED - for managing contacts, conversations, analytics)
 app.use('/api/crm', requireJWT, requireSubscription, crmRoutes);
+
+// Mount live chat routes (JWT AUTH + SUBSCRIPTION REQUIRED - for real-time team messaging)
+app.use('/api/live-chat/conversations', requireJWT, requireSubscription, liveChatConversationRoutes);
+app.use('/api/live-chat/messages', requireJWT, requireSubscription, liveChatMessageRoutes);
+app.use('/api/live-chat/tags', requireJWT, requireSubscription, liveChatTagRoutes);
 
 // Mount agent routes (JWT AUTH - for agent management, assignment, invitations)
 app.use('/api/agents', agentRoutes);

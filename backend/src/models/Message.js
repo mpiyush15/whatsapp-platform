@@ -97,7 +97,53 @@ const messageSchema = new mongoose.Schema({
   
   // Error info
   errorCode: String,
-  errorMessage: String
+  errorMessage: String,
+  
+  // Agent read tracking - which agents have seen this message
+  readBy: [{
+    agentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Agent'
+    },
+    readAt: Date
+  }],
+  
+  // Threading support - reply to another message
+  replyTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Message',
+    default: null
+  },
+  
+  // Is this an internal note (visible only to team)?
+  isInternalNote: {
+    type: Boolean,
+    default: false
+  },
+  
+  // Reactions (emoji reactions from agents)
+  reactions: [{
+    emoji: String,
+    addedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Agent'
+    },
+    addedAt: Date
+  }],
+  
+  // If this message was forwarded from another conversation
+  forwardedFrom: {
+    conversationId: mongoose.Schema.Types.ObjectId,
+    messageId: mongoose.Schema.Types.ObjectId,
+    timestamp: Date
+  },
+  
+  // Source of the message (tracking origin)
+  source: {
+    type: String,
+    enum: ['whatsapp_api', 'webhook', 'agent_sent', 'template', 'bulk'],
+    default: 'whatsapp_api'
+  }
 }, {
   timestamps: true
 });

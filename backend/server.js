@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { createServer } from 'http';
 import dotenv from 'dotenv';
 import { initSocketIO } from './src/services/socketService.js';
+import { setupSocketIOHandlers } from './src/services/liveChat-socketHandler.js';
 
 // Load environment variables
 dotenv.config();
@@ -15,6 +16,9 @@ const httpServer = createServer(app);
 
 // Initialize Socket.io
 const io = initSocketIO(httpServer);
+
+// Setup Socket.IO handlers for live chat
+setupSocketIOHandlers(io);
 
 // Make io available to routes/controllers
 app.locals.io = io;
