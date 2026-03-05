@@ -128,6 +128,30 @@ export default function LiveChat() {
       );
     });
 
+    newSocket.on('new_message', (data: any) => {
+      console.log('📨 New message via Socket.io:', data);
+      if (data.conversationId === selectedConversation && data.message) {
+        setMessages(prevMsgs => [...prevMsgs, data.message]);
+      }
+      fetchConversations();
+    });
+
+    newSocket.on('message.received', (data: any) => {
+      console.log('📥 Message received event:', data);
+      fetchConversations();
+      if (selectedConversation) {
+        fetchMessages(selectedConversation);
+      }
+    });
+
+    newSocket.on('message.sent', (data: any) => {
+      console.log('📤 Message sent via broadcastSentMessage:', data);
+      fetchConversations();
+      if (selectedConversation && data.conversationId === selectedConversation) {
+        fetchMessages(selectedConversation);
+      }
+    });
+
     newSocket.on('message_sent', (data: any) => {
       console.log('📤 Message sent event:', data);
       if (data.conversationId === selectedConversation && data.message) {
@@ -167,8 +191,13 @@ export default function LiveChat() {
       }
     });
 
-    newSocket.on('conversation_updated', (data: any) => {
+    newSocket.on('conversation_update', (data: any) => {
       console.log('🔄 Conversation updated:', data);
+      fetchConversations();
+    });
+
+    newSocket.on('conversation_updated', (data: any) => {
+      console.log('🔄 Conversation updated (alt):', data);
       fetchConversations();
     });
 
@@ -183,28 +212,39 @@ export default function LiveChat() {
     
     console.log('📡 Fetching conversations from:', baseURL);
     
-    axios.get(`${baseURL}/live-chat/conversations`, {
-      params: { limit: 50, offset: 0 },
-      headers: { 'Authorization': token ? `Bearer ${token}` : '' },
-      timeout: 10000
-    }).then(res => {
-      console.log('✅ Conversations fetched:', res.data.data?.length || 0, 'conversations');
-      if (res.data.success && res.data.data) {
-        setConversations(res.data.data);
+    const fetchInitialConversations = async () => {
+      try {
+        const response = await axios.get(`${baseURL}/live-chat/conversations`, {
+          params: { limit: 50, offset: 0 },
+          headers: { 'Authorization': token ? `Bearer ${token}` : '' },
+          timeout: 10000
+        });
+        console.log('✅ Conversations fetched:', response.data.data?.length || 0, 'conversations');
+        if (response.data.success && response.data.data) {
+          setConversations(response.data.data);
+        }
+      } catch (err: any) {
+        console.error('❌ Failed to fetch conversations:', {
+          status: err.response?.status,
+          message: err.response?.data?.message || err.message,
+          data: err.response?.data
+        });
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    }).catch(err => {
-      console.error('❌ Failed to fetch conversations:', {
-        status: err.response?.status,
-        message: err.response?.data?.message || err.message,
-        data: err.response?.data
-      });
-      setLoading(false);
-    });
+    };
+
+    fetchInitialConversations();
+    
+    // Set up polling to refresh conversations every 5 seconds
+    const conversationPollInterval = setInterval(() => {
+      fetchInitialConversations();
+    }, 5000);
 
     // Cleanup
     return () => {
       newSocket.disconnect();
+      clearInterval(conversationPollInterval);
     };
   }, []);
 

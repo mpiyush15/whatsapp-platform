@@ -968,8 +968,8 @@ export const handleWebhook = async (req, res) => {
                   await account.save();
                   
                   console.log('\n✅ SAVE COMPLETE - Verifying...');
-                  // Re-fetch to confirm it saved
-                  const saved = await Account.findById(account._id);
+                  // Re-fetch to confirm it saved - INCLUDE hidden oauthAccessToken field!
+                  const saved = await Account.findById(account._id).select('+metaSync.oauthAccessToken');
                   console.log('  After save (refetch):');
                   console.log('    account._id:', saved._id);
                   console.log('    account.accountId:', saved.accountId);

@@ -26,24 +26,22 @@ export const listConversations = async (accountId, workspaceId, phoneNumberId, f
     offset = 0
   } = filters;
 
+  // Build base query - always include accountId
   const query = {
     accountId
   };
 
-  // Only add workspaceId to query if it's provided and not empty
-  // This allows fetching conversations regardless of workspace if not specified
+  // Handle workspaceId filter
   if (workspaceId && workspaceId.trim()) {
+    // If workspaceId is provided, filter by it
     query.workspaceId = workspaceId;
   } else {
-    // If no workspaceId provided, match conversations with null or any workspaceId
-    query.$or = [
-      { workspaceId: null },
-      { workspaceId: undefined },
-      { workspaceId: { $exists: false } }
-    ];
+    // If no workspaceId provided, fetch ALL conversations for account
+    // (don't filter by workspace at all - remove the problematic $or)
+    // This allows fetching conversations regardless of workspace
   }
 
-  // Only filter by phoneNumberId if it's provided and not empty
+  // Handle phoneNumberId filter (independent of workspaceId)
   if (phoneNumberId && phoneNumberId.trim()) {
     query.phoneNumberId = phoneNumberId;
   }
@@ -64,25 +62,16 @@ export const listConversations = async (accountId, workspaceId, phoneNumberId, f
   }
 
   // Search filter (name, phone, last message)
-  // ✅ IMPORTANT: Use $and to combine search with workspace filter (avoid overwriting $or)
-  if (search) {
-    const searchConditions = [
-      { userName: { $regex: search, $options: 'i' } },
-      { userPhone: { $regex: search, $options: 'i' } },
-      { lastMessagePreview: { $regex: search, $options: 'i' } }
+  if (search && search.trim()) {
+    // Use $or for search conditions
+    query.$or = [
+      { userName: { $regex: search.trim(), $options: 'i' } },
+      { userPhone: { $regex: search.trim(), $options: 'i' } },
+      { lastMessagePreview: { $regex: search.trim(), $options: 'i' } }
     ];
-    
-    // If we already have a workspace $or, combine it with search using $and
-    if (query.$or && Array.isArray(query.$or)) {
-      query.$and = [
-        { $or: query.$or },  // Original workspace filter
-        { $or: searchConditions }  // Search filter
-      ];
-      delete query.$or;  // Remove the old $or to avoid conflicts
-    } else {
-      query.$or = searchConditions;  // No workspace filter conflict
-    }
   }
+
+  console.log('📭 Query for conversations:', JSON.stringify(query, null, 2));
 
   const conversations = await Conversation.find(query)
     .sort({ lastMessageAt: -1 })
@@ -92,6 +81,8 @@ export const listConversations = async (accountId, workspaceId, phoneNumberId, f
     .lean();
 
   const total = await Conversation.countDocuments(query);
+
+  console.log('📊 Found conversations:', conversations.length, 'Total:', total);
 
   return {
     conversations,
