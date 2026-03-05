@@ -39,11 +39,8 @@ export const handleIncomingMessageWithRealtime = async (
 
     // Also emit to specific conversation room
     emitToConversation(accountId, processedMessage.conversationId, 'message_received', {
-      messageId: processedMessage._id,
-      content: processedMessage.content,
-      messageType: processedMessage.messageType,
-      from: contact.name,
-      timestamp: processedMessage.createdAt
+      conversationId: processedMessage.conversationId,
+      message: processedMessage
     });
 
     return processedMessage;

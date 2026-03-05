@@ -27,10 +27,26 @@ export const listConversations = async (accountId, workspaceId, phoneNumberId, f
   } = filters;
 
   const query = {
-    accountId,
-    workspaceId,
-    phoneNumberId
+    accountId
   };
+
+  // Only add workspaceId to query if it's provided and not empty
+  // This allows fetching conversations regardless of workspace if not specified
+  if (workspaceId && workspaceId.trim()) {
+    query.workspaceId = workspaceId;
+  } else {
+    // If no workspaceId provided, match conversations with null or any workspaceId
+    query.$or = [
+      { workspaceId: null },
+      { workspaceId: undefined },
+      { workspaceId: { $exists: false } }
+    ];
+  }
+
+  // Only filter by phoneNumberId if it's provided and not empty
+  if (phoneNumberId && phoneNumberId.trim()) {
+    query.phoneNumberId = phoneNumberId;
+  }
 
   // Status filter
   if (status) {
@@ -48,12 +64,24 @@ export const listConversations = async (accountId, workspaceId, phoneNumberId, f
   }
 
   // Search filter (name, phone, last message)
+  // ✅ IMPORTANT: Use $and to combine search with workspace filter (avoid overwriting $or)
   if (search) {
-    query.$or = [
+    const searchConditions = [
       { userName: { $regex: search, $options: 'i' } },
       { userPhone: { $regex: search, $options: 'i' } },
       { lastMessagePreview: { $regex: search, $options: 'i' } }
     ];
+    
+    // If we already have a workspace $or, combine it with search using $and
+    if (query.$or && Array.isArray(query.$or)) {
+      query.$and = [
+        { $or: query.$or },  // Original workspace filter
+        { $or: searchConditions }  // Search filter
+      ];
+      delete query.$or;  // Remove the old $or to avoid conflicts
+    } else {
+      query.$or = searchConditions;  // No workspace filter conflict
+    }
   }
 
   const conversations = await Conversation.find(query)

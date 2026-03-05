@@ -167,7 +167,7 @@ export const getSidebarItems = (role: UserRole) => {
       label: 'Billing',
       href: '/dashboard/billing',
       icon: 'CreditCard',
-      roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
     },
     {
       label: 'Account',

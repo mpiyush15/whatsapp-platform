@@ -26,6 +26,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<any[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [error, setError] = useState("")
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'inactive' | 'expired' | null>(null)
   const pathname = usePathname()
   const router = useRouter()
 
@@ -70,6 +71,42 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       clearInterval(inactivityCheckInterval);
     };
   }, [router])
+
+  // Fetch subscription status
+  useEffect(() => {
+    const fetchSubscriptionStatus = async () => {
+      try {
+        const token = localStorage.getItem("token")
+        if (!token) return
+
+        const response = await fetch(`${API_URL}/subscriptions`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.data && Array.isArray(data.data)) {
+            // Find the first active subscription
+            const activeSubscription = data.data.find((sub: any) => sub.status === 'active')
+            const status = activeSubscription ? 'active' : 'inactive'
+            setSubscriptionStatus(status)
+          } else if (data.data) {
+            const status = data.data.status || 'inactive'
+            setSubscriptionStatus(status)
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching subscription:", error)
+      }
+    }
+
+    if (user?.accountId) {
+      fetchSubscriptionStatus()
+      // Check subscription every minute
+      const interval = setInterval(fetchSubscriptionStatus, 60000)
+      return () => clearInterval(interval)
+    }
+  }, [user?.accountId])
 
   // Fetch notifications
   useEffect(() => {
@@ -420,6 +457,53 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
+
+        {/* ✅ Subscription Status Banner */}
+        {subscriptionStatus && subscriptionStatus !== 'active' && (
+          <div className={`px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4 ${
+            subscriptionStatus === 'inactive' ? 'bg-yellow-50 border-b border-yellow-200' :
+            subscriptionStatus === 'expired' ? 'bg-red-50 border-b border-red-200' :
+            'bg-gray-50 border-b border-gray-200'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`h-3 w-3 rounded-full ${
+                subscriptionStatus === 'inactive' ? 'bg-yellow-500' :
+                subscriptionStatus === 'expired' ? 'bg-red-500' :
+                'bg-gray-500'
+              }`} />
+              <div>
+                <p className={`font-medium text-sm ${
+                  subscriptionStatus === 'inactive' ? 'text-yellow-900' :
+                  subscriptionStatus === 'expired' ? 'text-red-900' :
+                  'text-gray-900'
+                }`}>
+                  {subscriptionStatus === 'inactive' ? '⚠️ No Active Subscription' :
+                   subscriptionStatus === 'expired' ? '❌ Subscription Expired' :
+                   '⏳ Subscription Status'}
+                </p>
+                <p className={`text-xs mt-1 ${
+                  subscriptionStatus === 'inactive' ? 'text-yellow-700' :
+                  subscriptionStatus === 'expired' ? 'text-red-700' :
+                  'text-gray-700'
+                }`}>
+                  {subscriptionStatus === 'inactive' ? 'Please upgrade your subscription to use this feature.' :
+                   subscriptionStatus === 'expired' ? 'Your subscription has expired. Please renew to continue.' :
+                   'Check your subscription status.'}
+                </p>
+              </div>
+            </div>
+            <Link 
+              href="/dashboard/account/billing"
+              className={`px-4 py-2 rounded-lg font-medium text-sm flex-shrink-0 ${
+                subscriptionStatus === 'inactive' ? 'bg-yellow-600 hover:bg-yellow-700 text-white' :
+                subscriptionStatus === 'expired' ? 'bg-red-600 hover:bg-red-700 text-white' :
+                'bg-gray-600 hover:bg-gray-700 text-white'
+              }`}
+            >
+              {subscriptionStatus === 'inactive' ? 'Upgrade' : 'Renew'}
+            </Link>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <main>{children}</main>

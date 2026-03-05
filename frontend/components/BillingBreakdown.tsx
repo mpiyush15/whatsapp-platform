@@ -64,13 +64,22 @@ export default function BillingBreakdown({ organizationId }: BillingBreakdownPro
     }
   };
 
-  const totalMonthlyCost = usage.messagesCost + usage.membersCost;
+  const totalMonthlyCost = (usage?.messagesCost || 0) + (usage?.membersCost || 0);
 
   if (isLoading) {
     return (
       <div className="animate-pulse space-y-4">
         <div className="h-32 bg-gray-200 rounded-lg"></div>
         <div className="h-32 bg-gray-200 rounded-lg"></div>
+      </div>
+    );
+  }
+
+  // Handle undefined or null usage data
+  if (!usage) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+        <p className="text-gray-600">No billing information available</p>
       </div>
     );
   }
@@ -99,8 +108,8 @@ export default function BillingBreakdown({ organizationId }: BillingBreakdownPro
             </div>
           </div>
           <div className="space-y-2">
-            <p className="text-3xl font-bold text-gray-900">{usage.messagesSent.toLocaleString('en-IN')}</p>
-            <p className="text-sm text-gray-600">Cost: <span className="font-semibold text-gray-900">₹{usage.messagesCost.toLocaleString('en-IN')}</span></p>
+            <p className="text-3xl font-bold text-gray-900">{(usage?.messagesSent || 0).toLocaleString('en-IN')}</p>
+            <p className="text-sm text-gray-600">Cost: <span className="font-semibold text-gray-900">₹{(usage?.messagesCost || 0).toLocaleString('en-IN')}</span></p>
             <div className="mt-3 bg-gray-100 rounded-full h-2 overflow-hidden">
               <div 
                 className="bg-green-500 h-full" 
@@ -120,8 +129,8 @@ export default function BillingBreakdown({ organizationId }: BillingBreakdownPro
             </div>
           </div>
           <div className="space-y-2">
-            <p className="text-3xl font-bold text-gray-900">{usage.activeMembers}</p>
-            <p className="text-sm text-gray-600">Cost: <span className="font-semibold text-gray-900">₹{usage.membersCost.toLocaleString('en-IN')}/month</span></p>
+            <p className="text-3xl font-bold text-gray-900">{usage?.activeMembers || 0}</p>
+            <p className="text-sm text-gray-600">Cost: <span className="font-semibold text-gray-900">₹{(usage?.membersCost || 0).toLocaleString('en-IN')}/month</span></p>
             <div className="mt-3 text-xs text-gray-500">
               <p>₹500 per agent per month</p>
             </div>
@@ -137,15 +146,15 @@ export default function BillingBreakdown({ organizationId }: BillingBreakdownPro
             </div>
           </div>
           <div className="space-y-2">
-            <p className="text-3xl font-bold text-gray-900">{usage.apiCallsUsed.toLocaleString('en-IN')}</p>
-            <p className="text-sm text-gray-600">Limit: <span className="font-semibold">{usage.apiCallsLimit.toLocaleString('en-IN')}</span></p>
+            <p className="text-3xl font-bold text-gray-900">{(usage?.apiCallsUsed || 0).toLocaleString('en-IN')}</p>
+            <p className="text-sm text-gray-600">Limit: <span className="font-semibold">{(usage?.apiCallsLimit || 0).toLocaleString('en-IN')}</span></p>
             <div className="mt-3 bg-gray-100 rounded-full h-2 overflow-hidden">
               <div 
                 className="bg-yellow-500 h-full" 
-                style={{ width: `${Math.min(100, (usage.apiCallsUsed / usage.apiCallsLimit) * 100)}%` }}
+                style={{ width: `${Math.min(100, ((usage?.apiCallsUsed || 0) / (usage?.apiCallsLimit || 1)) * 100)}%` }}
               ></div>
             </div>
-            <p className="text-xs text-gray-500">{((usage.apiCallsUsed / usage.apiCallsLimit) * 100).toFixed(1)}% of limit</p>
+            <p className="text-xs text-gray-500">{(((usage?.apiCallsUsed || 0) / (usage?.apiCallsLimit || 1)) * 100).toFixed(1)}% of limit</p>
           </div>
         </div>
 
@@ -158,7 +167,7 @@ export default function BillingBreakdown({ organizationId }: BillingBreakdownPro
             </div>
           </div>
           <div className="space-y-2">
-            <p className="text-3xl font-bold text-gray-900">{usage.storageUsed.toLocaleString('en-IN')} MB</p>
+            <p className="text-3xl font-bold text-gray-900">{(usage?.storageUsed || 0).toLocaleString('en-IN')} MB</p>
             <p className="text-sm text-gray-600">Included: <span className="font-semibold">Unlimited</span></p>
             <div className="mt-3">
               <p className="text-xs text-gray-500">No additional charges</p>
@@ -172,13 +181,13 @@ export default function BillingBreakdown({ organizationId }: BillingBreakdownPro
         <h4 className="font-semibold text-gray-900 mb-4">Cost Breakdown</h4>
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-gray-700">Messages ({usage.messagesSent.toLocaleString('en-IN')})</span>
-            <span className="font-semibold text-gray-900">₹{usage.messagesCost.toLocaleString('en-IN')}</span>
+            <span className="text-gray-700">Messages ({(usage?.messagesSent || 0).toLocaleString('en-IN')})</span>
+            <span className="font-semibold text-gray-900">₹{(usage?.messagesCost || 0).toLocaleString('en-IN')}</span>
           </div>
           <div className="border-t border-gray-200"></div>
           <div className="flex items-center justify-between">
-            <span className="text-gray-700">Team Members ({usage.activeMembers})</span>
-            <span className="font-semibold text-gray-900">₹{usage.membersCost.toLocaleString('en-IN')}</span>
+            <span className="text-gray-700">Team Members ({usage?.activeMembers || 0})</span>
+            <span className="font-semibold text-gray-900">₹{(usage?.membersCost || 0).toLocaleString('en-IN')}</span>
           </div>
           <div className="border-t border-gray-200"></div>
           <div className="flex items-center justify-between">

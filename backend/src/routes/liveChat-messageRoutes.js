@@ -2,11 +2,112 @@ import express from 'express';
 import messageService from '../services/messageService.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const router = express.Router();
 
+/**
+ * Transform message from DB format to frontend format
+ * Flattens nested content structure and normalizes field names
+ */
+const transformMessage = (msg) => {
+  if (!msg) return null;
+  
+  return {
+    _id: msg._id?.toString(),
+    conversationId: msg.conversationId?.toString(),
+    accountId: msg.accountId,
+    phoneNumberId: msg.phoneNumberId,
+    
+    // Content handling - flatten structure
+    content: msg.content?.text || msg.content || '',
+    messageType: msg.messageType || 'text',
+    
+    // Media fields
+    mediaUrl: msg.content?.mediaUrl,
+    mediaType: msg.content?.mediaType,
+    fileName: msg.content?.filename,
+    fileSize: msg.content?.fileSize,
+    mimeType: msg.content?.mimeType,
+    
+    // Direction and sender type
+    direction: msg.direction,
+    senderType: msg.direction === 'inbound' ? 'customer' : 'agent',
+    
+    // Status (map 'queued' to 'sent' for frontend compatibility)
+    status: msg.status === 'queued' ? 'sent' : msg.status,
+    
+    // Recipient info
+    recipientPhone: msg.recipientPhone,
+    recipientName: msg.recipientName,
+    
+    // Metadata
+    isInternalNote: msg.isInternalNote || false,
+    createdAt: msg.createdAt?.toISOString(),
+    updatedAt: msg.updatedAt?.toISOString(),
+    
+    // Additional fields
+    waMessageId: msg.waMessageId,
+    readBy: msg.readBy || [],
+    replyTo: msg.replyTo,
+    source: msg.source
+  };
+};
+
 // ✅ All routes require JWT authentication
 router.use(requireJWT);
+
+// Setup multer for file uploads
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir = path.join(__dirname, '../../uploads/messages');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(7)}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowedMimes = [
+    // Images
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml',
+    // Videos
+    'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
+    // Audio
+    'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/flac', 'audio/aac',
+    // Documents
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  ];
+  
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error(`File type not allowed: ${file.mimetype}`), false);
+  }
+};
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
+});
 
 /**
  * POST /api/messages
@@ -40,12 +141,8 @@ router.post('/', async (req, res) => {
 
     // Emit real-time event
     emitToConversation(accountId, conversationId, 'message_sent', {
-      messageId: message._id,
       conversationId,
-      content,
-      messageType,
-      sentBy: agentId,
-      timestamp: message.createdAt
+      message
     });
 
     return res.status(201).json({
@@ -135,9 +232,50 @@ router.get('/', async (req, res) => {
       parseInt(offset) || 0
     );
 
+    // Transform messages to match frontend interface
+    const transformedMessages = result.messages.map(msg => ({
+      _id: msg._id?.toString(),
+      conversationId: msg.conversationId?.toString(),
+      accountId: msg.accountId,
+      phoneNumberId: msg.phoneNumberId,
+      
+      // Content handling - flatten structure
+      content: msg.content?.text || msg.content || '',
+      messageType: msg.messageType || 'text',
+      
+      // Media fields
+      mediaUrl: msg.content?.mediaUrl,
+      mediaType: msg.content?.mediaType,
+      fileName: msg.content?.filename,
+      fileSize: msg.content?.fileSize,
+      mimeType: msg.content?.mimeType,
+      
+      // Direction and sender type
+      direction: msg.direction,
+      senderType: msg.direction === 'inbound' ? 'customer' : 'agent',
+      
+      // Status (map 'queued' to 'sent' for frontend compatibility)
+      status: msg.status === 'queued' ? 'sent' : msg.status,
+      
+      // Recipient info
+      recipientPhone: msg.recipientPhone,
+      recipientName: msg.recipientName,
+      
+      // Metadata
+      isInternalNote: msg.isInternalNote || false,
+      createdAt: msg.createdAt?.toISOString(),
+      updatedAt: msg.updatedAt?.toISOString(),
+      
+      // Additional fields
+      waMessageId: msg.waMessageId,
+      readBy: msg.readBy || [],
+      replyTo: msg.replyTo,
+      source: msg.source
+    }));
+
     return res.status(200).json({
       success: true,
-      data: result.messages,
+      data: transformedMessages,
       pagination: {
         total: result.total,
         limit: parseInt(limit) || 50,
@@ -446,6 +584,81 @@ router.get('/search', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to search messages',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/messages/upload
+ * Upload file for message attachment
+ */
+router.post('/upload', upload.single('file'), async (req, res) => {
+  try {
+    const { conversationId, messageType = 'document' } = req.body;
+    const accountId = req.account.accountId;
+
+    if (!conversationId || !req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'conversationId and file are required',
+        error: 'MISSING_FIELDS',
+        required: ['conversationId', 'file']
+      });
+    }
+
+    // Construct the media URL
+    const relativePath = path.relative(
+      path.join(__dirname, '../../'),
+      req.file.path
+    ).replace(/\\/g, '/');
+    
+    const mediaUrl = `${process.env.BACKEND_URL || 'http://localhost:5050'}/${relativePath}`;
+
+    // File metadata
+    const fileMetadata = {
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      mimeType: req.file.mimetype,
+      mediaUrl,
+      messageType: messageType || 'document'
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: 'File uploaded successfully',
+      mediaUrl,
+      ...fileMetadata
+    });
+  } catch (error) {
+    console.error('❌ Error uploading file:', error);
+    
+    // Clean up uploaded file on error
+    if (req.file) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error('Failed to delete file:', err);
+      });
+    }
+
+    if (error.message.includes('File type not allowed')) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+        error: 'INVALID_FILE_TYPE'
+      });
+    }
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File is too large (max 100MB)',
+        error: 'FILE_TOO_LARGE'
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to upload file',
       error: error.message
     });
   }

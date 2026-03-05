@@ -21,10 +21,12 @@ interface Subscription {
   planName: string;
   status: 'active' | 'inactive' | 'expired';
   startDate: string;
-  endDate: string;
+  endDate: string | null;
   monthlyPrice?: number;
   monthlyAmount?: number;
-  billingCycle: 'monthly' | 'annual' | 'quarterly';
+  billingCycle: 'monthly' | 'annual' | 'quarterly' | 'lifetime';
+  isLifetime?: boolean;
+  validity?: 'lifetime';
 }
 
 interface Bill {
@@ -81,8 +83,9 @@ export default function AccountPage() {
     const currentUser = authService.getCurrentUser();
     setUser(currentUser);
 
-    // Check access - only admins/managers
-    if (!currentUser || ![UserRole.ADMIN, UserRole.MANAGER].includes(currentUser?.role)) {
+    // ✅ ALLOW: Clients (USER role) can access their subscription details
+    // Check access - ADMIN, MANAGER, and USER roles can view account/billing
+    if (!currentUser || ![UserRole.ADMIN, UserRole.MANAGER, UserRole.USER].includes(currentUser?.role)) {
       router.push('/dashboard');
       return;
     }
@@ -420,9 +423,17 @@ export default function AccountPage() {
                 <div key={sub.subscriptionId} className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
                     <div className="min-w-0">
-                      <h3 className="text-base sm:text-lg font-bold text-gray-900">{sub.planName}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-900">{sub.planName}</h3>
+                        {(sub.isLifetime || sub.validity === 'lifetime') && (
+                          <span className="inline-block px-2 py-1 text-xs font-bold rounded-full bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-700 border border-purple-300">
+                            ∞ Lifetime
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        {sub.billingCycle === 'monthly' ? 'Monthly Plan' : 'Annual Plan'}
+                        {sub.billingCycle === 'lifetime' ? 'Lifetime Plan - Never expires' : 
+                         sub.billingCycle === 'monthly' ? 'Monthly Plan' : 'Annual Plan'}
                       </p>
                     </div>
                     <span className={`inline-block px-3 py-1 text-xs sm:text-sm font-bold rounded-lg border whitespace-nowrap ${getStatusColor(sub.status)}`}>
@@ -430,23 +441,43 @@ export default function AccountPage() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                  <div className={`grid ${sub.isLifetime || sub.validity === 'lifetime' ? 'grid-cols-2 sm:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'} gap-3 sm:gap-4 mb-4 sm:mb-6`}>
                     <div className="bg-gray-50 rounded p-3">
                       <p className="text-xs text-gray-600 uppercase font-semibold mb-1">Price</p>
-                      <p className="text-base sm:text-xl font-bold text-gray-900">{formatCurrency(sub.monthlyAmount || sub.monthlyPrice)}</p>
+                      <p className="text-base sm:text-xl font-bold text-gray-900">
+                        {(sub.isLifetime || sub.validity === 'lifetime') ? 'Free Forever' : formatCurrency(sub.monthlyAmount || sub.monthlyPrice)}
+                      </p>
                     </div>
                     <div className="bg-gray-50 rounded p-3">
                       <p className="text-xs text-gray-600 uppercase font-semibold mb-1">Start</p>
                       <p className="text-sm sm:text-base text-gray-900">{formatDate(sub.startDate)}</p>
                     </div>
-                    <div className="bg-gray-50 rounded p-3">
-                      <p className="text-xs text-gray-600 uppercase font-semibold mb-1">End</p>
-                      <p className="text-sm sm:text-base text-gray-900">{formatDate(sub.endDate)}</p>
-                    </div>
+                    {!(sub.isLifetime || sub.validity === 'lifetime') && (
+                      <div className="bg-gray-50 rounded p-3">
+                        <p className="text-xs text-gray-600 uppercase font-semibold mb-1">End</p>
+                        <p className="text-sm sm:text-base text-gray-900">{sub.endDate ? formatDate(sub.endDate) : 'N/A'}</p>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="bg-blue-50 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-700 border border-blue-100">
+                  <div className={`rounded-lg p-3 sm:p-4 text-xs sm:text-sm border ${(sub.isLifetime || sub.validity === 'lifetime') 
+                    ? 'bg-purple-50 text-purple-700 border-purple-100' 
+                    : 'bg-blue-50 text-gray-700 border-blue-100'}`}>
                     <p>
+                      {(sub.isLifetime || sub.validity === 'lifetime') 
+                        ? '✅ Your lifetime subscription is active and never expires. Enjoy unlimited access forever.'
+                        : `Next renewal on ${sub.endDate ? formatDate(sub.endDate) : 'TBD'}`}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center bg-white rounded-lg border border-gray-200">
+                <p className="text-gray-600 text-sm">No subscriptions found</p>
+              </div>
+            )}
+          </div>
+        )}
                       {sub.status === 'active'
                         ? `Your ${sub.planName} plan is active and will renew on ${formatDate(sub.endDate)}`
                         : `Your ${sub.planName} plan ${sub.status === 'expired' ? 'has expired' : 'is inactive'}`}

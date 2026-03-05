@@ -4,11 +4,16 @@ import Account from '../models/Account.js';
 /**
  * Middleware to require active subscription/payment
  * Blocks dashboard access if user hasn't completed payment
- * EXCEPT: Superadmins (type='internal') can always access
+ * EXCEPT:
+ *  1. Superadmins (type='internal') can always access
+ *  2. Development environment (NODE_ENV=development) can bypass for testing
+ *  3. Supradmin role can always access live chat
+ *  4. Whitelisted demo accounts (Enromatics, etc.) can bypass for testing
  */
 export const requireSubscription = async (req, res, next) => {
   try {
     const accountId = req.accountId; // From JWT middleware (STRING like 'pixels_internal')
+    const user = req.user; // From JWT middleware
     
     if (!accountId) {
       return res.status(401).json({
@@ -28,12 +33,32 @@ export const requireSubscription = async (req, res, next) => {
       });
     }
 
-    // ALLOW: Superadmins (internal accounts) skip subscription check
+    // ✅ ALLOW: Superadmins (internal accounts) skip subscription check
     if (account.type === 'internal') {
+      console.log(`✅ Superadmin account (${accountId}) allowed - type='internal'`);
       return next();
     }
 
-    // Check if account has active subscription
+    // ✅ ALLOW: Superadmin role always gets access (backup check)
+    if (user && user.role === 'superadmin') {
+      console.log(`✅ Superadmin user (${user._id}) allowed - role='superadmin'`);
+      return next();
+    }
+
+    // ✅ ALLOW: Whitelisted demo/test accounts (Enromatics: 2600002, etc.)
+    const whitelistedAccounts = ['2600002']; // Enromatics account
+    if (whitelistedAccounts.includes(accountId)) {
+      console.log(`✅ Whitelisted account (${accountId}) allowed - demo/test account`);
+      return next();
+    }
+
+    // ✅ ALLOW: Development environment allows any account to bypass subscription for testing
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ Development mode - subscription check bypassed for ${accountId}`);
+      return next();
+    }
+
+    // ❌ PRODUCTION: Check if account has active subscription
     const subscription = await Subscription.findOne({
       accountId: account.accountId,  // Use Account.accountId (string)
       status: 'active'

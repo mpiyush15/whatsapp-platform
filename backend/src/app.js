@@ -252,6 +252,10 @@ app.use('/api/external', externalApiRoutes);
 // Mount settings routes (JWT AUTH only - users need to configure phones even without subscription)
 app.use('/api/settings', requireJWT, settingsRoutes);
 
+// ✅ SYSTEM CONSISTENCY: Mount phone-numbers as standalone endpoint (alias for /settings/phone-numbers)
+// This ensures both /api/phone-numbers and /api/settings/phone-numbers work for frontend compatibility
+app.use('/api/phone-numbers', requireJWT, settingsRoutes);
+
 // Mount dashboard routes (JWT AUTH + SUBSCRIPTION REQUIRED - for logged-in dashboard users)
 app.use('/api/templates', requireJWT, requireSubscription, templateRoutes);
 app.use('/api/chatbots', requireJWT, requireSubscription, chatbotRoutes);

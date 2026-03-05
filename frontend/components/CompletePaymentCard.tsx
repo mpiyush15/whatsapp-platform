@@ -147,8 +147,8 @@ export function CompletePaymentCard({ user, subscription, onPaymentComplete }: C
     }
   }
 
-  // If payment is already complete, don't show this card
-  if (user?.status === 'active') {
+  // If payment is already complete or subscription is active, don't show this card
+  if (user?.status === 'active' || subscription?.status === 'active') {
     return null
   }
 

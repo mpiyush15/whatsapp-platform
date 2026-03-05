@@ -20,6 +20,8 @@ router.get('/', async (req, res) => {
     const workspaceId = req.account.workspaceId;
     const phoneNumberId = req.headers['x-phone-number-id'];
 
+    console.log('📡 Fetching conversations:', { accountId, workspaceId, phoneNumberId });
+
     // Parse query parameters
     const {
       status = null,
@@ -49,6 +51,8 @@ router.get('/', async (req, res) => {
       filters
     );
 
+    console.log('✅ Conversations fetched:', result.conversations.length);
+
     return res.status(200).json({
       success: true,
       data: result.conversations,
@@ -64,6 +68,190 @@ router.get('/', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to list conversations',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/conversations/debug/count
+ * Debug endpoint: Check if conversations exist for this account
+ */
+router.get('/debug/count', async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const { Conversation } = await import('../models/Conversation.js');
+    
+    const total = await Conversation.countDocuments({ accountId });
+    const byStatus = await Conversation.aggregate([
+      { $match: { accountId } },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+    
+    // Get first few conversations
+    const sample = await Conversation.find({ accountId }).limit(3).lean();
+    
+    return res.status(200).json({
+      success: true,
+      total,
+      byStatus,
+      sampleConversations: sample.map(c => ({
+        _id: c._id,
+        userName: c.userName,
+        userPhone: c.userPhone,
+        status: c.status,
+        workspaceId: c.workspaceId,
+        phoneNumberId: c.phoneNumberId
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Error in debug count:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/conversations/quick-replies
+ * Get quick reply templates for agents (separate from Meta templates)
+ */
+router.get('/quick-replies', async (req, res) => {
+  try {
+    const accountId = req.account?.accountId;
+    
+    if (!accountId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Account ID is required'
+      });
+    }
+    
+    console.log('📝 Fetching quick replies for accountId:', accountId);
+    
+    // Import QuickReply model (separate from Meta templates)
+    const QuickReply = await import('../models/QuickReply.js');
+    
+    // Fetch quick replies for this account - simpler query
+    const quickReplies = await QuickReply.default.find({
+      accountId: accountId,
+      isActive: true
+    })
+      .select('_id name content category messageType mediaUrl fileName')
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    console.log('✅ Quick replies found:', quickReplies.length);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Quick replies fetched successfully',
+      data: quickReplies || []
+    });
+  } catch (error) {
+    console.error('❌ Error fetching quick replies:', error.message, error.stack);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch quick replies',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/conversations/quick-replies
+ * Create a new quick reply
+ */
+router.post('/quick-replies', async (req, res) => {
+  try {
+    const accountId = req.account?.accountId;
+    
+    if (!accountId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Account ID is required'
+      });
+    }
+    
+    const { name, content, category, messageType, mediaUrl, fileName, mimeType } = req.body;
+
+    // Validate required fields
+    if (!name || !content) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name and content are required'
+      });
+    }
+
+    console.log('➕ Creating quick reply:', { accountId, name });
+
+    // Import QuickReply model
+    const QuickReply = await import('../models/QuickReply.js');
+
+    // Create new quick reply - simplified
+    const quickReply = new QuickReply.default({
+      accountId,
+      name: name.trim(),
+      content: content.trim(),
+      category: category || 'General',
+      messageType: messageType || 'text',
+      mediaUrl: mediaUrl || null,
+      fileName: fileName || null,
+      mimeType: mimeType || null,
+      isActive: true
+    });
+
+    await quickReply.save();
+
+    console.log('✅ Quick reply created:', quickReply._id);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Quick reply created successfully',
+      data: quickReply
+    });
+  } catch (error) {
+    console.error('❌ Error creating quick reply:', error.message, error.stack);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create quick reply',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * DELETE /api/conversations/quick-replies/:replyId
+ * Delete a quick reply
+ */
+router.delete('/quick-replies/:replyId', async (req, res) => {
+  try {
+    const { replyId } = req.params;
+    const accountId = req.account.accountId;
+
+    // Import QuickReply model
+    const QuickReply = await import('../models/QuickReply.js');
+
+    // Delete quick reply
+    const result = await QuickReply.default.findOneAndDelete({
+      _id: replyId,
+      accountId
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: 'Quick reply not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Quick reply deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error deleting quick reply:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete quick reply',
       error: error.message
     });
   }
@@ -107,19 +295,22 @@ router.get('/:conversationId', async (req, res) => {
 
 /**
  * PATCH /api/conversations/:conversationId
- * Update conversation (priority, notes, status)
+ * Update conversation (priority, notes, status, tags, userName)
  */
 router.patch('/:conversationId', async (req, res) => {
   try {
     const { conversationId } = req.params;
     const accountId = req.account.accountId;
-    const { priority, notes, customAttributes } = req.body;
+    const { priority, notes, customAttributes, tags, status, userName } = req.body;
 
     // Build update object
     const updates = {};
     if (priority) updates.priority = priority;
     if (notes !== undefined) updates.notes = notes;
     if (customAttributes) updates.customAttributes = customAttributes;
+    if (tags && Array.isArray(tags)) updates.tags = tags;
+    if (status && ['open', 'closed', 'pending'].includes(status)) updates.status = status;
+    if (userName && typeof userName === 'string') updates.userName = userName.trim();
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
@@ -144,6 +335,18 @@ router.patch('/:conversationId', async (req, res) => {
         error: 'NOT_FOUND'
       });
     }
+
+    // Emit real-time update
+    emitToConversation(accountId, conversationId, 'conversation_updated', {
+      conversationId,
+      updates: {
+        priority: updates.priority,
+        tags: updates.tags,
+        status: updates.status,
+        userName: updates.userName,
+        customAttributes: updates.customAttributes
+      }
+    });
 
     return res.status(200).json({
       success: true,
