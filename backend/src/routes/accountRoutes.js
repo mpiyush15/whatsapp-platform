@@ -10,6 +10,8 @@ import {
   regenerateMyApiKey,
   generateIntegrationToken,
   getIntegrationToken,
+  getConnectedPlatforms,
+  testPlatformConnection,
   revokeIntegrationToken
 } from '../controllers/accountController.js';
 
@@ -46,6 +48,20 @@ router.post('/integration-token', generateIntegrationToken);
  * @access  Authenticated account
  */
 router.get('/integration-token', getIntegrationToken);
+
+/**
+ * @route   GET /api/account/connected-platforms
+ * @desc    Get list of connected platforms with their status
+ * @access  Authenticated account
+ */
+router.get('/connected-platforms', getConnectedPlatforms);
+
+/**
+ * @route   POST /api/account/test-platform-connection
+ * @desc    Test if a platform connection is working properly
+ * @access  Authenticated account
+ */
+router.post('/test-platform-connection', testPlatformConnection);
 
 /**
  * @route   DELETE /api/account/integration-token

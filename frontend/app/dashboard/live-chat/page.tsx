@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Send, MoreVertical, Phone, Video, Plus, Loader, X, MessageSquare, Paperclip, Image, FileText, Music, Settings, Edit2, Save, ChevronDown } from 'lucide-react';
 import axios from 'axios';
 import io, { Socket } from 'socket.io-client';
@@ -42,6 +43,7 @@ interface Message {
 }
 
 export default function LiveChat() {
+  const searchParams = useSearchParams();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [messageInput, setMessageInput] = useState('');
@@ -227,6 +229,23 @@ export default function LiveChat() {
       setEditingContactName(false);
     }
   }, [selectedConversation, socket]);
+
+  // Handle phone parameter from URL
+  useEffect(() => {
+    const phoneParam = searchParams.get('phone');
+    if (phoneParam && conversations.length > 0) {
+      const decodedPhone = decodeURIComponent(phoneParam);
+      const conversation = conversations.find(c => 
+        c.userPhone === decodedPhone || 
+        c.userPhone?.replace(/\D/g, '') === decodedPhone.replace(/\D/g, '')
+      );
+      
+      if (conversation) {
+        console.log('🔍 Found conversation for phone:', decodedPhone, conversation._id);
+        setSelectedConversation(conversation._id);
+      }
+    }
+  }, [conversations, searchParams]);
 
   const getAuthToken = () => {
     if (typeof window !== 'undefined') {
@@ -906,7 +925,7 @@ export default function LiveChat() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 md:px-4 py-3 md:py-4 flex flex-col gap-3 bg-gray-50">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 md:px-4 py-2 md:py-2 flex flex-col gap-2 bg-gray-50">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader className="animate-spin text-green-500" size={20} />
@@ -1014,7 +1033,8 @@ export default function LiveChat() {
               )}
             </div>
 
-            {/* Input Area */}
+            {/* Input Area - Only show when conversation is selected */}
+            {selectedConversation && (
             <div className="h-14 md:h-16 border-t border-gray-200 px-3 md:px-4 py-2 md:py-3 flex items-center gap-2 flex-shrink-0 bg-white">
               <button 
                 onClick={() => setShowTemplates(!showTemplates)}
@@ -1069,9 +1089,10 @@ export default function LiveChat() {
                 )}
               </button>
             </div>
+            )}
 
             {/* Upload Progress */}
-            {uploadingFile && uploadProgress > 0 && (
+            {selectedConversation && uploadingFile && uploadProgress > 0 && (
               <div className="h-1 bg-gray-200 border-t border-gray-200">
                 <div 
                   className="h-full bg-green-500 transition-all duration-300"
@@ -1102,28 +1123,9 @@ export default function LiveChat() {
             )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-between bg-gray-50">
-            <div className="flex-1 flex flex-col items-center justify-center">
-              <MessageSquare size={40} className="text-gray-300 mb-3" />
-              <p className="text-gray-400 text-sm">Select a chat to start messaging</p>
-            </div>
-            
-            {/* Input Area - Always at bottom */}
-            <div className="w-full h-14 md:h-16 border-t border-gray-200 px-3 md:px-4 py-2 md:py-3 flex items-center gap-2 flex-shrink-0 bg-white">
-              <input
-                type="text"
-                placeholder="Message..."
-                disabled
-                value=""
-                className="flex-1 px-3 py-2 bg-gray-100 border border-gray-100 rounded-full focus:outline-none text-sm opacity-50 cursor-not-allowed"
-              />
-              <button 
-                disabled
-                className="p-2 md:p-2.5 bg-gray-300 text-white rounded-full flex-shrink-0 opacity-50 cursor-not-allowed"
-              >
-                <Send size={16} className="md:w-5 md:h-5" />
-              </button>
-            </div>
+          <div className="flex-1 flex flex-col items-center justify-center bg-gray-50">
+            <MessageSquare size={40} className="text-gray-300 mb-3" />
+            <p className="text-gray-400 text-sm">Select a chat to start messaging</p>
           </div>
         )}
       </div>

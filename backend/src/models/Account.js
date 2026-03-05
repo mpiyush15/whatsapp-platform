@@ -157,6 +157,19 @@ const accountSchema = new mongoose.Schema({
   },
   integrationTokenCreatedAt: Date,
   integrationTokenLastUsedAt: Date,
+
+  // Connected Platforms (track which external platforms are connected)
+  connectedPlatforms: [{
+    name: String, // e.g., "Enromatics", "Zapier", "Custom CRM"
+    isConnected: {
+      type: Boolean,
+      default: false
+    },
+    connectedAt: Date,
+    lastTestedAt: Date,
+    testStatus: String, // 'success', 'failed', 'pending'
+    apiKeyPrefix: String // Reference to which API key is used for this platform
+  }],
   
   // Subscription (Phase 2)
   plan: {

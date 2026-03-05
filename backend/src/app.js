@@ -45,6 +45,7 @@ import crmRoutes from './routes/crmRoutes.js';
 import discountRoutes from './routes/discountRoutes.js';
 import externalApiRoutes from './routes/externalApiRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
+import apiKeyRoutes from './routes/apiKeyRoutes.js';
 
 // Import live chat routes
 import liveChatConversationRoutes from './routes/liveChat-conversationRoutes.js';
@@ -316,6 +317,9 @@ app.use('/api/jobs', requireJWT, jobRoutes);
 
 // Mount integration routes (JWT AUTH for OAuth integrations, INTEGRATION TOKEN AUTH for third-party apps)
 app.use('/api/integrations', requireJWT, oauthRoutes);
+
+// Mount API key management routes (JWT AUTH)
+app.use('/api/integrations/api-keys', apiKeyRoutes);
 
 // Mount external API routes - THIRD-PARTY INTEGRATIONS (API KEY AUTH ONLY)
 // Routes at /api/external/* are for external applications using API keys

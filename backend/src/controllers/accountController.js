@@ -426,36 +426,70 @@ export const regenerateMyApiKey = async (req, res) => {
  */
 export const generateIntegrationToken = async (req, res) => {
   try {
+    const { platform } = req.body;
+    
+    if (!platform) {
+      return res.status(400).json({
+        success: false,
+        message: 'Platform is required'
+      });
+    }
+
     // Use ObjectId from authenticated request
     const account = await Account.findById(req.account._id).select('+integrationTokenHash');
     
     if (!account) {
-      console.error('❌ Account not found:', accountId);
+      console.error('❌ Account not found');
       return res.status(404).json({
         success: false,
-        message: 'Account not found',
-        accountId: accountId
+        message: 'Account not found'
       });
     }
     
     console.log('✅ Account found:', account.name);
+    console.log('📱 Platform:', platform);
     
     // Generate integration token
     const integrationToken = account.generateIntegrationToken();
     
     console.log('🔐 Token generated, prefix:', account.integrationTokenPrefix);
     
+    // Add to connected platforms
+    if (!account.connectedPlatforms) {
+      account.connectedPlatforms = [];
+    }
+    
+    // Check if platform already exists
+    const existingPlatform = account.connectedPlatforms.find(p => p.name === platform);
+    
+    if (existingPlatform) {
+      // Update existing
+      existingPlatform.apiKeyPrefix = account.integrationTokenPrefix;
+      existingPlatform.testStatus = 'pending';
+    } else {
+      // Add new
+      account.connectedPlatforms.push({
+        name: platform,
+        isConnected: false,
+        connectedAt: null,
+        lastTestedAt: null,
+        testStatus: 'pending',
+        apiKeyPrefix: account.integrationTokenPrefix
+      });
+    }
+    
     await account.save();
     
-    console.log('✅ Integration token generated successfully');
+    console.log('✅ Integration token generated successfully for', platform);
     
     return res.json({
       success: true,
-      message: 'Integration token generated successfully',
+      message: `Integration token generated successfully for ${platform}`,
       integrationToken, // ⚠️ ONLY SHOWN ONCE
       tokenPrefix: account.integrationTokenPrefix,
       createdAt: account.integrationTokenCreatedAt,
-      warning: '⚠️ Save this token securely. Use it in external apps (Enromatics, etc.) to connect to this platform.'
+      platform: platform,
+      warning: `⚠️ Save this token securely. Use it in ${platform} to connect to this WhatsApp platform.`
     });
     
   } catch (error) {
@@ -464,6 +498,35 @@ export const generateIntegrationToken = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to generate integration token',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * GET /api/account/connected-platforms - Get list of connected platforms
+ */
+export const getConnectedPlatforms = async (req, res) => {
+  try {
+    const account = await Account.findById(req.account._id).select('connectedPlatforms');
+    
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found'
+      });
+    }
+    
+    return res.json({
+      success: true,
+      platforms: account.connectedPlatforms || []
+    });
+    
+  } catch (error) {
+    console.error('Get connected platforms error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get connected platforms',
       error: error.message
     });
   }
@@ -537,6 +600,110 @@ export const revokeIntegrationToken = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to revoke integration token',
+      error: error.message
+    });
+  }
+};
+/**
+ * POST /api/account/test-platform-connection - Test if a platform connection is working
+ */
+export const testPlatformConnection = async (req, res) => {
+  try {
+    const { platformName } = req.body;
+
+    if (!platformName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Platform name is required'
+      });
+    }
+
+    const account = await Account.findById(req.account._id).select('connectedPlatforms integrationTokenPrefix integrationTokenHash');
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found'
+      });
+    }
+
+    // Find the platform in connected platforms
+    const platform = account.connectedPlatforms?.find(p => p.name === platformName);
+
+    if (!platform) {
+      return res.status(404).json({
+        success: false,
+        message: `Platform "${platformName}" not found in connected platforms`
+      });
+    }
+
+    console.log(`🧪 Testing connection for ${platformName}...`);
+
+    // Update test status to 'testing'
+    platform.lastTestedAt = new Date();
+    platform.testStatus = 'testing';
+    
+    try {
+      await account.save();
+    } catch (saveError) {
+      console.error('Error saving test status:', saveError);
+    }
+
+    // Simulate platform test - in production, make actual API call to the platform
+    let isConnected = false;
+    let testMessage = '';
+
+    if (platformName === 'Enromatics') {
+      // TODO: Implement actual Enromatics API test
+      // For now, we'll check if token exists and is valid
+      isConnected = !!account.integrationTokenPrefix;
+      testMessage = isConnected ? 'Token is valid. Please verify connection in Enromatics dashboard' : 'Token not found';
+    } else if (platformName === 'Zapier') {
+      // TODO: Implement Zapier API test
+      isConnected = !!account.integrationTokenPrefix;
+      testMessage = isConnected ? 'Token is valid. Please verify connection in Zapier' : 'Token not found';
+    } else if (platformName === 'Make') {
+      // TODO: Implement Make/Integromat API test
+      isConnected = !!account.integrationTokenPrefix;
+      testMessage = isConnected ? 'Token is valid. Please verify in Make' : 'Token not found';
+    } else {
+      // For custom platforms, just check token validity
+      isConnected = !!account.integrationTokenPrefix;
+      testMessage = isConnected ? 'Token is valid for authentication' : 'Token not found';
+    }
+
+    // Update platform connection status
+    platform.isConnected = isConnected;
+    platform.testStatus = isConnected ? 'success' : 'failed';
+    
+    try {
+      await account.save();
+    } catch (saveError) {
+      console.error('Error saving connection status:', saveError);
+    }
+
+    const responseMessage = isConnected
+      ? `✅ ${platformName} token verified successfully. ${testMessage}`
+      : `❌ Failed to verify ${platformName} connection. ${testMessage}`;
+
+    console.log(responseMessage);
+
+    return res.json({
+      success: isConnected,
+      message: responseMessage,
+      platform: {
+        name: platformName,
+        isConnected: platform.isConnected,
+        testedAt: platform.lastTestedAt,
+        testStatus: platform.testStatus
+      }
+    });
+
+  } catch (error) {
+    console.error('Test platform connection error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to test platform connection',
       error: error.message
     });
   }

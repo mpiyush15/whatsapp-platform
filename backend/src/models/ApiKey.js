@@ -12,7 +12,14 @@ const apiKeySchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  
+
+  platform: {
+    type: String,
+    required: true,
+    enum: ['Enromatics', 'Zapier', 'Make', 'Integromat', 'Custom', 'Other'],
+    default: 'Custom'
+  },
+
   keyHash: {
     type: String,
     required: true,

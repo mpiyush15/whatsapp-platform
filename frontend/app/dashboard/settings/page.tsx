@@ -108,6 +108,9 @@ export default function SettingsPage() {
   const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const [apiKeyName, setApiKeyName] = useState('')
   const [creatingKey, setCreatingKey] = useState(false)
+  const [selectedPlatform, setSelectedPlatform] = useState<string>('Enromatics')
+  const [connectedPlatforms, setConnectedPlatforms] = useState<any[]>([])
+  const [testingPlatform, setTestingPlatform] = useState<string | null>(null)
   const [savedIntegrationToken, setSavedIntegrationToken] = useState<{prefix: string, fullToken: string, createdAt: string, lastUsedAt?: string} | null>(null)
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
@@ -656,12 +659,13 @@ export default function SettingsPage() {
   }
 
   const generateMyApiKey = async () => {
-    if (!confirm('Generate new Integration Token for Enromatics?\n\nThis will create a token you can use to connect Enromatics with your WhatsApp Business Account.')) return
+    if (!confirm(`Generate new Integration Token for ${selectedPlatform}?\n\nThis will create a token you can use to connect ${selectedPlatform} with your WhatsApp Business Account.`)) return
     
     try {
       const token = authService.getToken()
       console.log("🔑 Token Generation Debug:");
       console.log("  ✅ Has JWT Token:", !!token);
+      console.log("  📱 Platform:", selectedPlatform);
       
       if (!token) {
         console.error("  ❌ No JWT token found - user may not be authenticated");
@@ -683,7 +687,10 @@ export default function SettingsPage() {
       
       const response = await fetch(`${API_URL}/account/integration-token`, {
         method: 'POST',
-        headers: headers
+        headers: headers,
+        body: JSON.stringify({
+          platform: selectedPlatform
+        })
       })
 
       console.log("  📥 Response Status:", response.status, response.statusText);
@@ -699,7 +706,7 @@ export default function SettingsPage() {
       if (response.ok && result.integrationToken) {
         setNewApiKey(result.integrationToken)
         setShowApiKeyModal(true)
-        console.log("✅ Integration Token generated successfully")
+        console.log("✅ Integration Token generated successfully for", selectedPlatform)
         console.log(response)
         console.log(result)
         
@@ -710,6 +717,17 @@ export default function SettingsPage() {
           createdAt: result.createdAt || new Date().toISOString(),
           lastUsedAt: undefined
         })
+
+        // Add to connected platforms
+        setConnectedPlatforms([
+          ...(connectedPlatforms || []),
+          {
+            name: selectedPlatform,
+            isConnected: false,
+            connectedAt: null,
+            testStatus: 'pending'
+          }
+        ])
       } else {
         const errorMsg = result.message || result.error || `HTTP ${response.status}`
         console.error("❌ Token generation failed:", errorMsg);
@@ -1017,6 +1035,93 @@ export default function SettingsPage() {
     if (!dateString) return 'Never'
     const date = new Date(dateString)
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  // Fetch connected platforms when api-keys tab is active
+  const fetchConnectedPlatforms = async () => {
+    try {
+      const token = authService.getToken()
+      if (!token) return
+
+      const response = await fetch(`${API_URL}/account/connected-platforms`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.platforms && data.platforms.length > 0) {
+          setConnectedPlatforms(data.platforms)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching connected platforms:', error)
+    }
+  }
+
+  // Load connected platforms when api-keys tab is opened
+  useEffect(() => {
+    if (activeTab === 'api-keys') {
+      fetchConnectedPlatforms()
+    }
+  }, [activeTab])
+
+  // Test platform connection
+  const testPlatformConnection = async (platformName: string) => {
+    try {
+      setTestingPlatform(platformName)
+      const token = authService.getToken()
+      
+      if (!token) {
+        alert('Not authenticated. Please login again.')
+        return
+      }
+
+      const response = await fetch(`${API_URL}/account/test-platform-connection`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          platformName: platformName
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.ok && result.success) {
+        alert(`✅ ${platformName} connection test passed!\n\n${result.message}`)
+        
+        // Update the platform status in the list
+        setConnectedPlatforms(prev =>
+          prev.map(p =>
+            p.name === platformName
+              ? { ...p, isConnected: true, testStatus: 'success', lastTestedAt: new Date().toISOString() }
+              : p
+          )
+        )
+      } else {
+        alert(`❌ ${platformName} connection test failed.\n\n${result.message}`)
+        
+        // Update the platform status to failed
+        setConnectedPlatforms(prev =>
+          prev.map(p =>
+            p.name === platformName
+              ? { ...p, isConnected: false, testStatus: 'failed', lastTestedAt: new Date().toISOString() }
+              : p
+          )
+        )
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      alert(`Error testing ${platformName} connection:\n\n${errorMsg}`)
+      console.error('Test error:', error)
+    } finally {
+      setTestingPlatform(null)
+    }
   }
 
   return (
@@ -1420,24 +1525,85 @@ export default function SettingsPage() {
           ) : activeTab === 'api-keys' ? (
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="mb-6">
-                <h2 className="text-xl font-semibold text-gray-900">Enromatics Integration</h2>
-                <p className="text-sm text-gray-600 mt-1">Generate an integration token to connect Enromatics with your WhatsApp Business Account</p>
+                <h2 className="text-xl font-semibold text-gray-900">API Keys & Platform Integrations</h2>
+                <p className="text-sm text-gray-600 mt-1">Connect your WhatsApp Business Account with external platforms (Enromatics, Zapier, Make, and more)</p>
               </div>
 
               <div className="space-y-6">
+                {/* Connected Platforms Status */}
+                {connectedPlatforms && connectedPlatforms.length > 0 && (
+                  <div className="border border-blue-200 rounded-lg p-6 bg-blue-50">
+                    <h3 className="font-semibold text-blue-900 mb-4">🔗 Connected Platforms</h3>
+                    <div className="space-y-3">
+                      {connectedPlatforms.map((platform: any) => (
+                        <div key={platform.name} className="flex items-center justify-between bg-white p-3 rounded-lg border border-blue-100">
+                          <div>
+                            <p className="font-medium text-gray-900">{platform.name}</p>
+                            <p className="text-xs text-gray-600 mt-1">
+                              {platform.isConnected ? '✅ Connected' : '⏳ Pending'} 
+                              {platform.connectedAt && ` • Connected: ${new Date(platform.connectedAt).toLocaleDateString()}`}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                              onClick={() => testPlatformConnection(platform.name)}
+                              disabled={testingPlatform === platform.name}
+                            >
+                              {testingPlatform === platform.name ? (
+                                <>
+                                  <Loader className="h-4 w-4 mr-2 animate-spin" />
+                                  Testing...
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw className="h-4 w-4 mr-2" />
+                                  Test
+                                </>
+                              )}
+                            </Button>
+                            {platform.isConnected && (
+                              <span className="px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
+                                Active
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Integration Token Generation */}
                 <div className="border border-gray-200 rounded-lg p-6">
                   <div className="text-center">
                     <Key className="h-12 w-12 text-green-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Integration Token</h3>
-                    <p className="text-gray-600 mb-6">Click the button below to generate a token for Enromatics connection</p>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Generate Integration Token</h3>
+                    <p className="text-gray-600 mb-6">Select a platform and generate a token to connect it with your WhatsApp account</p>
+                    
+                    <div className="max-w-xs mx-auto mb-6">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Platform</label>
+                      <select
+                        value={selectedPlatform}
+                        onChange={(e) => setSelectedPlatform(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-gray-900"
+                      >
+                        <option value="Enromatics">Enromatics</option>
+                        <option value="Zapier">Zapier</option>
+                        <option value="Make">Make (Integromat)</option>
+                        <option value="Custom">Custom Application</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
                     
                     <Button
                       onClick={generateMyApiKey}
                       className="bg-green-600 hover:bg-green-700 px-6 py-2"
                     >
                       <Key className="h-4 w-4 mr-2" />
-                      Generate Integration Token
+                      Generate Token for {selectedPlatform}
                     </Button>
                     
                   </div>
@@ -1504,7 +1670,13 @@ export default function SettingsPage() {
                           
                           <div className="bg-white border border-green-300 rounded-lg p-3">
                             <p className="text-sm text-green-800">
-                              💡 Copy the full integration token above to connect Enromatics with your WhatsApp Business Account. The token prefix is also available for reference.
+                              💡 Copy the full integration token above and save it securely. Use it in {selectedPlatform} or any other external platform to connect with your WhatsApp Business Account.
+                            </p>
+                          </div>
+
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                            <p className="text-sm text-amber-800">
+                              ⚠️ <strong>Important:</strong> This token will only be shown once. Copy and save it now in a secure location. If you lose it, you'll need to generate a new token.
                             </p>
                           </div>
                         </div>
@@ -1513,18 +1685,49 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {/* Usage Instructions */}
+                {/* Usage Instructions for Different Platforms */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-blue-900 mb-3">📌 How to use in Enromatics:</p>
-                  <ol className="text-sm text-blue-800 space-y-2 ml-4 list-decimal">
-                    <li>Click "Generate Integration Token" button above</li>
-                    <li>Copy the entire token (starts with <code className="bg-blue-100 px-2 py-1 rounded">wpi_int_</code>)</li>
-                    <li>Go to Enromatics Dashboard</li>
-                    <li>Navigate to Integrations → WhatsApp Configuration</li>
-                    <li>Paste the token in the Token/API Key field</li>
-                    <li>Click "Test Connection" to verify</li>
-                    <li>Save your configuration</li>
-                  </ol>
+                  <p className="text-sm font-semibold text-blue-900 mb-3">📌 How to Connect {selectedPlatform}:</p>
+                  {selectedPlatform === 'Enromatics' && (
+                    <ol className="text-sm text-blue-800 space-y-2 ml-4 list-decimal">
+                      <li>Click "Generate Token for Enromatics" above</li>
+                      <li>Copy the entire token (starts with <code className="bg-blue-100 px-2 py-1 rounded">wpi_int_</code>)</li>
+                      <li>Go to <strong>Enromatics Dashboard</strong></li>
+                      <li>Navigate to <strong>Integrations → WhatsApp Configuration</strong></li>
+                      <li>Paste the token in the <strong>Token/API Key</strong> field</li>
+                      <li>Click <strong>Connect & Verify</strong> to establish the connection</li>
+                      <li>Click <strong>Test Connection</strong> above to verify it's working</li>
+                    </ol>
+                  )}
+                  {selectedPlatform === 'Zapier' && (
+                    <ol className="text-sm text-blue-800 space-y-2 ml-4 list-decimal">
+                      <li>Click "Generate Token for Zapier" above</li>
+                      <li>Copy the entire token</li>
+                      <li>Go to <strong>Zapier App Dashboard</strong></li>
+                      <li>Find <strong>WhatsApp Business Account Integration</strong></li>
+                      <li>Paste the token in the authentication field</li>
+                      <li>Test the connection in Zapier</li>
+                    </ol>
+                  )}
+                  {selectedPlatform === 'Make' && (
+                    <ol className="text-sm text-blue-800 space-y-2 ml-4 list-decimal">
+                      <li>Click "Generate Token for Make (Integromat)" above</li>
+                      <li>Copy the entire token</li>
+                      <li>Go to <strong>Make.com Dashboard</strong></li>
+                      <li>Create or edit a scenario with WhatsApp module</li>
+                      <li>Paste the token in the <strong>API Key</strong> field</li>
+                      <li>Save and test the connection</li>
+                    </ol>
+                  )}
+                  {(selectedPlatform === 'Custom' || selectedPlatform === 'Other') && (
+                    <div className="text-sm text-blue-800 space-y-2">
+                      <p><strong>1.</strong> Click "Generate Token for {selectedPlatform}" above</p>
+                      <p><strong>2.</strong> Copy the entire token and save it securely</p>
+                      <p><strong>3.</strong> In your application, use the token as an API key or authentication header:</p>
+                      <code className="block bg-blue-100 px-3 py-2 rounded mt-2 text-xs break-all">X-API-Key: wpi_int_[your_token_here]</code>
+                      <p className="mt-2"><strong>4.</strong> Test the connection using our test button to verify it works</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Token Format Info */}
