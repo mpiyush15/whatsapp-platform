@@ -152,7 +152,7 @@ const accountSchema = new mongoose.Schema({
     select: false // Don't return in queries by default (security)
   },
   integrationTokenPrefix: {
-    type: String, // Store first 12 chars for identification (e.g., "wpi_int_abc")
+    type: String, // Store first 12 chars for identification (e.g., "wpk_live_ab")
     select: true
   },
   integrationTokenCreatedAt: Date,
@@ -298,13 +298,13 @@ accountSchema.methods.validateApiKey = function(apiKey) {
 // Integration Token Methods (for external app integrations like Enromatics)
 accountSchema.methods.generateIntegrationToken = function() {
   // Generate cryptographically secure random integration token
-  // Format: wpi_int_<64_random_hex_chars> (whatsapp-platform-integration)
+  // Format: wpk_live_<64_random_hex_chars> (whatsapp-platform-key-live for external integrations)
   const randomBytes = crypto.randomBytes(32).toString('hex');
-  const integrationToken = `wpi_int_${randomBytes}`;
+  const integrationToken = `wpk_live_${randomBytes}`;
   
   // Store hash (for validation) and prefix (for display)
   this.integrationTokenHash = this.constructor.hashApiKey(integrationToken);
-  this.integrationTokenPrefix = integrationToken.substring(0, 12); // "wpi_int_abc"
+  this.integrationTokenPrefix = integrationToken.substring(0, 12); // "wpk_live_ab"
   this.integrationTokenCreatedAt = new Date();
   
   // Return plaintext token (ONLY TIME IT'S VISIBLE)

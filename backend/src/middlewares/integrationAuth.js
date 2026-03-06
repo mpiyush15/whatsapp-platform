@@ -7,7 +7,7 @@ import Account from '../models/Account.js';
 
 /**
  * Integration Token Authentication Middleware
- * Validates wpi_int_ prefixed tokens
+ * Validates wpk_live_ prefixed tokens (external integrations via settings page)
  */
 export const authenticateIntegration = async (req, res, next) => {
   try {
@@ -17,7 +17,7 @@ export const authenticateIntegration = async (req, res, next) => {
     if (!authHeader) {
       return res.status(401).json({
         success: false,
-        message: 'Integration token required. Provide: Authorization: Bearer wpi_int_... or X-Integration-Token: wpi_int_...'
+        message: 'Integration token required. Provide: Authorization: Bearer wpk_live_... or X-Integration-Token: wpk_live_...'
       });
     }
     
@@ -34,11 +34,11 @@ export const authenticateIntegration = async (req, res, next) => {
       });
     }
     
-    // Validate token format (wpi_int_<64 hex chars>)
-    if (!token.startsWith('wpi_int_')) {
+    // Validate token format (wpk_live_<64 hex chars>)
+    if (!token.startsWith('wpk_live_')) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid integration token format. Must start with: wpi_int_'
+        message: 'Invalid integration token format. Must start with: wpk_live_'
       });
     }
     
@@ -94,7 +94,7 @@ export const authenticateDual = async (req, res, next) => {
     const integrationHeader = req.headers['x-integration-token'];
     
     // Try integration token first
-    if (integrationHeader || (authHeader && authHeader.includes('wpi_int_'))) {
+    if (integrationHeader || (authHeader && authHeader.includes('wpk_live_'))) {
       return authenticateIntegration(req, res, next);
     }
     

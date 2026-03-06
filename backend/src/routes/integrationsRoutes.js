@@ -3,7 +3,7 @@
  * Third-party integration for all platform features
  * 
  * Usage: 
- *   Authorization: Bearer wpi_int_xxxxx
+ *   Authorization: Bearer wpk_live_xxxxx
  * 
  * Features:
  *   - Conversations (chat, inbox)

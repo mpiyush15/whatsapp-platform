@@ -1691,7 +1691,7 @@ export default function SettingsPage() {
                   {selectedPlatform === 'Enromatics' && (
                     <ol className="text-sm text-blue-800 space-y-2 ml-4 list-decimal">
                       <li>Click "Generate Token for Enromatics" above</li>
-                      <li>Copy the entire token (starts with <code className="bg-blue-100 px-2 py-1 rounded">wpi_int_</code>)</li>
+                      <li>Copy the entire token (starts with <code className="bg-blue-100 px-2 py-1 rounded">wpk_live_</code>)</li>
                       <li>Go to <strong>Enromatics Dashboard</strong></li>
                       <li>Navigate to <strong>Integrations → WhatsApp Configuration</strong></li>
                       <li>Paste the token in the <strong>Token/API Key</strong> field</li>
@@ -1724,7 +1724,7 @@ export default function SettingsPage() {
                       <p><strong>1.</strong> Click "Generate Token for {selectedPlatform}" above</p>
                       <p><strong>2.</strong> Copy the entire token and save it securely</p>
                       <p><strong>3.</strong> In your application, use the token as an API key or authentication header:</p>
-                      <code className="block bg-blue-100 px-3 py-2 rounded mt-2 text-xs break-all">X-API-Key: wpi_int_[your_token_here]</code>
+                      <code className="block bg-blue-100 px-3 py-2 rounded mt-2 text-xs break-all">X-API-Key: wpk_live_[your_token_here]</code>
                       <p className="mt-2"><strong>4.</strong> Test the connection using our test button to verify it works</p>
                     </div>
                   )}
@@ -1734,7 +1734,7 @@ export default function SettingsPage() {
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                   <p className="text-sm font-semibold text-gray-900 mb-2">🔑 Token Format:</p>
                   <p className="text-sm text-gray-700 font-mono bg-white px-3 py-2 rounded border border-gray-300">
-                    wpi_int_[64 random characters]
+                    wpk_live_[64 random characters]
                   </p>
                 </div>
 

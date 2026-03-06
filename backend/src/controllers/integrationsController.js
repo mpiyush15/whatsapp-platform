@@ -1,7 +1,7 @@
 /**
  * Integrations Controller
  * Handles requests from third-party apps (Enromatics, etc.)
- * using integration tokens (wpi_int_)
+ * using integration tokens (wpk_live_)
  * 
  * Features: Chat, Conversations, Contacts, Chatbots, Broadcast, Settings
  */
