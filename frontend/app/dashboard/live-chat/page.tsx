@@ -23,7 +23,7 @@ interface Conversation {
 
 interface Message {
   _id: string;
-  content: string;
+  content: string | { text?: string; templateName?: string; [key: string]: any };
   direction: 'inbound' | 'outbound';
   status: 'sent' | 'delivered' | 'read';
   createdAt: string;
@@ -34,7 +34,7 @@ interface Message {
   mimeType?: string;
   fileName?: string;
   fileSize?: number;
-  caption?: string;
+  caption?: string | { text?: string; [key: string]: any };
   thumbnailUrl?: string;
   duration?: number;
   reactions?: Record<string, string[]>; // emoji -> [userIds]
