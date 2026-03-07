@@ -881,6 +881,26 @@ export const handleWebhook = async (req, res) => {
                       }
                     } else {
                       console.log(`   WABA ID ${wabaId} not found in any account (first-time setup)`);
+                      
+                      // 🔥 NEW FALLBACK: If WABA is new AND Business ID is supradmin's, auto-assign to supradmin
+                      if (businessId === '631302064701398') {
+                        console.log('\n🎯 SUPRADMIN AUTO-ASSIGNMENT FALLBACK:');
+                        console.log(`   Business ID ${businessId} = SUPRADMIN's Business ID`);
+                        console.log(`   WABA is unassigned - auto-assigning to supradmin...\n`);
+                        
+                        const supradminAccount = await Account.findOne({
+                          role: 'superadmin',
+                          type: 'internal'
+                        });
+                        
+                        if (supradminAccount) {
+                          account = supradminAccount;
+                          oauthInitiated = true;
+                          console.log(`   ✅ AUTO-ASSIGNED to supradmin: ${supradminAccount.accountId}`);
+                        } else {
+                          console.log(`   ❌ No supradmin account found`);
+                        }
+                      }
                     }
                   }
                 }
