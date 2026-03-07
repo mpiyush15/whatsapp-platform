@@ -762,10 +762,10 @@ export default function LiveChat() {
                       <div className="px-4 py-3 bg-inherit">
                         <p className="text-sm break-words text-gray-900">
                           {typeof msg.content === 'string' 
-                            ? (msg.content || msg.caption)
+                            ? (msg.content || (typeof msg.caption === 'string' ? msg.caption : '') || '')
                             : typeof msg.content === 'object' && msg.content?.templateName
                               ? `Template: ${msg.content.templateName}`
-                              : (msg.caption || 'Message')}
+                              : (typeof msg.caption === 'string' ? msg.caption : 'Message')}
                         </p>
                       </div>
                     )}
