@@ -929,7 +929,7 @@ export const handleWebhook = async (req, res) => {
                         console.error(`   WABA ID: ${wabaId}`);
                         console.error(`   Already assigned to: ${existingWABA.accountId} (${existingWABA.name || 'UNNAMED'})`);
                         console.error(`   Trying to assign to: ${account.accountId} (${account.name || 'UNNAMED'})`);
-                        console.error('\n   ❌ BLOCKING THIS ASSIGNMENT TO PREVENT CONTAMINATION!\n`);
+                        console.error('\n   ❌ BLOCKING THIS ASSIGNMENT TO PREVENT CONTAMINATION!\n');
                         return;  // FAIL - don't overwrite
                       }
                     }
