@@ -32,7 +32,7 @@ export const handleIncomingMessageWithRealtime = async (
       contactId: contact._id,
       contactName: contact.name,
       contactPhone: contact.phone,
-      content: processedMessage.content,
+      content: processedMessage.content?.text || processedMessage.content || '',
       messageType: processedMessage.messageType,
       timestamp: processedMessage.createdAt
     });
@@ -40,7 +40,16 @@ export const handleIncomingMessageWithRealtime = async (
     // Also emit to specific conversation room
     emitToConversation(accountId, processedMessage.conversationId, 'message_received', {
       conversationId: processedMessage.conversationId,
-      message: processedMessage
+      message: {
+        _id: processedMessage._id?.toString(),
+        conversationId: processedMessage.conversationId?.toString(),
+        content: processedMessage.content?.text || processedMessage.content || '',
+        messageType: processedMessage.messageType || 'text',
+        direction: processedMessage.direction,
+        status: processedMessage.status,
+        createdAt: processedMessage.createdAt,
+        senderType: processedMessage.direction === 'inbound' ? 'customer' : 'agent'
+      }
     });
 
     return processedMessage;

@@ -298,6 +298,13 @@ export const handleWebhook = async (req, res) => {
                   let messageType = message.type;
                   let content = {};
                   
+                  console.log(`\n📨 PROCESSING MESSAGE - Type: ${message.type}`);
+                  console.log(`   From: ${message.from}`);
+                  console.log(`   ID: ${message.id}`);
+                  console.log(`   Has text: ${!!message.text}`);
+                  console.log(`   Has image: ${!!message.image}`);
+                  console.log(`   Full message keys: ${Object.keys(message).join(', ')}\n`);
+                  
                   switch (message.type) {
                     case 'text':
                       content = { text: message.text.body };

@@ -303,7 +303,7 @@ export default function LiveChatV2() {
         console.log('✅ Fetched conversations:', data.conversations.length);
         // Merge with existing conversations to preserve unread count = 0 for open conversations
         const fetchedMap = new Map(data.conversations.map((c: Conversation) => [c._id, c]));
-        const merged = conversations.map(existing => {
+        const merged = conversations.map((existing: Conversation) => {
           const fetched = fetchedMap.get(existing._id);
           // If conversation exists locally with unreadCount = 0 (marked as read), keep it
           if (existing.unreadCount === 0 && fetched) {
@@ -358,12 +358,12 @@ export default function LiveChatV2() {
       });
 
       // Update conversations list to remove unread count
-      setConversations(prev =>
-        prev.map(conv =>
+      setConversations((prev: Conversation[]) =>
+        prev.map((conv: Conversation) =>
           conv._id === conversationId
             ? { ...conv, unreadCount: 0 }
             : conv
-        ).sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+        ).sort((a: Conversation, b: Conversation) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
       );
 
       console.log('✅ Conversation marked as read');
@@ -410,7 +410,7 @@ export default function LiveChatV2() {
         
         if (append) {
           // Prepend older messages
-          setMessages(prev => [...data.messages, ...prev]);
+          setMessages((prev: Message[]) => [...data.messages, ...prev]);
         } else {
           // Replace all messages
           setMessages(data.messages);
@@ -498,7 +498,7 @@ export default function LiveChatV2() {
           console.log('📱 Setting display name to:', data.contact.name);
           setDisplayName(data.contact.name);
           // Also add to map for persistent display
-          setContactNamesMap(prev => ({
+          setContactNamesMap((prev: Record<string, string>) => ({
             ...prev,
             [userPhone]: data.contact.name
           }));
@@ -519,7 +519,7 @@ export default function LiveChatV2() {
   // 🔴 FETCH ALL CONTACT NAMES WHEN CONVERSATIONS LOAD
   useEffect(() => {
     if (conversations.length > 0) {
-      conversations.forEach(conv => {
+      conversations.forEach((conv: Conversation) => {
         // Only fetch if not already in map
         if (!contactNamesMap[conv.userPhone]) {
           fetchContactName(conv.userPhone);
@@ -566,7 +566,7 @@ export default function LiveChatV2() {
         const savedName = contactName.trim();
         setDisplayName(savedName);
         // Update map for persistent display
-        setContactNamesMap(prev => ({
+        setContactNamesMap((prev: Record<string, string>) => ({
           ...prev,
           [selectedConversation.userPhone]: savedName
         }));
@@ -604,7 +604,7 @@ export default function LiveChatV2() {
       createdAt: new Date().toISOString()
     };
     
-    setMessages(prev => [...prev, optimisticMessage]);
+    setMessages((prev: Message[]) => [...prev, optimisticMessage]);
     
     try {
       // ✅ Send via socket first (realtime)
@@ -620,7 +620,7 @@ export default function LiveChatV2() {
             // Message will be updated via socket.on('message.sent')
           } else {
             // Remove optimistic message on failure
-            setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
+            setMessages((prev: Message[]) => prev.filter((m: Message) => m._id !== optimisticMessage._id));
             alert(`Failed to send: ${response?.message || 'Unknown error'}`);
           }
           setIsSending(false);
@@ -644,7 +644,7 @@ export default function LiveChatV2() {
           // Message will be updated via socket.io broadcast
         } else {
           // Remove optimistic message on failure
-          setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
+          setMessages((prev: Message[]) => prev.filter((m: Message) => m._id !== optimisticMessage._id));
           alert(`Failed to send: ${data.message}`);
         }
         setIsSending(false);
@@ -652,7 +652,7 @@ export default function LiveChatV2() {
     } catch (error) {
       console.error('❌ Send error:', error);
       // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
+      setMessages((prev: Message[]) => prev.filter((m: Message) => m._id !== optimisticMessage._id));
       alert('Failed to send message');
       setIsSending(false);
     }
@@ -742,7 +742,7 @@ export default function LiveChatV2() {
       console.log('❌ Socket disconnected');
     });
     
-    newSocket.on('error', (error) => {
+    newSocket.on('error', (error: any) => {
       console.error('🔴 Socket error:', error);
     });
     
@@ -772,8 +772,8 @@ export default function LiveChatV2() {
       console.log('📨 Message received:', data);
       
       // Add to current conversation if open
-      setMessages(prev => {
-        const exists = prev.some(m => m._id === data._id);
+      setMessages((prev: Message[]) => {
+        const exists = prev.some((m: Message) => m._id === data._id);
         if (exists) return prev;
         return [...prev, data];
       });
@@ -784,9 +784,9 @@ export default function LiveChatV2() {
       }, 50);
       
       // Update conversation list
-      setConversations(prev =>
+      setConversations((prev: Conversation[]) =>
         prev
-          .map(conv =>
+          .map((conv: Conversation) =>
             conv._id === data.conversationId
               ? {
                   ...conv,
@@ -796,7 +796,7 @@ export default function LiveChatV2() {
                 }
               : conv
           )
-          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+          .sort((a: Conversation, b: Conversation) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
       );
     });
     
@@ -804,18 +804,18 @@ export default function LiveChatV2() {
       console.log('📤 Message sent:', data);
       
       // Update message in current chat
-      setMessages(prev => {
-        const exists = prev.some(m => m._id === data._id);
+      setMessages((prev: Message[]) => {
+        const exists = prev.some((m: Message) => m._id === data._id);
         if (exists) {
-          return prev.map(m => m._id === data._id ? { ...m, ...data } : m);
+          return prev.map((m: Message) => m._id === data._id ? { ...m, ...data } : m);
         }
         return [...prev, data];
       });
       
       // Update conversation list
-      setConversations(prev =>
+      setConversations((prev: Conversation[]) =>
         prev
-          .map(conv =>
+          .map((conv: Conversation) =>
             conv._id === data.conversationId
               ? {
                   ...conv,
@@ -825,14 +825,14 @@ export default function LiveChatV2() {
                 }
               : conv
           )
-          .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+          .sort((a: Conversation, b: Conversation) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
       );
     });
     
     socket.on('message_status', (data: any) => {
       console.log('🔄 Message status:', data);
-      setMessages(prev =>
-        prev.map(m =>
+      setMessages((prev: Message[]) =>
+        prev.map((m: Message) =>
           m._id === data.messageId
             ? { ...m, status: data.status }
             : m
@@ -1000,7 +1000,7 @@ export default function LiveChatV2() {
               className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition bg-white"
             >
               <option value="">Select phone number</option>
-              {phoneNumbers.map(phone => (
+              {phoneNumbers.map((phone: PhoneNumber) => (
                 <option key={phone.phoneNumberId} value={phone.phoneNumberId}>
                   {phone.displayPhone} {phone.isActive ? '✓' : ''}
                 </option>
@@ -1034,8 +1034,8 @@ export default function LiveChatV2() {
               </div>
             ) : (
               conversations
-                .filter(conv => conv.userPhone.includes(searchQuery))
-                .map(conv => {
+                .filter((conv: Conversation) => conv.userPhone.includes(searchQuery))
+                .map((conv: Conversation) => {
                   const contactName = contactNamesMap[conv.userPhone] || conv.userPhone;
                   return (
                   <button
@@ -1142,7 +1142,7 @@ export default function LiveChatV2() {
               </div>
             ) : (
               <>
-                {messages.map((msg, idx) => {
+                {messages.map((msg: Message, idx: number) => {
                   const showDate = idx === 0 || new Date(messages[idx - 1].createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
                   const isOutbound = msg.direction === 'outbound';
                   
@@ -1360,7 +1360,7 @@ export default function LiveChatV2() {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-2">Recent Messages</p>
               <div className="space-y-2 max-h-48 overflow-y-auto">
-                {messages.slice(-5).map((msg) => (
+                {messages.slice(-5).map((msg: Message) => (
                   <div key={msg._id} className="p-2 bg-gray-50 rounded text-xs text-gray-700 border border-gray-200">
                     <p className="font-semibold text-gray-900 mb-0.5">{msg.direction === 'outbound' ? 'You' : 'Contact'}</p>
                     <p className="line-clamp-2">{msg.content.text || `[${msg.messageType.toUpperCase()}]`}</p>

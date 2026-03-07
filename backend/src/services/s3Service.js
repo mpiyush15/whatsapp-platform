@@ -163,8 +163,8 @@ export const uploadToS3 = async (buffer, accountId, mediaType, mimeType, origina
       Key: s3Key,
       Body: buffer,
       ContentType: mimeType,
-      // Make publicly accessible (adjust ACL based on your needs)
-      // ACL: 'public-read', // Uncomment if you want public access
+      // Make publicly accessible
+      ACL: 'public-read',
     });
     
     await s3Client.send(command);

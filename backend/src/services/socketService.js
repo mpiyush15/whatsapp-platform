@@ -329,9 +329,24 @@ export const broadcastNewMessage = (io, conversationId, message) => {
   }
   
   try {
+    // Transform message to frontend format
+    const transformedMessage = {
+      _id: message._id?.toString(),
+      conversationId: message.conversationId?.toString(),
+      content: message.content?.text || message.content || '',
+      messageType: message.messageType || 'text',
+      direction: message.direction,
+      status: message.status,
+      senderType: message.direction === 'inbound' ? 'customer' : 'agent',
+      createdAt: message.createdAt?.toISOString ? message.createdAt.toISOString() : message.createdAt,
+      recipientPhone: message.recipientPhone,
+      recipientName: message.recipientName,
+      isInternalNote: message.isInternalNote
+    };
+
     const payload = {
       conversationId,
-      message,
+      message: transformedMessage,
       timestamp: new Date().toISOString(),
     };
     
@@ -502,7 +517,7 @@ export const broadcastSentMessage = (io, message, accountId) => {
       conversationId: message.conversationId,
       recipientPhone: message.recipientPhone,
       messageType: message.messageType,
-      content: message.content,
+      content: message.content?.text || message.content || '',
       status: message.status,
       direction: 'outbound',
       waMessageId: message.waMessageId,
@@ -531,25 +546,28 @@ export const broadcastReceivedMessage = (io, message, accountId, contactName = n
   if (!io) return;
   
   try {
+    // Use recipientPhone (it's the sender in inbound messages)
+    const senderPhone = message.senderPhone || message.recipientPhone;
+    
     console.log('📥 Broadcasting received message:', {
       accountId,
       messageId: message._id,
-      senderPhone: message.senderPhone,
+      senderPhone,
+      messageType: message.messageType,
       contactName
     });
     
     const payload = {
-      _id: message._id,
-      conversationId: message.conversationId,
-      senderPhone: message.senderPhone,
+      _id: message._id?.toString(),
+      conversationId: message.conversationId?.toString(),
+      senderPhone,
       senderName: contactName || 'Unknown',
-      messageType: message.messageType,
-      content: message.content,
+      messageType: message.messageType || 'text',
+      content: message.content?.text || message.content || '',
       status: message.status,
       direction: 'inbound',
       waMessageId: message.waMessageId,
-      receivedAt: message.receivedAt,
-      createdAt: message.createdAt,
+      createdAt: message.createdAt ? new Date(message.createdAt).toISOString() : new Date().toISOString(),
       timestamp: new Date().toISOString()
     };
     

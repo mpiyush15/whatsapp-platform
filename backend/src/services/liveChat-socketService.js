@@ -36,10 +36,10 @@ export const broadcastMessageReceived = (accountId, conversationId, message) => 
   io.to(room).emit('message_received', {
     conversationId,
     message: {
-      _id: message._id,
-      content: message.content,
+      _id: message._id?.toString(),
+      content: message.content?.text || message.content || '',
       direction: message.direction,
-      messageType: message.messageType,
+      messageType: message.messageType || 'text',
       createdAt: message.createdAt,
       status: message.status,
       sender: {

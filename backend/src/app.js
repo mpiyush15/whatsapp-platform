@@ -51,6 +51,7 @@ import apiKeyRoutes from './routes/apiKeyRoutes.js';
 import liveChatConversationRoutes from './routes/liveChat-conversationRoutes.js';
 import liveChatMessageRoutes from './routes/liveChat-messageRoutes.js';
 import liveChatTagRoutes from './routes/liveChat-tagRoutes.js';
+import mediaRoutes from '../routes/media.js';
 
 // Load environment variables
 dotenv.config();
@@ -289,6 +290,9 @@ app.use('/api/crm', requireJWT, requireSubscription, crmRoutes);
 app.use('/api/live-chat/conversations', requireJWT, requireSubscription, liveChatConversationRoutes);
 app.use('/api/live-chat/messages', requireJWT, requireSubscription, liveChatMessageRoutes);
 app.use('/api/live-chat/tags', requireJWT, requireSubscription, liveChatTagRoutes);
+
+// Mount media routes (JWT AUTH - for media proxy and downloads)
+app.use('/api/media', requireJWT, mediaRoutes);
 
 // Mount agent routes (JWT AUTH - for agent management, assignment, invitations)
 app.use('/api/agents', agentRoutes);
