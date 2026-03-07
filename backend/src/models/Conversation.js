@@ -147,6 +147,12 @@ conversationSchema.index({ accountId: 1, phoneNumberId: 1 });
 conversationSchema.index({ accountId: 1, lastMessageAt: -1 });
 conversationSchema.index({ accountId: 1, status: 1 });
 
+// ✅ CRITICAL: Unique compound index to prevent duplicate conversations for same phone number
+conversationSchema.index(
+  { accountId: 1, phoneNumberId: 1, userPhone: 1 },
+  { unique: true, sparse: true }
+);
+
 // Note: conversationId already has index: true and unique: true in schema
 
 // Static method to get conversations with preview

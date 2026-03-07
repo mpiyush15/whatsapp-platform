@@ -148,9 +148,6 @@ export const getConversationMessages = async (req, res) => {
     // Reverse to show oldest-first for chat display
     const messages = allMessages.reverse();
     
-    const timeRange = hours ? `from last ${hours} hours` : 'all messages';
-    console.log(`📨 Fetched ${messages.length} ${timeRange} for conversation ${conversationId}`);
-    
     res.json({
       success: true,
       conversation,
@@ -343,12 +340,6 @@ export const markAsRead = async (req, res) => {
     const { conversationId } = req.params;  // This is now the MongoDB _id as string
     const accountId = req.account?.accountId || req.accountId;
     
-    console.log('📖 Mark As Read Request:', {
-      conversationId,
-      accountId,
-      timestamp: new Date().toISOString()
-    });
-    
     // Convert conversationId string to MongoDB ObjectId for lookup
     const ObjectId = MongooseTypes.ObjectId;
     let queryId;
@@ -373,11 +364,6 @@ export const markAsRead = async (req, res) => {
       }
     );
     
-    console.log('✅ Conversation updated:', {
-      matchedCount: convResult.matchedCount,
-      modifiedCount: convResult.modifiedCount
-    });
-    
     // 2. Also mark all unread messages in this conversation as read
     const msgResult = await Message.updateMany(
       { 
@@ -392,11 +378,6 @@ export const markAsRead = async (req, res) => {
         }
       }
     );
-    
-    console.log('✅ Messages updated:', {
-      matchedCount: msgResult.matchedCount,
-      modifiedCount: msgResult.modifiedCount
-    });
     
     if (convResult.matchedCount === 0) {
       console.warn('⚠️ Conversation not found:', { conversationId, accountId });
@@ -413,10 +394,7 @@ export const markAsRead = async (req, res) => {
     // This ensures the conversation_update listener shows the cleared badge
     const io = req.app.get('io');
     if (io && updatedConversation) {
-      console.log('📡 Broadcasting marked-as-read update to all clients');
       broadcastConversationUpdate(io, accountId, updatedConversation);
-    } else {
-      console.warn('⚠️ Could not broadcast: io or updatedConversation missing');
     }
     
     res.json({

@@ -71,8 +71,6 @@ export const listConversations = async (accountId, workspaceId, phoneNumberId, f
     ];
   }
 
-  console.log('📭 Query for conversations:', JSON.stringify(query, null, 2));
-
   const conversations = await Conversation.find(query)
     .sort({ lastMessageAt: -1 })
     .skip(offset)
@@ -81,8 +79,6 @@ export const listConversations = async (accountId, workspaceId, phoneNumberId, f
     .lean();
 
   const total = await Conversation.countDocuments(query);
-
-  console.log('📊 Found conversations:', conversations.length, 'Total:', total);
 
   return {
     conversations,

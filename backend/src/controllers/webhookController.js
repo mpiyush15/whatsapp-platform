@@ -129,11 +129,18 @@ export const verifyWebhook = (req, res) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
   
-  const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'pixels_webhook_secret_2025';
+  // ✅ FIX 1: Remove hardcoded fallback token - must come from env
+  const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
+  
+  if (!VERIFY_TOKEN) {
+    console.error('❌ CRITICAL: META_VERIFY_TOKEN not set in environment variables');
+    console.error('   This will cause webhook verification to fail');
+    console.error('   Set: export META_VERIFY_TOKEN="your_verify_token"');
+  }
   
   console.log('Mode:', mode);
   console.log('Received Token:', token);
-  console.log('Expected Token:', VERIFY_TOKEN);
+  console.log('Expected Token:', VERIFY_TOKEN ? '✅ Configured' : '❌ NOT SET');
   console.log('Challenge:', challenge);
   console.log('Match:', token === VERIFY_TOKEN ? '✅ YES' : '❌ NO');
   
@@ -202,6 +209,7 @@ export const handleWebhook = async (req, res) => {
               const phoneNumberId = value.metadata?.phone_number_id;
               
               if (!phoneNumberId) {
+                console.warn('⚠️ No phone_number_id in webhook metadata, skipping');
                 continue;
               }
               
@@ -221,17 +229,36 @@ export const handleWebhook = async (req, res) => {
                   isActive: true 
                 });
                 if (!fallbackPhone) {
+                  // ✅ FIX 2: Add logging for account lookup failure
+                  console.warn('⚠️ Account resolution failed for webhook:', {
+                    wabaId: entry.id,
+                    phoneNumberId,
+                    reason: 'No PhoneNumber config found'
+                  });
                   continue;
                 }
                 const fallbackAccount = await Account.findById(fallbackPhone.accountId);
                 if (!fallbackAccount) {
+                  // ✅ FIX 2: Add logging for account lookup failure
+                  console.warn('⚠️ Account resolution failed for webhook:', {
+                    wabaId: entry.id,
+                    phoneNumberId,
+                    reason: 'Account not found in database'
+                  });
                   continue;
                 }
                 targetAccountId = fallbackPhone.accountId;
                 targetAccount = fallbackAccount;
               }
               
+              // ✅ FIX 2: Log if account resolution fails
               if (!targetAccountId) {
+                console.warn('⚠️ Account resolution failed for webhook:', {
+                  wabaId: entry.id,
+                  phoneNumberId,
+                  fromPhone: value.contacts?.[0]?.phone,
+                  reason: 'targetAccountId is null/undefined'
+                });
                 continue;
               }
               
@@ -246,31 +273,27 @@ export const handleWebhook = async (req, res) => {
                 continue;
               }
               
-              const accountId = phoneConfig.accountId;
-              console.log('✅ Found account:', accountId);
-              console.log('✅ Account type:', typeof accountId, '(should be string)');
-              console.log('✅ Account verified with WABA ID:', wabaId);
-              console.log('✅ Phone Number ID:', phoneNumberId, '(should be string)');
+              // ✅ FIX 4: Add account consistency check - ensure accountId is String
+              if (typeof phoneConfig.accountId !== 'string') {
+                console.error('❌ CRITICAL: Account ID type mismatch!', {
+                  type: typeof phoneConfig.accountId,
+                  expected: 'string'
+                });
+                continue;
+              }
               
-              // Debug: Verify token is present (log length, not the actual token)
+              const accountId = phoneConfig.accountId;
+              
+              // Verify token is present
               if (!phoneConfig.accessToken) {
                 console.error('❌ CRITICAL: accessToken is undefined! Cannot download media.');
-              } else {
-                console.log(`✅ Access token loaded (length: ${phoneConfig.accessToken.length} chars)`);
               }
               
               // Get sender profile info from contacts (if available)
               const senderProfile = value.contacts?.[0];
-              console.log('Sender Profile:', senderProfile);
               
               for (const message of value.messages) {
                 try {
-                  console.log('\n--- Processing Message ---');
-                  console.log('Message ID:', message.id);
-                  console.log('From:', message.from);
-                  console.log('Type:', message.type);
-                  console.log('Timestamp:', message.timestamp);
-                  
                   // Extract message content based on type
                   let messageType = message.type;
                   let content = {};
@@ -278,7 +301,6 @@ export const handleWebhook = async (req, res) => {
                   switch (message.type) {
                     case 'text':
                       content = { text: message.text.body };
-                      console.log('Text:', message.text.body);
                       break;
                     case 'image':
                       content = {
@@ -286,11 +308,9 @@ export const handleWebhook = async (req, res) => {
                         mimeType: message.image.mime_type,
                         caption: message.image.caption || null
                       };
-                      console.log('Image ID:', message.image.id);
                       
                       // Download and upload to S3
                       try {
-                        console.log('📥 Downloading image from WhatsApp and uploading to S3...');
                         const mediaData = await downloadAndUploadMedia(
                           message.image.id,
                           phoneConfig.accessToken,
@@ -304,8 +324,6 @@ export const handleWebhook = async (req, res) => {
                         content.fileSize = mediaData.fileSize;
                         content.sha256 = mediaData.sha256;
                         content.mediaType = 'image';
-                        
-                        console.log('✅ Image saved to S3:', mediaData.s3Url);
                       } catch (mediaError) {
                         console.error('❌ Failed to download/upload image:', mediaError.message);
                         // Continue processing even if media fails
@@ -336,8 +354,6 @@ export const handleWebhook = async (req, res) => {
                         content.fileSize = mediaData.fileSize;
                         content.sha256 = mediaData.sha256;
                         content.mediaType = 'document';
-                        
-                        console.log('✅ Document saved to S3:', mediaData.s3Url);
                       } catch (mediaError) {
                         console.error('❌ Failed to download/upload document:', mediaError.message);
                       }
@@ -347,11 +363,9 @@ export const handleWebhook = async (req, res) => {
                         mediaId: message.audio.id,
                         mimeType: message.audio.mime_type
                       };
-                      console.log('Audio ID:', message.audio.id);
                       
                       // Download and upload to S3
                       try {
-                        console.log('📥 Downloading audio from WhatsApp and uploading to S3...');
                         const mediaData = await downloadAndUploadMedia(
                           message.audio.id,
                           phoneConfig.accessToken,
@@ -365,8 +379,6 @@ export const handleWebhook = async (req, res) => {
                         content.fileSize = mediaData.fileSize;
                         content.sha256 = mediaData.sha256;
                         content.mediaType = 'audio';
-                        
-                        console.log('✅ Audio saved to S3:', mediaData.s3Url);
                       } catch (mediaError) {
                         console.error('❌ Failed to download/upload audio:', mediaError.message);
                       }
@@ -377,11 +389,9 @@ export const handleWebhook = async (req, res) => {
                         mimeType: message.video.mime_type,
                         caption: message.video.caption || null
                       };
-                      console.log('Video ID:', message.video.id);
                       
                       // Download and upload to S3
                       try {
-                        console.log('📥 Downloading video from WhatsApp and uploading to S3...');
                         const mediaData = await downloadAndUploadMedia(
                           message.video.id,
                           phoneConfig.accessToken,
@@ -395,8 +405,6 @@ export const handleWebhook = async (req, res) => {
                         content.fileSize = mediaData.fileSize;
                         content.sha256 = mediaData.sha256;
                         content.mediaType = 'video';
-                        
-                        console.log('✅ Video saved to S3:', mediaData.s3Url);
                       } catch (mediaError) {
                         console.error('❌ Failed to download/upload video:', mediaError.message);
                       }
@@ -409,7 +417,6 @@ export const handleWebhook = async (req, res) => {
                         address: message.location.address,
                         name: message.location.name
                       };
-                      console.log('Location:', content);
                       break;
                     case 'interactive':
                       messageType = 'interactive'; // Keep as is, already in enum
@@ -427,7 +434,6 @@ export const handleWebhook = async (req, res) => {
                           listDescription: message.interactive.list_reply.description
                         };
                       }
-                      console.log('Interactive:', content);
                       break;
                     case 'sticker':
                       messageType = 'media'; // Map sticker to media type
@@ -468,7 +474,21 @@ export const handleWebhook = async (req, res) => {
                   
                   // ✅ CRITICAL FIX: Create conversation first to get MongoDB _id
                   // This ID will be used for Socket.io broadcasting and must match API format
-                  const workspaceId = targetAccount.defaultWorkspaceId || targetAccountId;  // Use default workspace or fallback to account
+                  
+                  // ✅ FIX 3: Workspace validation - ensure workspace ID exists
+                  let workspaceId = targetAccount.defaultWorkspaceId;
+                  
+                  if (!workspaceId) {
+                    console.warn('⚠️ Account has no default workspace, creating default', {
+                      accountId: targetAccountId
+                    });
+                    workspaceId = `${targetAccountId}_default`;
+                  }
+                  
+                  console.log('✅ Using workspace:', {
+                    workspaceId,
+                    fromAccount: targetAccount._id
+                  });
                   
                   // ✅ USE targetAccountId (verified String from Account lookup) - NOT accountId from phoneConfig
                   const conversationDocId = `${targetAccountId}_${phoneNumberId}_${message.from}`;

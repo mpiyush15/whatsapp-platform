@@ -54,20 +54,15 @@ export const initSocketIO = (server) => {
   // ✅ FIX #1: Event Verification Middleware - validates accountId on all incoming events
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
-    console.log('\n🔐 Socket Auth Verification:');
-    console.log('  Transport:', socket.conn?.transport?.name);
-    console.log('  Token exists:', !!token);
-    console.log('  Token length:', token?.length || 0);
     
     if (!token) {
-      console.error('  ❌ No token provided');
+      console.error('❌ Socket: No token provided');
       return next(new Error('Authentication error - no token'));
     }
 
     try {
       const cleanToken = token.replace('Bearer ', '');
       const decoded = jwt.verify(cleanToken, JWT_SECRET);
-      console.log('  ✅ Token verified');
       
       socket.userId = decoded.accountId;
       socket.email = decoded.email;
@@ -75,7 +70,7 @@ export const initSocketIO = (server) => {
       socket.isAuthenticated = true;  // ✅ Mark as authenticated for event verification
       next();
     } catch (error) {
-      console.error('  ❌ JWT Verification FAILED:', error.message);
+      console.error('❌ JWT Verification FAILED:', error.message);
       next(new Error('Invalid token: ' + error.message));
     }
   });
@@ -83,14 +78,9 @@ export const initSocketIO = (server) => {
   // ✅ FIX #4: Security Audit Logging - log all socket events for security monitoring
   io.use((socket, next) => {
     socket.onAny((eventName, ...args) => {
-      // Log security-relevant events
-      if (['join_conversation', 'typing', 'subscribe_conversations'].includes(eventName)) {
-        console.log(`🔐 SOCKET EVENT [${socket.email}]:`, {
-          event: eventName,
-          socketId: socket.id,
-          accountId: socket.accountId,
-          timestamp: new Date().toISOString()
-        });
+      // Log only critical security-relevant events
+      if (['join_conversation'].includes(eventName)) {
+        // Only log errors, not every event
       }
     });
     next();
@@ -101,7 +91,8 @@ export const initSocketIO = (server) => {
   const conversationUsers = new Map();
 
   io.on('connection', (socket) => {
-    console.log(`✅ User connected: ${socket.id} (${socket.email})`);
+    // User connected
+
 
     /**
      * Join a specific conversation room
@@ -157,22 +148,11 @@ export const initSocketIO = (server) => {
           conversationUsers.set(conversationId, new Set());
         }
         conversationUsers.get(conversationId).add(socket.id);
-        
-        console.log('✅ USER JOINED CONVERSATION ROOM (VERIFIED)', {
-          userId: socket.email,
-          socketId: socket.id,
-          accountId: socket.accountId,
-          conversationId: conversationId,
-          room: `conversation:${conversationId}`,
-          totalUsersInConversation: conversationUsers.get(conversationId).size,
-          timestamp: new Date().toISOString()
-        });
       } catch (error) {
         console.error('❌ Error in join_conversation:', {
           error: error.message,
           conversationId,
-          socketId: socket.id,
-          stack: error.stack
+          socketId: socket.id
         });
         socket.emit('error', { message: 'Error joining conversation' });
       }
@@ -194,8 +174,6 @@ export const initSocketIO = (server) => {
             conversationUsers.delete(conversationId);
           }
         }
-        
-        console.log(`📍 User ${socket.email} left conversation ${conversationId}`);
       }
     });
 
@@ -205,12 +183,6 @@ export const initSocketIO = (server) => {
      */
     socket.on('send_message', async (data, callback) => {
       const { conversationId, phoneNumberId, recipientPhone, message } = data;
-      console.log('📨 Socket send_message received:', {
-        conversationId,
-        recipientPhone,
-        messageLength: message?.length || 0,
-        accountId: socket.accountId
-      });
 
       try {
         // Validate input
@@ -258,7 +230,6 @@ export const initSocketIO = (server) => {
         const apiResponse = await response.json();
 
         if (apiResponse.success) {
-          console.log('✅ Message sent successfully via socket');
           callback({ success: true, message: 'Message sent' });
         } else {
           console.error('❌ API failed to send message:', apiResponse);
@@ -275,7 +246,6 @@ export const initSocketIO = (server) => {
      */
     socket.on('subscribe_conversations', () => {
       socket.join(`user:${socket.accountId}`);
-      console.log(`📭 User ${socket.email} subscribed to conversations`);
     });
 
     /**
@@ -324,27 +294,17 @@ export const initSocketIO = (server) => {
           isTyping,
           timestamp: new Date().toISOString(),
         });
-
-        console.log('✅ Typing indicator broadcast (verified)', {
-          conversationId,
-          accountId: socket.accountId,
-          isTyping
-        });
       } catch (error) {
         console.error('❌ Error in typing indicator:', {
           error: error.message,
           conversationId,
-          socketId: socket.id,
-          stack: error.stack
+          socketId: socket.id
         });
         // Silent fail - don't broadcast
       }
     });
 
     socket.on('disconnect', (reason) => {
-      console.log(`❌ User disconnected: ${socket.id} (${socket.email})`);
-      console.log('  Disconnect reason:', reason);
-      console.log('  Socket state:', socket.connected);
       userConversations.delete(socket.id);
     });
 
@@ -376,24 +336,11 @@ export const broadcastNewMessage = (io, conversationId, message) => {
     };
     
     const room = `conversation:${conversationId}`;
-    console.log('%c📡 BROADCASTING NEW MESSAGE', {
-      room: room,
-      messageId: message._id,
-      messageType: message.messageType,
-      from: message.recipientPhone,
-      conversationIdType: typeof conversationId,
-      timestamp: new Date().toISOString()
-    });
     
     // ✅ Emit with acknowledgment callback to detect failures
     io.to(room).emit('new_message', payload, (err) => {
       if (err) {
-        console.error('❌ Broadcast new_message failed:', {
-          room: room,
-          error: err.message
-        });
-      } else {
-        console.log('✅ Broadcast new_message successful to room:', room);
+        console.error('❌ Broadcast new_message failed:', err.message);
       }
     });
   } catch (error) {
@@ -448,25 +395,11 @@ export const broadcastConversationUpdate = (io, accountId, conversation) => {
     };
     
     const room = `user:${accountId}`;
-    console.log('📡 BROADCASTING CONVERSATION UPDATE (REALTIME):', {
-      room: room,
-      conversationId: conversation._id,
-      userPhone: conversation.userPhone,
-      userName: conversation.userName || 'Unknown',
-      lastMessagePreview: conversation.lastMessagePreview?.substring(0, 30),
-      unreadCount: conversation.unreadCount,
-      timestamp: new Date().toISOString()
-    });
     
     // ✅ Emit with acknowledgment callback
     io.to(room).emit('conversation_update', enrichedConversation, (err) => {
       if (err) {
-        console.error('❌ Broadcast conversation_update failed:', {
-          room: room,
-          error: err.message
-        });
-      } else {
-        console.log('✅ Broadcast conversation_update successful to', room);
+        console.error('❌ Broadcast conversation_update failed:', err.message);
       }
     });
   } catch (error) {
@@ -495,21 +428,10 @@ export const broadcastMessageStatus = (io, conversationId, messageId, status) =>
       timestamp: new Date().toISOString(),
     };
     
-    console.log('📡 Broadcasting message status:', {
-      room: `conversation:${conversationId}`,
-      messageId,
-      status
-    });
-    
     // ✅ Emit with acknowledgment callback
     io.to(`conversation:${conversationId}`).emit('message_status', payload, (err) => {
       if (err) {
-        console.error('❌ Broadcast message_status failed:', {
-          room: `conversation:${conversationId}`,
-          error: err.message
-        });
-      } else {
-        console.log('✅ Broadcast message_status successful');
+        console.error('❌ Broadcast message_status failed');
       }
     });
   } catch (error) {
@@ -534,13 +456,6 @@ export const broadcastPhoneStatusChange = (io, accountId, phoneNumber) => {
   }
   
   try {
-    console.log('📡 Broadcasting phone status change:', {
-      accountId,
-      phoneNumberId: phoneNumber.phoneNumberId,
-      isActive: phoneNumber.isActive,
-      qualityRating: phoneNumber.qualityRating
-    });
-    
     const payload = {
       phoneNumberId: phoneNumber.phoneNumberId,
       isActive: phoneNumber.isActive,
@@ -555,12 +470,7 @@ export const broadcastPhoneStatusChange = (io, accountId, phoneNumber) => {
     // ✅ Emit with acknowledgment callback
     io.to(`user:${accountId}`).emit('phone_status_changed', payload, (err) => {
       if (err) {
-        console.error('❌ Broadcast phone_status_changed failed:', {
-          room: `user:${accountId}`,
-          error: err.message
-        });
-      } else {
-        console.log('✅ Broadcast phone_status_changed successful');
+        console.error('❌ Broadcast phone_status_changed failed');
       }
     });
   } catch (error) {

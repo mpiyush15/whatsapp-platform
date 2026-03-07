@@ -142,14 +142,13 @@ export default function LiveChat() {
   const fetchMessages = useCallback(async (conversationId: string) => {
     try {
       setLoadingMessages(true);
-      const response = await axios.get(`${API_BASE_URL()}/live-chat/messages`, {
-        params: { conversationId, limit: 50, offset: 0 },
+      const response = await axios.get(`${API_BASE_URL()}/live-chat/conversations/${conversationId}/messages`, {
         headers: { 'Authorization': `Bearer ${getAuthToken()}` },
         timeout: 10000
       });
 
-      if (response.data.success && response.data.data?.messages) {
-        setMessages(response.data.data.messages);
+      if (response.data.success && response.data.data) {
+        setMessages(response.data.data);
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -326,7 +325,7 @@ export default function LiveChat() {
   // ===== RENDER =====
 
   return (
-    <div className="flex h-[calc(100vh-80px)] bg-gray-100">
+    <div className="flex h-screen bg-gray-100">
       {/* Conversations Sidebar */}
       <div className="w-full md:w-96 bg-white border-r border-gray-200 overflow-y-auto flex flex-col">
         {/* Search & Filter */}
@@ -410,7 +409,7 @@ export default function LiveChat() {
       {selectedConversation ? (
         <div className="hidden md:flex w-full flex-col bg-white overflow-hidden">
           {/* Header */}
-          <div className="h-16 border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0 bg-white">
+          <div className="h-16 border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
             <div>
               <h2 className="font-semibold text-gray-900">{contactName}</h2>
               <p className="text-xs text-gray-500">{conversations.find(c => c._id === selectedConversation)?.userPhone}</p>
@@ -420,8 +419,8 @@ export default function LiveChat() {
             </button>
           </div>
 
-          {/* Messages Container */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {loadingMessages ? (
               <div className="flex items-center justify-center h-full">
                 <Loader className="animate-spin text-green-500" size={24} />
@@ -433,14 +432,14 @@ export default function LiveChat() {
                   className={`flex ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-xs px-4 py-3 rounded-lg shadow-sm ${
+                    className={`max-w-xs px-4 py-2 rounded-lg ${
                       msg.direction === 'outbound'
-                        ? 'bg-yellow-300 text-gray-900 rounded-br-none'
-                        : 'bg-white text-gray-900 border border-gray-200 rounded-bl-none'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-200 text-gray-900'
                     }`}
                   >
                     <p className="text-sm break-words">{msg.content}</p>
-                    <p className={`text-xs mt-2 font-medium ${msg.direction === 'outbound' ? 'text-yellow-700' : 'text-gray-500'}`}>
+                    <p className={`text-xs mt-1 ${msg.direction === 'outbound' ? 'text-green-100' : 'text-gray-600'}`}>
                       {formatDate(msg.createdAt)}
                     </p>
                   </div>
@@ -448,16 +447,16 @@ export default function LiveChat() {
               ))
             ) : (
               <div className="flex items-center justify-center h-full text-gray-400">
-                <p className="text-sm">No messages yet. Start the conversation!</p>
+                <p className="text-sm">No messages</p>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Area */}
-          <div className="h-20 border-t border-gray-200 px-4 py-3 flex items-center gap-3 flex-shrink-0 bg-white">
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-600 flex-shrink-0">
-              <Paperclip size={20} />
+          {/* Input */}
+          <div className="h-16 border-t border-gray-200 px-4 py-3 flex items-center gap-2 flex-shrink-0">
+            <button className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-600">
+              <Paperclip size={18} />
             </button>
             <input
               type="text"
@@ -465,23 +464,20 @@ export default function LiveChat() {
               onChange={(e) => setMessageInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
               placeholder="Type a message..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             />
             <button
               onClick={sendMessage}
               disabled={!messageInput.trim()}
-              className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition flex-shrink-0"
+              className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition"
             >
-              <Send size={20} />
+              <Send size={18} />
             </button>
           </div>
         </div>
       ) : (
         <div className="hidden md:flex w-full items-center justify-center bg-gray-50">
-          <div className="text-gray-400 text-center">
-            <MessageSquare size={48} className="mx-auto text-gray-300 mb-4" />
-            <p>Select a conversation to start messaging</p>
-          </div>
+          <p className="text-gray-400">Select a conversation to start messaging</p>
         </div>
       )}
     </div>

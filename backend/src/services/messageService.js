@@ -23,6 +23,15 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
     throw new Error('Conversation not found');
   }
 
+  // If phoneNumberId is not provided, get it from conversation
+  if (!phoneNumberId) {
+    phoneNumberId = conversation.phoneNumberId;
+  }
+
+  if (!phoneNumberId) {
+    throw new Error('Phone number ID not found in conversation or request');
+  }
+
   // Prepare message payload
   const messagePayload = {
     recipientPhone: conversation.userPhone,
@@ -31,11 +40,11 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   };
 
   // Send via WhatsApp API
-  const whatsappResponse = await whatsappService.sendMessage(
+  const whatsappResponse = await whatsappService.sendTextMessage(
+    accountId,
     phoneNumberId,
     messagePayload.recipientPhone,
-    messagePayload.message,
-    messagePayload.messageType
+    messagePayload.message
   );
 
   // Store message in database
@@ -52,7 +61,7 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
     direction: 'outbound',
     status: 'sent',
     sentAt: new Date(),
-    waMessageId: whatsappResponse.messages[0].id,
+    waMessageId: whatsappResponse.waMessageId,
     source: 'agent_sent'
   });
 
@@ -61,6 +70,7 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
     { _id: conversationId },
     {
       lastMessageAt: new Date(),
+      updatedAt: new Date(),
       lastMessagePreview: content.substring(0, 200),
       lastMessageType: messageType,
       messageCount: { $inc: 1 },
