@@ -287,33 +287,79 @@ export const disconnectWhatsApp = async (req, res) => {
     const accountId = req.accountId
     
     console.log('🔌 Disconnecting WhatsApp for account:', accountId)
+    console.log('   Starting full data cleanup...')
     
-    // Mark all phones inactive
-    const result = await PhoneNumber.updateMany(
-      { accountId },
-      { isActive: false }
-    )
+    // Get all phone numbers for this account (for cascading delete)
+    const phones = await PhoneNumber.find({ accountId })
+    const phoneNumberIds = phones.map(p => p._id)
     
-    console.log('✅ Marked', result.modifiedCount, 'phone(s) as inactive')
+    console.log(`\n🗑️  CLEANUP: Removing all WhatsApp data for account ${accountId}`)
     
-    // Clear Account.wabaId
+    // 1. Delete conversations
+    const convResult = await Conversation.deleteMany({ accountId })
+    console.log(`   ✅ Deleted ${convResult.deletedCount} conversation(s)`)
+    
+    // 2. Delete messages
+    const msgResult = await Message.deleteMany({ accountId })
+    console.log(`   ✅ Deleted ${msgResult.deletedCount} message(s)`)
+    
+    // 3. Delete contacts
+    const contactResult = await Contact.deleteMany({ accountId })
+    console.log(`   ✅ Deleted ${contactResult.deletedCount} contact(s)`)
+    
+    // 4. Delete templates
+    const templateResult = await Template.deleteMany({ accountId })
+    console.log(`   ✅ Deleted ${templateResult.deletedCount} template(s)`)
+    
+    // 5. Delete failed messages
+    const failedResult = await FailedMessage.deleteMany({ accountId })
+    console.log(`   ✅ Deleted ${failedResult.deletedCount} failed message(s)`)
+    
+    // 6. Delete phone numbers
+    const result = await PhoneNumber.deleteMany({ accountId })
+    console.log(`   ✅ Deleted ${result.deletedCount} phone number(s)`)
+    
+    // 7. Clear Account.wabaId and related fields
     await Account.findOneAndUpdate(
       { accountId },
-      { wabaId: null }
+      { 
+        wabaId: null,
+        businessId: null,
+        'metaSync.status': null,
+        'metaSync.accountId': null,
+        'metaSync.oauth_timestamp': null,
+        'metaSync.oauthAccessToken': null,
+        'metaSync.note': null
+      }
     )
     
-    console.log('✅ Cleared Account.wabaId')
+    console.log(`   ✅ Cleared Account WhatsApp metadata\n`)
     
     logConsistencyEvent('disconnect', {
       accountId,
       status: 'success',
-      message: 'WhatsApp disconnected'
+      message: 'WhatsApp disconnected - all data cleaned',
+      itemsCleaned: {
+        conversations: convResult.deletedCount,
+        messages: msgResult.deletedCount,
+        contacts: contactResult.deletedCount,
+        templates: templateResult.deletedCount,
+        failedMessages: failedResult.deletedCount,
+        phoneNumbers: result.deletedCount
+      }
     })
     
     return res.json({
       success: true,
-      message: 'WhatsApp disconnected successfully',
-      phonesAffected: result.modifiedCount
+      message: 'WhatsApp disconnected and all data cleaned successfully',
+      itemsCleaned: {
+        conversations: convResult.deletedCount,
+        messages: msgResult.deletedCount,
+        contacts: contactResult.deletedCount,
+        templates: templateResult.deletedCount,
+        failedMessages: failedResult.deletedCount,
+        phoneNumbers: result.deletedCount
+      }
     })
   } catch (error) {
     console.error('❌ Disconnect error:', error)

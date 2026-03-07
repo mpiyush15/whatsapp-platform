@@ -908,12 +908,30 @@ export const handleWebhook = async (req, res) => {
                   if (account.wabaId !== wabaId && wabaId) {
                     const existingWABA = await Account.findOne({ wabaId, accountId: { $ne: account.accountId } });
                     if (existingWABA) {
-                      console.error('\n🚨 🚨 🚨 CRITICAL ALERT: WABA ALREADY ASSIGNED TO ANOTHER ACCOUNT!');
-                      console.error(`   WABA ID: ${wabaId}`);
-                      console.error(`   Already assigned to: ${existingWABA.accountId} (${existingWABA.name})`);
-                      console.error(`   Trying to assign to: ${account.accountId} (${account.name})`);
-                      console.error('\n   ❌ BLOCKING THIS ASSIGNMENT TO PREVENT CONTAMINATION!\n');
-                      return;  // FAIL - don't overwrite
+                      // ALLOW: Supradmin can take back their own WABA (reconnection/refresh scenario)
+                      if (account.role === 'superadmin' && account.type === 'internal') {
+                        console.log('\n✅ SUPRADMIN RECONNECTION ALLOWED:');
+                        console.log(`   Supradmin account ${account.accountId} is reconnecting their WABA`);
+                        console.log(`   Previous assignment was to: ${existingWABA.accountId} (${existingWABA.name})`);
+                        console.log(`   This is OK - supradmin can manage their own WABA across sessions`);
+                        console.log(`   Action: Clearing WABA from ${existingWABA.accountId} and assigning to supradmin\n`);
+                        
+                        // Remove WABA from the old account
+                        await Account.findOneAndUpdate(
+                          { accountId: existingWABA.accountId },
+                          { wabaId: null },
+                          { new: true }
+                        );
+                        console.log(`   ✅ Cleared WABA from ${existingWABA.accountId}`);
+                      } else {
+                        // BLOCK: Client cannot take over another account's WABA
+                        console.error('\n🚨 🚨 🚨 CRITICAL ALERT: WABA ALREADY ASSIGNED TO ANOTHER ACCOUNT!');
+                        console.error(`   WABA ID: ${wabaId}`);
+                        console.error(`   Already assigned to: ${existingWABA.accountId} (${existingWABA.name || 'UNNAMED'})`);
+                        console.error(`   Trying to assign to: ${account.accountId} (${account.name || 'UNNAMED'})`);
+                        console.error('\n   ❌ BLOCKING THIS ASSIGNMENT TO PREVENT CONTAMINATION!\n`);
+                        return;  // FAIL - don't overwrite
+                      }
                     }
                   }
                   
