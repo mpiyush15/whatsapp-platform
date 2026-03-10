@@ -139,12 +139,7 @@ router.post('/', async (req, res) => {
       agentId
     );
 
-    // Emit real-time event
-    emitToConversation(accountId, conversationId, 'message_sent', {
-      conversationId,
-      message
-    });
-
+    // ✅ Success response - no socket broadcasts
     return res.status(201).json({
       success: true,
       message: 'Message sent successfully',

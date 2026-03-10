@@ -87,9 +87,11 @@ export default function LiveChat() {
   };
 
   const sortConversations = useCallback((convs: Conversation[]) => {
-    return [...convs].sort((a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
+    return [...convs].sort((a, b) => {
+      const aTime = new Date(a.lastMessageAt || a.updatedAt).getTime();
+      const bTime = new Date(b.lastMessageAt || b.updatedAt).getTime();
+      return bTime - aTime;
+    });
   }, []);
 
   const getFilteredConversations = useCallback(() => {
@@ -238,40 +240,61 @@ export default function LiveChat() {
       console.log('❌ Socket disconnected');
     });
 
-    // Message events - UNIFIED HANDLER
-    newSocket.on('new_message', (data: any) => {
-      console.log('📨 New message:', data);
+    // Message events - SINGLE UNIFIED HANDLER (prevents duplicates)
+    const handleNewMessage = (data: any) => {
+      console.log('📨 Message received:', data);
       
-      // Update messages if this conversation is selected
-      if (data.conversationId === selectedConversation && data.message) {
+      // Support both data formats
+      const message = data.message || data;
+      const conversationId = data.conversationId || message.conversationId;
+      
+      if (!conversationId) return;
+      
+      // Update messages in current conversation
+      if (conversationId === selectedConversation) {
         setMessages(prev => {
           // Avoid duplicates
-          if (prev.some(m => m._id === data.message._id)) return prev;
-          const updated = [...prev, data.message];
-          return updated.sort((a, b) =>
+          const messageId = message._id || data._id;
+          if (prev.some(m => m._id === messageId)) return prev;
+          
+          const newMessage: Message = {
+            _id: messageId,
+            content: message.content?.text || message.content || data.senderPhone || 'Message',
+            direction: message.direction || 'inbound',
+            status: message.status || 'delivered',
+            createdAt: message.createdAt,
+            senderType: (message.direction === 'outbound') ? 'agent' : 'customer',
+            isInternalNote: false,
+            messageType: message.messageType || 'text'
+          };
+          
+          return [...prev, newMessage].sort((a, b) =>
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
         });
       }
-
-      // Update conversation in list (auto-sort)
-      if (data.conversationId && data.message) {
-        setConversations(prev => {
-          const updated = prev.map(conv =>
-            conv._id === data.conversationId
-              ? {
-                  ...conv,
-                  updatedAt: data.message.createdAt,
-                  lastMessagePreview: data.message.content?.substring(0, 100),
-                  unreadCount: data.message.direction === 'inbound' ? (conv.unreadCount || 0) + 1 : conv.unreadCount,
-                  lastMessageAt: data.message.createdAt
-                }
-              : conv
-          );
-          return sortConversations(updated);
-        });
-      }
-    });
+      
+      // Update conversation list
+      setConversations(prev => {
+        const updated = prev.map(conv =>
+          conv._id === conversationId
+            ? {
+                ...conv,
+                updatedAt: message.createdAt,
+                lastMessagePreview: (message.content?.text || message.content || 'Message').substring(0, 100),
+                unreadCount: message.direction === 'inbound' && selectedConversation !== conversationId ? (conv.unreadCount || 0) + 1 : conv.unreadCount,
+                lastMessageAt: message.createdAt
+              }
+            : conv
+        );
+        return sortConversations(updated);
+      });
+    };
+    
+    // Register single handler for all message events (removes duplicates)
+    newSocket.on('new_message', handleNewMessage);
+    newSocket.on('message.received', handleNewMessage);
+    newSocket.on('message_received', handleNewMessage);
 
     newSocket.on('message_received', (data: any) => {
       console.log('📨 Message received:', data);
@@ -279,10 +302,14 @@ export default function LiveChat() {
       newSocket.emit('new_message', data);
     });
 
-    // Conversation events
+    // Conversation events - Update specific conversation directly from socket
     newSocket.on('conversation_update', (data: any) => {
       console.log('🔄 Conversation updated:', data);
-      fetchConversations();
+      // Use socket data directly instead of refetching - conversation already has unreadCount: 0
+      setConversations(prev => {
+        const updated = prev.map(conv => conv._id === data._id ? data : conv);
+        return sortConversations(updated);
+      });
     });
 
     setSocket(newSocket);
@@ -381,7 +408,7 @@ export default function LiveChat() {
                       <h4 className={`text-sm truncate ${conv.unreadCount > 0 ? 'font-semibold' : 'font-medium'}`}>
                         {conv.userName || conv.userPhone}
                       </h4>
-                      <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(conv.updatedAt)}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(conv.lastMessageAt || conv.updatedAt)}</span>
                     </div>
                     {conv.lastMessagePreview && (
                       <p className="text-xs text-gray-500 truncate mt-1">{conv.lastMessagePreview}</p>

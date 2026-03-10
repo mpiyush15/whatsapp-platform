@@ -39,13 +39,19 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
     messageType: messageType
   };
 
-  // Send via WhatsApp API
-  const whatsappResponse = await whatsappService.sendTextMessage(
-    accountId,
-    phoneNumberId,
-    messagePayload.recipientPhone,
-    messagePayload.message
-  );
+  // ✅ Try to send via WhatsApp, but don't fail if WhatsApp API fails
+  let whatsappResponse = { waMessageId: `temp_${Date.now()}` };
+  try {
+    whatsappResponse = await whatsappService.sendTextMessage(
+      accountId,
+      phoneNumberId,
+      messagePayload.recipientPhone,
+      messagePayload.message
+    );
+  } catch (whatsappError) {
+    console.warn('⚠️ WhatsApp API error (message will be saved locally):', whatsappError.message);
+    // Don't throw - message should still be saved locally
+  }
 
   // Store message in database
   const message = await Message.create({

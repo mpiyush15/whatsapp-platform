@@ -134,9 +134,11 @@ export default function LiveChat() {
   };
 
   const sortConversations = useCallback((convs: Conversation[]) => {
-    return [...convs].sort((a, b) =>
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
+    return [...convs].sort((a, b) => {
+      const aTime = new Date(a.lastMessageAt || a.updatedAt).getTime();
+      const bTime = new Date(b.lastMessageAt || b.updatedAt).getTime();
+      return bTime - aTime;
+    });
   }, []);
 
   const getFilteredConversations = useCallback(() => {
@@ -314,11 +316,13 @@ export default function LiveChat() {
         setMessages(prev =>
           prev.map(msg => msg._id === tempMessage._id ? response.data.data : msg)
         );
+        // Socket will handle conversation_update event
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      // Remove temp message on error
-      setMessages(prev => prev.filter(msg => msg._id !== `temp_${Date.now()}`));
+      // ✅ Don't remove the message - it might have been saved even with API error
+      // Just log the error and let it stay (user can refresh to confirm)
+      // This is better UX than deleting a message that might have been saved
     }
   }, [messageInput, selectedConversation, sortConversations]);
 
@@ -396,64 +400,36 @@ export default function LiveChat() {
       console.log('❌ Socket disconnected');
     });
 
-    // Message events - UNIFIED HANDLER
-    newSocket.on('new_message', (data: any) => {
-      console.log('📨 New message event:', data);
+    // Message events - SINGLE UNIFIED HANDLER (prevents duplicates)
+    const handleNewMessage = (data: any) => {
+      console.log('📨 Message received:', data);
       
-      // Update messages if this conversation is selected
-      if (data.conversationId === selectedConversation && data.message) {
+      // Support both data formats
+      const message = data.message || data;
+      const conversationId = data.conversationId || message.conversationId;
+      
+      if (!conversationId) return;
+      
+      // Update messages in current conversation
+      if (conversationId === selectedConversation) {
         setMessages(prev => {
           // Avoid duplicates
-          if (prev.some(m => m._id === data.message._id)) return prev;
-          const updated = [...prev, data.message];
-          return updated.sort((a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          );
-        });
-      }
-
-      // Update conversation in list (auto-sort)
-      if (data.conversationId && data.message) {
-        setConversations(prev => {
-          const updated = prev.map(conv =>
-            conv._id === data.conversationId
-              ? {
-                  ...conv,
-                  updatedAt: data.message.createdAt,
-                  lastMessagePreview: data.message.content?.substring(0, 100),
-                  // Only increment unreadCount if this conversation is NOT currently selected
-                  unreadCount: data.message.direction === 'inbound' && selectedConversation !== data.conversationId ? (conv.unreadCount || 0) + 1 : conv.unreadCount,
-                  lastMessageAt: data.message.createdAt
-                }
-              : conv
-          );
-          return sortConversations(updated);
-        });
-      }
-    });
-
-    // Handle received message from webhook (backend broadcast)
-    newSocket.on('message.received', (data: any) => {
-      console.log('📥 Message received from webhook:', data);
-      
-      if (!selectedConversation) return;
-      
-      // Check if this message belongs to current conversation
-      if (data.conversationId === selectedConversation) {
-        // Add to messages
-        setMessages(prev => {
-          // Avoid duplicates
-          if (prev.some(m => m._id === data._id)) return prev;
+          const messageId = message._id || data._id;
+          if (prev.some(m => m._id === messageId)) return prev;
           
           const newMessage: Message = {
-            _id: data._id,
-            content: data.content?.text || JSON.stringify(data.content) || data.senderPhone,
-            direction: 'inbound',
-            senderType: 'customer',
-            status: data.status,
-            messageType: data.messageType || 'text',
-            createdAt: data.createdAt,
-            isInternalNote: false
+            _id: messageId,
+            content: message.content?.text || message.content || data.senderPhone || 'Message',
+            direction: message.direction || 'inbound',
+            status: message.status || 'delivered',
+            createdAt: message.createdAt,
+            senderType: (message.direction === 'outbound') ? 'agent' : 'customer',
+            isInternalNote: false,
+            messageType: message.messageType || 'text',
+            mediaUrl: message.mediaUrl || undefined,
+            caption: message.caption || undefined,
+            fileName: message.fileName || undefined,
+            fileSize: message.fileSize || undefined
           };
           
           return [...prev, newMessage].sort((a, b) =>
@@ -465,32 +441,33 @@ export default function LiveChat() {
       // Update conversation list
       setConversations(prev => {
         const updated = prev.map(conv =>
-          conv._id === data.conversationId
+          conv._id === conversationId
             ? {
                 ...conv,
-                updatedAt: data.createdAt,
-                lastMessagePreview: (data.content?.text || data.senderPhone || 'Message').substring(0, 50),
-                // Only increment unreadCount if conversation is NOT currently selected
-                unreadCount: selectedConversation !== data.conversationId ? (conv.unreadCount || 0) + 1 : conv.unreadCount,
-                lastMessageAt: data.createdAt
+                updatedAt: message.createdAt,
+                lastMessagePreview: (message.content?.text || message.content || 'Message').substring(0, 100),
+                unreadCount: message.direction === 'inbound' && selectedConversation !== conversationId ? (conv.unreadCount || 0) + 1 : conv.unreadCount,
+                lastMessageAt: message.createdAt
               }
             : conv
         );
         return sortConversations(updated);
       });
-    });
+    };
+    
+    // Register single handler for all message events (removes duplicates)
+    newSocket.on('new_message', handleNewMessage);
+    newSocket.on('message.received', handleNewMessage);
+    newSocket.on('message_received', handleNewMessage);
 
-    // Legacy message_received handler (fallback)
-    newSocket.on('message_received', (data: any) => {
-      console.log('📨 Message received (legacy):', data);
-      // Re-emit as message.received to use common handler
-      newSocket.emit('message.received', data);
-    });
-
-    // Conversation events
+    // Conversation events - Update specific conversation directly from socket
     newSocket.on('conversation_update', (data: any) => {
       console.log('🔄 Conversation updated:', data);
-      fetchConversations();
+      // Use socket data directly instead of refetching - conversation already has unreadCount: 0
+      setConversations(prev => {
+        const updated = prev.map(conv => conv._id === data._id ? data : conv);
+        return sortConversations(updated);
+      });
     });
 
     setSocket(newSocket);
@@ -580,7 +557,7 @@ export default function LiveChat() {
                   // Call backend API to mark conversation as read
                   try {
                     await axios.post(
-                      `${API_BASE_URL()}/conversations/${conv._id}/mark-read`,
+                      `${API_BASE_URL()}/live-chat/conversations/${conv._id}/mark-read`,
                       {},
                       { headers: { 'Authorization': `Bearer ${getAuthToken()}` } }
                     );
@@ -604,7 +581,7 @@ export default function LiveChat() {
                       <h4 className={`text-sm truncate ${conv.unreadCount > 0 ? 'font-semibold' : 'font-medium'}`}>
                         {conv.userName || conv.userPhone}
                       </h4>
-                      <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(conv.updatedAt)}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0">{formatDate(conv.lastMessageAt || conv.updatedAt)}</span>
                     </div>
                     {conv.lastMessagePreview && (
                       <p className="text-xs text-gray-500 truncate mt-1">{conv.lastMessagePreview}</p>
@@ -683,12 +660,12 @@ export default function LiveChat() {
                     {msg.messageType === 'image' && msg.mediaUrl ? (
                       <div className="relative">
                         <img 
-                          src={`${API_BASE_URL()}/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
+                          src={msg.mediaUrl}
                           alt="Image message"
                           onClick={() => { setSelectedMedia(msg); setMediaViewerOpen(true); }}
                           className="w-full max-w-sm max-h-80 object-cover cursor-pointer hover:opacity-90 transition rounded-2xl"
                           onError={(e) => console.error('Image failed to load:', msg.mediaUrl)}
-                          onLoad={() => console.log('Image loaded from proxy')}
+                          onLoad={() => console.log('Image loaded successfully')}
                         />
                         {msg.caption && <p className="px-3 py-2 text-sm break-words text-gray-900">{typeof msg.caption === 'string' ? msg.caption : JSON.stringify(msg.caption)}</p>}
                         <button 
@@ -854,7 +831,7 @@ export default function LiveChat() {
           </div>
 
           {/* Input Area */}
-          <div className="h-20 border-t border-gray-200 px-4 py-3 flex items-center gap-3 flex-shrink-0 bg-white relative">
+          <div className="h-16 border-t border-gray-200 px-4 py-2 flex items-center gap-2 flex-shrink-0 bg-white relative">
             {/* Attachment Menu */}
             <div className="relative group">
               <button className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-600 flex-shrink-0">
@@ -881,14 +858,14 @@ export default function LiveChat() {
               onChange={(e) => setMessageInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
               placeholder="Type a message..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
             />
             <button
               onClick={sendMessage}
               disabled={!messageInput.trim()}
-              className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition flex-shrink-0"
+              className="p-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition flex-shrink-0"
             >
-              <Send size={20} />
+              <Send size={18} />
             </button>
           </div>
         </div>
@@ -914,7 +891,7 @@ export default function LiveChat() {
           {selectedMedia.messageType === 'image' && selectedMedia.mediaUrl && (
             <div className="max-w-4xl w-full">
               <img
-                src={`${API_BASE_URL()}/media/proxy?url=${encodeURIComponent(selectedMedia.mediaUrl)}`}
+                src={selectedMedia.mediaUrl}
                 alt="Full view"
                 className="w-full h-auto max-h-96 object-contain rounded-lg"
               />
@@ -922,7 +899,8 @@ export default function LiveChat() {
                 <button
                   onClick={() => {
                     const link = document.createElement('a');
-                    link.href = `${API_BASE_URL()}/media/download?url=${encodeURIComponent(selectedMedia.mediaUrl)}&fileName=${encodeURIComponent(selectedMedia.fileName || 'image')}`;
+                    link.href = selectedMedia.mediaUrl;
+                    link.download = selectedMedia.fileName || 'image';
                     link.click();
                   }}
                   className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2"
