@@ -703,7 +703,7 @@ export default function LiveChat() {
                         )}
                       </div>
                     ) : msg.messageType === 'audio' || msg.messageType === 'voice' ? (
-                      <div className="px-4 py-3 min-w-xs bg-inherit">
+                      <div className="px-3 py-2 min-w-xs bg-inherit">
                         <div className="flex items-center gap-3">
                           <button className="flex-shrink-0 w-10 h-10 bg-white/80 rounded-full flex items-center justify-center hover:bg-white transition">
                             <Play size={16} fill="currentColor" />
@@ -736,7 +736,7 @@ export default function LiveChat() {
                       </div>
                     ) : (
                       /* TEXT MESSAGE */
-                      <div className="px-4 py-3 bg-inherit">
+                      <div className="px-3 py-2 bg-inherit">
                         <p className="text-sm break-words text-gray-900">
                           {typeof msg.content === 'string' 
                             ? (msg.content || (typeof msg.caption === 'string' ? msg.caption : '') || '')
@@ -779,11 +779,11 @@ export default function LiveChat() {
                   </div>
 
                   {/* Action Menu Button - Arrow on Hover */}
-                  <div className="ml-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                  <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition ${msg.direction === 'outbound' ? 'mr-2 order-first' : 'ml-2'}`}>
                     {/* Emoji Reaction Button */}
                     <button
                       onClick={() => setEmojiPickerOpen(emojiPickerOpen === msg._id ? null : msg._id)}
-                      className="p-2 hover:bg-gray-200 rounded-full transition text-gray-600"
+                      className="p-1 hover:bg-gray-200 rounded-full transition text-gray-600"
                       title="Add reaction"
                     >
                       <Smile size={16} />

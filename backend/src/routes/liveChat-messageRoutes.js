@@ -139,14 +139,19 @@ router.post('/', async (req, res) => {
       agentId
     );
 
-    // ✅ Success response - no socket broadcasts
+    // ✅ Just return the saved message - frontend will handle display
     return res.status(201).json({
       success: true,
       message: 'Message sent successfully',
       data: message
     });
   } catch (error) {
-    console.error('❌ Error sending message:', error);
+    console.error('❌ Error sending message:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
+    
     if (error.message === 'Conversation not found') {
       return res.status(404).json({
         success: false,
@@ -154,10 +159,12 @@ router.post('/', async (req, res) => {
         error: 'NOT_FOUND'
       });
     }
+    
     return res.status(500).json({
       success: false,
       message: 'Failed to send message',
-      error: error.message
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

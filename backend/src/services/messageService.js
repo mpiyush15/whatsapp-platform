@@ -13,6 +13,14 @@ import whatsappService from './whatsappService.js';
  * Send text message to customer via WhatsApp
  */
 export const sendMessage = async (conversationId, content, messageType = 'text', accountId, phoneNumberId, agentId) => {
+  console.log('📤 sendMessage called with:', {
+    conversationId,
+    contentLength: content?.length,
+    messageType,
+    accountId,
+    agentId
+  });
+
   // Get conversation details
   const conversation = await Conversation.findOne({
     _id: conversationId,
@@ -20,8 +28,11 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   });
 
   if (!conversation) {
+    console.error('❌ Conversation not found:', conversationId);
     throw new Error('Conversation not found');
   }
+
+  console.log('✅ Conversation found:', conversation._id);
 
   // If phoneNumberId is not provided, get it from conversation
   if (!phoneNumberId) {
@@ -29,8 +40,11 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   }
 
   if (!phoneNumberId) {
+    console.error('❌ No phoneNumberId found');
     throw new Error('Phone number ID not found in conversation or request');
   }
+
+  console.log('✅ PhoneNumberId:', phoneNumberId);
 
   // Prepare message payload
   const messagePayload = {
@@ -42,18 +56,21 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   // ✅ Try to send via WhatsApp, but don't fail if WhatsApp API fails
   let whatsappResponse = { waMessageId: `temp_${Date.now()}` };
   try {
+    console.log('📤 Calling WhatsApp API...');
     whatsappResponse = await whatsappService.sendTextMessage(
       accountId,
       phoneNumberId,
       messagePayload.recipientPhone,
       messagePayload.message
     );
+    console.log('✅ WhatsApp response:', whatsappResponse.waMessageId);
   } catch (whatsappError) {
     console.warn('⚠️ WhatsApp API error (message will be saved locally):', whatsappError.message);
     // Don't throw - message should still be saved locally
   }
 
   // Store message in database
+  console.log('📝 Creating message in DB...');
   const message = await Message.create({
     accountId,
     phoneNumberId,
@@ -71,18 +88,29 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
     source: 'agent_sent'
   });
 
+  console.log('✅ Message created:', message._id);
+
   // Update conversation
+  console.log('📝 Updating conversation...');
+  const conv = await Conversation.findById(conversationId);
+  
   await Conversation.updateOne(
     { _id: conversationId },
     {
-      lastMessageAt: new Date(),
-      updatedAt: new Date(),
-      lastMessagePreview: content.substring(0, 200),
-      lastMessageType: messageType,
-      messageCount: { $inc: 1 },
-      unreadCount: 0
+      $set: {
+        lastMessageAt: new Date(),
+        updatedAt: new Date(),
+        lastMessagePreview: content.substring(0, 200),
+        lastMessageType: messageType,
+        unreadCount: 0
+      },
+      $inc: {
+        messageCount: 1
+      }
     }
   );
+
+  console.log('✅ Conversation updated');
 
   // Log in activity timeline
   await ActivityTimeline.create({
@@ -99,6 +127,8 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
       ['contentPreview', content.substring(0, 100)]
     ])
   });
+
+  console.log('✅ Activity logged');
 
   return message;
 };
