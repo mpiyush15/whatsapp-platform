@@ -147,30 +147,66 @@ class WhatsAppService {
     try {
       const conversationId = `${accountId}_${phoneNumberId}_${recipientPhone}`;
       
-      // ✅ ATOMIC UPSERT: Prevents duplicate key errors in concurrent broadcast loops
-      const conversation = await Conversation.findOneAndUpdate(
-        {
-          accountId,
-          phoneNumberId,
-          userPhone: recipientPhone
-        },
-        {
-          $setOnInsert: {
-            accountId,
-            workspaceId: workspaceId || accountId,
-            phoneNumberId,
-            userPhone: recipientPhone,
-            conversationId,
-            lastMessageAt: new Date(),
-            status: 'open'
+      // ✅ ATOMIC UPSERT WITH RETRY: Prevents duplicate key errors in concurrent operations
+      let conversation;
+      let retries = 3;
+      let lastError;
+      
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          conversation = await Conversation.findOneAndUpdate(
+            {
+              accountId,
+              phoneNumberId,
+              userPhone: recipientPhone
+            },
+            {
+              $setOnInsert: {
+                accountId,
+                workspaceId: workspaceId || accountId,
+                phoneNumberId,
+                userPhone: recipientPhone,
+                conversationId,
+                lastMessageAt: new Date(),
+                status: 'open'
+              }
+            },
+            { 
+              upsert: true, 
+              new: true,
+              runValidators: false // Skip validators on upsert to avoid conflicts
+            }
+          );
+          break; // Success
+        } catch (error) {
+          lastError = error;
+          if (error.code === 11000 && attempt < retries - 1) {
+            // Duplicate key error - wait and retry with exponential backoff
+            const delay = Math.pow(2, attempt) * 50; // 50ms, 100ms, 200ms
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
           }
-        },
-        { 
-          upsert: true, 
-          new: true,
-          runValidators: false // Skip validators on upsert to avoid conflicts
+          
+          // If last attempt and it's a duplicate key error, try findOne as fallback
+          if (error.code === 11000) {
+            conversation = await Conversation.findOne({
+              accountId,
+              phoneNumberId,
+              userPhone: recipientPhone
+            });
+            
+            if (conversation) {
+              break; // Got existing conversation
+            }
+          }
+          
+          throw error;
         }
-      );
+      }
+      
+      if (!conversation) {
+        throw lastError || new Error('Failed to create/find conversation');
+      }
       
       return conversation;
     } catch (error) {

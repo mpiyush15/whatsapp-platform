@@ -193,29 +193,77 @@ export class BroadcastExecutionService {
       const workspaceId = broadcast.workspaceId || accountId; // Use broadcast workspace or account
       
       const conversationDocId = `${accountId}_${phoneNumberId}_${recipientPhone}`;
-      const conversation = await Conversation.findOneAndUpdate(
-        {
-          accountId,
-          workspaceId,
-          phoneNumberId,
-          userPhone: recipientPhone
-        },
-        {
-          $setOnInsert: {
-            accountId,
-            workspaceId,
-            phoneNumberId,
-            userPhone: recipientPhone,
-            conversationId: conversationDocId,
-            startedAt: new Date()
-          },
-          $set: {
-            lastMessageAt: new Date(),
-            status: 'open'
+      
+      // ✅ CRITICAL FIX FOR CONCURRENT BROADCASTS:
+      // Retry upsert with exponential backoff to handle E11000 duplicate key errors
+      // This happens when multiple broadcast messages try to create the same conversation
+      let conversation;
+      let retries = 3;
+      let lastError;
+      
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          conversation = await Conversation.findOneAndUpdate(
+            {
+              accountId,
+              phoneNumberId,
+              userPhone: recipientPhone
+            },
+            {
+              $setOnInsert: {
+                accountId,
+                workspaceId,
+                phoneNumberId,
+                userPhone: recipientPhone,
+                conversationId: conversationDocId,
+                startedAt: new Date()
+              },
+              $set: {
+                lastMessageAt: new Date(),
+                status: 'open'
+              }
+            },
+            { 
+              upsert: true, 
+              new: true,
+              runValidators: false
+            }
+          );
+          break; // Success
+        } catch (error) {
+          lastError = error;
+          if (error.code === 11000 && attempt < retries - 1) {
+            // Duplicate key error - wait and retry
+            await this.sleep(Math.pow(2, attempt) * 100); // Exponential backoff: 100ms, 200ms, 400ms
+            continue;
           }
-        },
-        { upsert: true, new: true }
-      );
+          
+          // If it's the last attempt or not a duplicate key error, fallback to findOne
+          if (error.code === 11000) {
+            console.warn(`⚠️  Duplicate key on conversation upsert, attempting to find existing conversation for ${recipientPhone}`);
+            conversation = await Conversation.findOne({
+              accountId,
+              phoneNumberId,
+              userPhone: recipientPhone
+            });
+            
+            if (conversation) {
+              // Update lastMessageAt
+              conversation.lastMessageAt = new Date();
+              conversation.status = 'open';
+              await conversation.save().catch(() => {}); // Silent fail, we have the object
+              break;
+            }
+          }
+          
+          throw error;
+        }
+      }
+      
+      // Final check - if conversation is still null, throw the last error
+      if (!conversation) {
+        throw lastError || new Error('Failed to create/find conversation');
+      }
 
       // ✅ CRITICAL FIX: Normalize messageType to frontend-compatible types
       // Frontend only accepts: text, image, video, audio, document, location
@@ -267,9 +315,12 @@ export class BroadcastExecutionService {
     } catch (error) {
       console.error(`❌ [BROADCAST ERROR] Failed to send to ${recipientPhone}:`);
       console.error(`   Error: ${error.message}`);
-      console.error(`   Type: ${error.response?.status || 'Unknown'}`);
+      console.error(`   Type: ${error.response?.status || error.code || 'Unknown'}`);
       if (error.response?.data?.error) {
-        console.error(`   Details: ${JSON.stringify(error.response.data.error)}`);
+        console.error(`   API Details: ${JSON.stringify(error.response.data.error)}`);
+      }
+      if (error.code === 11000) {
+        console.error(`   Issue: Duplicate key on MongoDB - likely concurrent write conflict`);
       }
       throw error;
     }
