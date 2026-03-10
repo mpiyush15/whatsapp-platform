@@ -4,6 +4,8 @@ import internalNoteService from '../services/internalNoteService.js';
 import tagService from '../services/tagService.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
+import Conversation from '../models/Conversation.js';
+import Contact from '../models/Contact.js';
 
 const router = express.Router();
 
@@ -321,7 +323,6 @@ router.patch('/:conversationId', async (req, res) => {
     }
 
     // Update conversation
-    const { Conversation } = await import('../models/Conversation.js');
     const conversation = await Conversation.findOneAndUpdate(
       { _id: conversationId, accountId },
       updates,
@@ -802,6 +803,246 @@ router.delete('/:conversationId/notes/:noteId', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to delete note',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/live-chat/sync-contact
+ * Sync conversation contact details to Contact model
+ * Creates or updates contact (handles duplicates via unique index)
+ * No duplicate contacts - unique on (accountId, whatsappNumber)
+ */
+router.post('/sync-contact', async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const { whatsappNumber, name, tags = [], notes } = req.body;
+
+    if (!whatsappNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'WhatsApp number is required',
+        error: 'MISSING_PHONE'
+      });
+    }
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'Contact name is required',
+        error: 'MISSING_NAME'
+      });
+    }
+
+    // 🔍 Check if contact exists for this account + phone
+    let contact = await Contact.findOne({
+      accountId,
+      whatsappNumber
+    });
+
+    if (contact) {
+      // Update existing contact (no duplicate)
+      console.log(`📝 Updating existing contact: ${whatsappNumber}`);
+      contact = await Contact.findByIdAndUpdate(
+        contact._id,
+        {
+          $set: {
+            name,
+            notes: notes || contact.notes,
+            tags: tags.length > 0 ? tags : contact.tags,
+            lastContactedAt: new Date(),
+            messageCount: (contact.messageCount || 0) + 1
+          }
+        },
+        { new: true }
+      );
+    } else {
+      // Create new contact (handles duplicate prevention via unique index)
+      console.log(`✨ Creating new contact: ${whatsappNumber}`);
+      try {
+        contact = await Contact.create({
+          accountId,
+          name,
+          phone: `+${whatsappNumber}`,
+          whatsappNumber,
+          type: 'customer',
+          isOptedIn: true,
+          optInDate: new Date(),
+          firstContactAt: new Date(),
+          tags: tags || [],
+          notes: notes || '',
+          messageCount: 1,
+          conversationCount: 1
+        });
+      } catch (err) {
+        if (err.code === 11000) {
+          // Duplicate key error - try to fetch and update
+          console.log(`⚠️ Duplicate contact detected, fetching existing: ${whatsappNumber}`);
+          contact = await Contact.findOne({
+            accountId,
+            whatsappNumber
+          });
+
+          if (contact) {
+            // Update the existing contact
+            contact = await Contact.findByIdAndUpdate(
+              contact._id,
+              {
+                $set: {
+                  name,
+                  notes: notes || contact.notes,
+                  tags: tags.length > 0 ? tags : contact.tags,
+                  lastContactedAt: new Date(),
+                  messageCount: (contact.messageCount || 0) + 1
+                }
+              },
+              { new: true }
+            );
+          }
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    console.log(`✅ Contact synced successfully: ${contact._id}`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Contact synced successfully',
+      data: {
+        contact,
+        action: contact.createdAt ? 'updated' : 'created'
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error syncing contact:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync contact',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/live-chat/sync-all-contacts
+ * Bulk sync all conversations to Contact model
+ * Creates missing contacts from all conversations - prevents duplicates via unique index
+ */
+router.post('/sync-all-contacts', async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+
+    // Fetch all conversations for this account
+    const conversations = await Conversation.find({ accountId }).lean();
+
+    if (conversations.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No conversations to sync',
+        data: {
+          synced: 0,
+          skipped: 0,
+          failed: 0
+        }
+      });
+    }
+
+    let synced = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    // Sync each conversation to contact
+    for (const conv of conversations) {
+      try {
+        if (!conv.userPhone || !conv.userName) {
+          console.log(`⏭️ Skipping conversation ${conv._id} - missing phone/name`);
+          skipped++;
+          continue;
+        }
+
+        // Check if contact exists
+        let contact = await Contact.findOne({
+          accountId,
+          whatsappNumber: conv.userPhone
+        });
+
+        if (contact) {
+          // Update existing contact
+          await Contact.findByIdAndUpdate(contact._id, {
+            $set: {
+              name: conv.userName,
+              tags: conv.tags || contact.tags,
+              messageCount: conv.messageCount || 0,
+              conversationCount: (contact.conversationCount || 0) + 1,
+              lastContactedAt: conv.lastMessageAt || contact.lastContactedAt
+            }
+          });
+          skipped++; // Already existed
+        } else {
+          // Create new contact
+          await Contact.create({
+            accountId,
+            name: conv.userName,
+            phone: `+${conv.userPhone}`,
+            whatsappNumber: conv.userPhone,
+            type: 'customer',
+            isOptedIn: true,
+            optInDate: new Date(),
+            firstContactAt: conv.createdAt || new Date(),
+            tags: conv.tags || [],
+            notes: conv.notes || '',
+            messageCount: conv.messageCount || 0,
+            conversationCount: 1,
+            lastContactedAt: conv.lastMessageAt
+          });
+          synced++;
+        }
+      } catch (err) {
+        if (err.code === 11000) {
+          // Duplicate key - fetch and update
+          const existing = await Contact.findOne({
+            accountId,
+            whatsappNumber: conv.userPhone
+          });
+          if (existing) {
+            await Contact.findByIdAndUpdate(existing._id, {
+              $set: {
+                name: conv.userName,
+                tags: conv.tags || existing.tags,
+                messageCount: conv.messageCount || 0,
+                conversationCount: (existing.conversationCount || 0) + 1,
+                lastContactedAt: conv.lastMessageAt || existing.lastContactedAt
+              }
+            });
+            skipped++;
+          }
+        } else {
+          console.error(`❌ Failed to sync conversation ${conv._id}:`, err);
+          failed++;
+        }
+      }
+    }
+
+    console.log(`✅ Bulk sync completed: ${synced} synced, ${skipped} updated, ${failed} failed`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Bulk contact sync completed',
+      data: {
+        synced,
+        skipped,
+        failed,
+        total: conversations.length
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error in bulk sync:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to bulk sync contacts',
       error: error.message
     });
   }

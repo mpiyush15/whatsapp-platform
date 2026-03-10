@@ -136,6 +136,12 @@ export default function LiveChat() {
   const [editingContactName, setEditingContactName] = useState(false);
   const [sentMessageIds, setSentMessageIds] = useState<Set<string>>(new Set());
   
+  // CRM Panel state
+  const [crmPanelOpen, setCrmPanelOpen] = useState(false);
+  const [contactNotes, setContactNotes] = useState('');
+  const [editingName, setEditingName] = useState('');
+  const [savingContact, setSavingContact] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // ===== UTILITY FUNCTIONS =====
@@ -437,6 +443,73 @@ export default function LiveChat() {
     setEmojiPickerOpen(null);
   };
 
+  // Handle save contact info and notes - syncs to both Conversation and Contact models
+  const handleSaveContact = async () => {
+    if (!selectedConversation || !contactPhone) return;
+    
+    setSavingContact(true);
+    try {
+      const updatedName = editingName || contactName;
+
+      // 1️⃣ Save to Conversation (conversation details + notes)
+      const conversationResponse = await axios.patch(
+        `${API_BASE_URL()}/live-chat/conversations/${selectedConversation}`,
+        {
+          userName: updatedName,
+          notes: contactNotes,
+          status: conversationStatus
+        },
+        {
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        }
+      );
+
+      if (!conversationResponse.data.success) {
+        throw new Error('Failed to save conversation details');
+      }
+
+      // 2️⃣ Sync to Contact model (creates or updates contact - handles duplicates automatically)
+      const contactSyncResponse = await axios.post(
+        `${API_BASE_URL()}/live-chat/conversations/sync-contact`,
+        {
+          whatsappNumber: contactPhone,
+          name: updatedName,
+          tags: contactTags,
+          notes: contactNotes
+        },
+        {
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        }
+      );
+
+      if (!contactSyncResponse.data.success) {
+        console.warn('⚠️ Contact sync warning:', contactSyncResponse.data.message);
+        // Don't fail here - conversation was saved successfully
+      }
+
+      // Update local state
+      setContactName(updatedName);
+      setEditingName('');
+      
+      // Update conversations list
+      setConversations(prev =>
+        prev.map(conv =>
+          conv._id === selectedConversation
+            ? { ...conv, userName: updatedName, status: conversationStatus }
+            : conv
+        )
+      );
+      
+      console.log('✅ Contact saved and synced successfully');
+      alert('Contact info saved and synced!');
+    } catch (error) {
+      console.error('Error saving contact:', error);
+      alert('Failed to save contact info: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
   // ===== SOCKET.IO HANDLERS =====
 
   useEffect(() => {
@@ -575,6 +648,7 @@ export default function LiveChat() {
       const conv = conversations.find(c => c._id === selectedConversation);
       if (conv) {
         setContactName(conv.userName);
+        setEditingName(conv.userName || ''); // Sync editingName to prevent uncontrolled input warning
         setContactPhone(conv.userPhone || '');
         setConversationStatus(conv.status);
         setContactTags(conv.tags || []);
@@ -693,9 +767,11 @@ export default function LiveChat() {
 
       {/* Chat Area */}
       {selectedConversation ? (
-        <div className="flex w-full flex-col bg-white overflow-hidden">
-          {/* Header */}
-          <div className="h-20 border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0 bg-white">
+        <div className="flex w-full bg-white overflow-hidden">
+          {/* Chat Column */}
+          <div className="flex flex-col flex-1 overflow-hidden">
+            {/* Header */}
+            <div className="h-20 border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0 bg-white">
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <button 
                 onClick={() => setSelectedConversation(null)}
@@ -725,7 +801,10 @@ export default function LiveChat() {
                 </p>
               </div>
             </div>
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition flex-shrink-0">
+            <button 
+              onClick={() => setCrmPanelOpen(!crmPanelOpen)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition flex-shrink-0"
+            >
               <Settings size={20} className="text-gray-600" />
             </button>
           </div>
@@ -971,6 +1050,81 @@ export default function LiveChat() {
               <Send size={18} />
             </button>
           </div>
+        </div>
+
+        {/* CRM Panel - Right Side */}
+        {crmPanelOpen && (
+          <div className="w-80 border-l border-gray-200 bg-white flex flex-col">
+            {/* Panel Header */}
+            <div className="h-16 border-b border-gray-200 px-4 py-4 flex items-center justify-between flex-shrink-0">
+              <h3 className="font-semibold text-gray-900">Contact Info</h3>
+              <button
+                onClick={() => setCrmPanelOpen(false)}
+                className="p-1 hover:bg-gray-100 rounded transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Panel Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Phone Number */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 uppercase">Phone</label>
+                <p className="text-sm font-bold text-gray-900 mt-1">{contactPhone || 'Unknown'}</p>
+              </div>
+
+              {/* Contact Name */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 uppercase">Name</label>
+                <input
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  placeholder="Enter contact name"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 uppercase">Notes</label>
+                <textarea
+                  value={contactNotes}
+                  onChange={(e) => setContactNotes(e.target.value)}
+                  placeholder="Add notes about this contact..."
+                  rows={5}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                />
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 uppercase">Status</label>
+                <select
+                  value={conversationStatus}
+                  onChange={(e) => setConversationStatus(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mt-1 focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="open">Open</option>
+                  <option value="closed">Closed</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Panel Footer - Save Button */}
+            <div className="border-t border-gray-200 p-4 flex-shrink-0">
+              <button
+                onClick={handleSaveContact}
+                disabled={savingContact}
+                className="w-full px-4 py-2 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 disabled:opacity-50 transition"
+              >
+                {savingContact ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        )}
         </div>
       ) : (
         <div className="hidden md:flex w-full items-center justify-center bg-gray-50">
