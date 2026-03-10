@@ -57,6 +57,7 @@ export default function BroadcastsPage() {
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null)
   const [hasWABA, setHasWABA] = useState<boolean | null>(null)
   const [checkingWABA, setCheckingWABA] = useState(true)
+  const [filterStatus, setFilterStatus] = useState<string | null>(null)
 
   useEffect(() => {
     // Check WABA connection first
@@ -496,22 +497,48 @@ export default function BroadcastsPage() {
 
       {/* Broadcasts Table/Cards */}
       <div className="bg-white rounded-lg border border-gray-200">
+        {/* Filter Tabs */}
+        <div className="border-b border-gray-200">
+          <div className="flex flex-wrap gap-0 px-3 sm:px-6 pt-4">
+            {[
+              { label: "All Broadcasts", value: null },
+              { label: "Draft", value: "draft", icon: "📝", count: broadcasts.filter(b => b.status === "draft").length },
+              { label: "Scheduled", value: "scheduled", icon: "⏰", count: broadcasts.filter(b => b.status === "scheduled").length },
+              { label: "Running", value: "running", icon: "▶️", count: broadcasts.filter(b => b.status === "running").length },
+              { label: "Completed", value: "completed", icon: "✅", count: broadcasts.filter(b => b.status === "completed").length },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setFilterStatus(tab.value)}
+                className={`px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 transition ${
+                  filterStatus === tab.value
+                    ? "border-green-600 text-green-600"
+                    : "border-transparent text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <span className="hidden sm:inline">{tab.icon} </span>
+                {tab.label}
+                {tab.count !== undefined && <span className="ml-1 text-xs bg-gray-200 px-2 py-0.5 rounded-full">{tab.count}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="p-3 sm:p-6">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">All Broadcasts</h2>
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               {error}
             </div>
           )}
           {loading ? (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex items-center justify-center py-12">
               <Loader className="h-6 w-6 animate-spin text-gray-600" />
               <span className="ml-2 text-gray-600">Loading broadcasts...</span>
             </div>
-          ) : broadcasts.length === 0 ? (
-            <div className="text-center py-8">
+          ) : broadcasts.filter(b => !filterStatus || b.status === filterStatus).length === 0 ? (
+            <div className="text-center py-12">
               <Megaphone className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-600 mb-4">No broadcasts yet</p>
+              <p className="text-gray-600 mb-4">{filterStatus ? `No ${filterStatus} broadcasts` : "No broadcasts yet"}</p>
               <Link href="/dashboard/broadcasts/create">
                 <Button className="bg-green-600 hover:bg-green-700">
                   <Plus className="h-4 w-4 mr-2" />
@@ -520,142 +547,280 @@ export default function BroadcastsPage() {
               </Link>
             </div>
           ) : (
-            <div className="space-y-3 sm:space-y-4">
-              {broadcasts.map((broadcast) => (
-                <div key={broadcast.id} className="border border-gray-200 rounded-lg p-3 sm:p-4 hover:bg-gray-50 transition">
-                  {/* Header: Name and Status */}
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-xs sm:text-sm font-medium text-gray-900 truncate">{broadcast.name}</h3>
-                      <p className="text-xs text-gray-500 mt-1">{broadcast.date}</p>
-                    </div>
-                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full flex-shrink-0 ${
-                      broadcast.status === "completed"
-                        ? "bg-green-100 text-green-700"
-                        : broadcast.status === "running"
-                        ? "bg-blue-100 text-blue-700"
-                        : broadcast.status === "scheduled"
-                        ? "bg-orange-100 text-orange-700"
-                        : "bg-gray-100 text-gray-700"
-                    }`}>
-                      {broadcast.status.charAt(0).toUpperCase() + broadcast.status.slice(1)}
-                    </span>
-                  </div>
-
-                  {/* Stats Row */}
-                  <div className="grid grid-cols-3 gap-2 mb-3 pb-3 border-b border-gray-200">
-                    <div>
-                      <p className="text-[10px] sm:text-xs text-gray-500 truncate">Sent</p>
-                      <p className="text-sm sm:text-base font-bold text-gray-900 truncate">{broadcast.sent.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] sm:text-xs text-gray-500 truncate">Delivered</p>
-                      <p className="text-sm sm:text-base font-bold text-gray-900 truncate">{broadcast.delivered.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] sm:text-xs text-gray-500 truncate">Read</p>
-                      <p className="text-sm sm:text-base font-bold text-gray-900 truncate">{broadcast.read.toLocaleString()}</p>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="relative">
-                    <button 
-                      onClick={() => setOpenMenu(openMenu === broadcast.id ? null : broadcast.id)}
-                      className="text-xs sm:text-sm text-gray-600 hover:text-gray-900 px-2 py-1 hover:bg-gray-100 rounded flex items-center gap-2"
-                    >
-                      <MoreVertical className="h-4 w-4" /> Options
-                    </button>
-                    
-                    {openMenu === broadcast.id && (
-                      <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-[9999]">
-                              <button
-                                onClick={() => handleViewBroadcast(broadcast.id)}
-                                disabled={loadingDetail}
-                                className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-blue-600 disabled:opacity-50"
+            <>
+              {/* Table - Desktop View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Type</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Sent</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Delivered</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700">Date</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {broadcasts
+                      .filter(b => !filterStatus || b.status === filterStatus)
+                      .map((broadcast) => (
+                        <tr key={broadcast.id} className="border-b border-gray-200 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{broadcast.name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">Text</td>
+                          <td className="px-4 py-3 text-sm text-center text-gray-900 font-medium">{broadcast.sent.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-sm text-center text-gray-900 font-medium">{broadcast.delivered.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-sm text-center">
+                            <span className={`inline-flex px-3 py-1 text-xs font-medium rounded-full ${
+                              broadcast.status === "completed"
+                                ? "bg-green-100 text-green-700"
+                                : broadcast.status === "running"
+                                ? "bg-blue-100 text-blue-700"
+                                : broadcast.status === "scheduled"
+                                ? "bg-orange-100 text-orange-700"
+                                : "bg-gray-100 text-gray-700"
+                            }`}>
+                              {broadcast.status.charAt(0).toUpperCase() + broadcast.status.slice(1)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{broadcast.date}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="relative">
+                              <button 
+                                onClick={() => setOpenMenu(openMenu === broadcast.id ? null : broadcast.id)}
+                                className="text-gray-600 hover:text-gray-900 p-2 hover:bg-gray-200 rounded transition"
                               >
-                                {loadingDetail ? (
-                                  <Loader className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Eye className="h-4 w-4" />
-                                )}
-                                <span>{loadingDetail ? "Loading..." : "View Details"}</span>
+                                <MoreVertical className="h-4 w-4" />
                               </button>
-                              {broadcast.status === "draft" && (
-                                <>
-                                  <Link 
-                                    href={`/dashboard/broadcasts/edit/${broadcast.id}`}
-                                    className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                    <span>Edit</span>
-                                  </Link>
+                              
+                              {openMenu === broadcast.id && (
+                                <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-[9999]">
                                   <button
-                                    onClick={() => handleSendBroadcast(broadcast.id)}
+                                    onClick={() => handleViewBroadcast(broadcast.id)}
+                                    disabled={loadingDetail}
+                                    className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-blue-600 disabled:opacity-50 text-sm"
+                                  >
+                                    {loadingDetail ? (
+                                      <Loader className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Eye className="h-4 w-4" />
+                                    )}
+                                    <span>{loadingDetail ? "Loading..." : "View Details"}</span>
+                                  </button>
+                                  {broadcast.status === "draft" && (
+                                    <>
+                                      <Link 
+                                        href={`/dashboard/broadcasts/edit/${broadcast.id}`}
+                                        className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-sm"
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                        <span>Edit</span>
+                                      </Link>
+                                      <button
+                                        onClick={() => handleSendBroadcast(broadcast.id)}
+                                        disabled={actionLoading === broadcast.id}
+                                        className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-green-600 disabled:opacity-50 text-sm"
+                                      >
+                                        {actionLoading === broadcast.id ? (
+                                          <Loader className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Send className="h-4 w-4" />
+                                        )}
+                                        <span>{actionLoading === broadcast.id ? "Sending..." : "Send Now"}</span>
+                                      </button>
+                                    </>
+                                  )}
+                                  
+                                  {broadcast.status === "completed" && (
+                                    <button
+                                      onClick={() => handleSendBroadcast(broadcast.id)}
+                                      disabled={actionLoading === broadcast.id}
+                                      className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-green-600 disabled:opacity-50 text-sm"
+                                    >
+                                      {actionLoading === broadcast.id ? (
+                                        <Loader className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <CheckCircle className="h-4 w-4" />
+                                      )}
+                                      <span>{actionLoading === broadcast.id ? "Sending..." : "Send Again"}</span>
+                                    </button>
+                                  )}
+
+                                  {broadcast.status === "scheduled" && (
+                                    <button
+                                      onClick={() => handleSendBroadcast(broadcast.id)}
+                                      disabled={actionLoading === broadcast.id}
+                                      className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-blue-600 disabled:opacity-50 text-sm"
+                                    >
+                                      {actionLoading === broadcast.id ? (
+                                        <Loader className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Clock className="h-4 w-4" />
+                                      )}
+                                      <span>{actionLoading === broadcast.id ? "Sending..." : "Send Now"}</span>
+                                    </button>
+                                  )}
+
+                                  <button
+                                    onClick={() => handleDeleteBroadcast(broadcast.id)}
                                     disabled={actionLoading === broadcast.id}
-                                    className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-green-600 disabled:opacity-50"
+                                    className="block w-full text-left px-4 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600 disabled:opacity-50 text-sm"
                                   >
                                     {actionLoading === broadcast.id ? (
                                       <Loader className="h-4 w-4 animate-spin" />
                                     ) : (
-                                      <Send className="h-4 w-4" />
+                                      <Trash2 className="h-4 w-4" />
                                     )}
-                                    <span>{actionLoading === broadcast.id ? "Sending..." : "Send Now"}</span>
+                                    <span>{actionLoading === broadcast.id ? "Deleting..." : "Delete"}</span>
                                   </button>
-                                </>
+                                </div>
                               )}
-                              
-                              {broadcast.status === "completed" && (
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Cards - Mobile View */}
+              <div className="md:hidden space-y-3">
+                {broadcasts
+                  .filter(b => !filterStatus || b.status === filterStatus)
+                  .map((broadcast) => (
+                    <div key={broadcast.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-medium text-gray-900 truncate">{broadcast.name}</h3>
+                          <p className="text-xs text-gray-500 mt-1">{broadcast.date}</p>
+                        </div>
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full flex-shrink-0 ${
+                          broadcast.status === "completed"
+                            ? "bg-green-100 text-green-700"
+                            : broadcast.status === "running"
+                            ? "bg-blue-100 text-blue-700"
+                            : broadcast.status === "scheduled"
+                            ? "bg-orange-100 text-orange-700"
+                            : "bg-gray-100 text-gray-700"
+                        }`}>
+                          {broadcast.status.charAt(0).toUpperCase() + broadcast.status.slice(1)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 mb-3 pb-3 border-b border-gray-200">
+                        <div>
+                          <p className="text-xs text-gray-500">Sent</p>
+                          <p className="font-bold text-gray-900">{broadcast.sent.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Delivered</p>
+                          <p className="font-bold text-gray-900">{broadcast.delivered.toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Read</p>
+                          <p className="font-bold text-gray-900">{broadcast.read.toLocaleString()}</p>
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <button 
+                          onClick={() => setOpenMenu(openMenu === broadcast.id ? null : broadcast.id)}
+                          className="w-full text-sm text-gray-600 hover:text-gray-900 px-2 py-2 hover:bg-gray-100 rounded flex items-center justify-center gap-2"
+                        >
+                          <MoreVertical className="h-4 w-4" /> Options
+                        </button>
+                        
+                        {openMenu === broadcast.id && (
+                          <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-xl z-[9999]">
+                            <button
+                              onClick={() => handleViewBroadcast(broadcast.id)}
+                              disabled={loadingDetail}
+                              className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-blue-600 disabled:opacity-50 text-sm"
+                            >
+                              {loadingDetail ? (
+                                <Loader className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                              <span>Details</span>
+                            </button>
+                            {broadcast.status === "draft" && (
+                              <>
+                                <Link 
+                                  href={`/dashboard/broadcasts/edit/${broadcast.id}`}
+                                  className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-sm"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                  <span>Edit</span>
+                                </Link>
                                 <button
                                   onClick={() => handleSendBroadcast(broadcast.id)}
                                   disabled={actionLoading === broadcast.id}
-                                  className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-green-600 disabled:opacity-50"
+                                  className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-green-600 disabled:opacity-50 text-sm"
                                 >
                                   {actionLoading === broadcast.id ? (
                                     <Loader className="h-4 w-4 animate-spin" />
                                   ) : (
-                                    <CheckCircle className="h-4 w-4" />
+                                    <Send className="h-4 w-4" />
                                   )}
-                                  <span>{actionLoading === broadcast.id ? "Sending..." : "Send Again"}</span>
+                                  <span>Send</span>
                                 </button>
-                              )}
-
-                              {broadcast.status === "scheduled" && (
-                                <button
-                                  onClick={() => handleSendBroadcast(broadcast.id)}
-                                  disabled={actionLoading === broadcast.id}
-                                  className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-blue-600 disabled:opacity-50"
-                                >
-                                  {actionLoading === broadcast.id ? (
-                                    <Loader className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Clock className="h-4 w-4" />
-                                  )}
-                                  <span>{actionLoading === broadcast.id ? "Sending..." : "Send Now"}</span>
-                                </button>
-                              )}
-
+                              </>
+                            )}
+                            
+                            {broadcast.status === "completed" && (
                               <button
-                                onClick={() => handleDeleteBroadcast(broadcast.id)}
+                                onClick={() => handleSendBroadcast(broadcast.id)}
                                 disabled={actionLoading === broadcast.id}
-                                className="block w-full text-left px-4 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600 disabled:opacity-50"
+                                className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-green-600 disabled:opacity-50 text-sm"
                               >
                                 {actionLoading === broadcast.id ? (
                                   <Loader className="h-4 w-4 animate-spin" />
                                 ) : (
-                                  <Trash2 className="h-4 w-4" />
+                                  <CheckCircle className="h-4 w-4" />
                                 )}
-                                <span>{actionLoading === broadcast.id ? "Deleting..." : "Delete"}</span>
+                                <span>Again</span>
                               </button>
-                            </div>
-                          )}
-                        </div>
+                            )}
+
+                            {broadcast.status === "scheduled" && (
+                              <button
+                                onClick={() => handleSendBroadcast(broadcast.id)}
+                                disabled={actionLoading === broadcast.id}
+                                className="block w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 border-b border-gray-200 text-blue-600 disabled:opacity-50 text-sm"
+                              >
+                                {actionLoading === broadcast.id ? (
+                                  <Loader className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Clock className="h-4 w-4" />
+                                )}
+                                <span>Send</span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => handleDeleteBroadcast(broadcast.id)}
+                              disabled={actionLoading === broadcast.id}
+                              className="block w-full text-left px-4 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600 disabled:opacity-50 text-sm"
+                            >
+                              {actionLoading === broadcast.id ? (
+                                <Loader className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-            )}
-          </div>
+                    </div>
+                  ))}
+              </div>
+            </>
+          )}
         </div>
+      </div>
 
       {/* View Details Modal */}
       {viewingBroadcast && (
