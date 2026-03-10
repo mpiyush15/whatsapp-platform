@@ -71,6 +71,21 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
 
   // Store message in database
   console.log('📝 Creating message in DB...');
+  
+  // Check if similar message was just created (prevent duplicates from race conditions)
+  const recentDuplicate = await Message.findOne({
+    conversationId,
+    accountId,
+    direction: 'outbound',
+    'content.text': content,
+    createdAt: { $gte: new Date(Date.now() - 2000) } // Within last 2 seconds
+  });
+  
+  if (recentDuplicate) {
+    console.warn('⚠️ Duplicate message detected! Returning existing message:', recentDuplicate._id);
+    return recentDuplicate;
+  }
+  
   const message = await Message.create({
     accountId,
     phoneNumberId,

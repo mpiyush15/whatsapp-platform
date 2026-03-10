@@ -2,6 +2,7 @@ import express from 'express';
 import messageService from '../services/messageService.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
+import { broadcastSentMessage, broadcastConversationUpdate, broadcastNewMessage } from '../services/socketService.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -139,11 +140,33 @@ router.post('/', async (req, res) => {
       agentId
     );
 
-    // ✅ Just return the saved message - frontend will handle display
+    // ✅ Broadcast conversation update via socket so chat updates in real-time
+    const io = req.app.locals.io;
+    if (io) {
+      try {
+        // Get updated conversation to broadcast
+        const { Conversation } = await import('../models/Conversation.js');
+        const updatedConv = await Conversation.findById(conversationId)
+          .select('_id userName userPhone status unreadCount lastMessageAt lastMessagePreview lastMessageType messageCount createdAt updatedAt')
+          .lean();
+        
+        if (updatedConv) {
+          // 1. Broadcast message to conversation room so it appears immediately in chat window
+          broadcastNewMessage(io, conversationId, message);
+          
+          // 2. Broadcast updated conversation to user room so chat list updates
+          broadcastConversationUpdate(io, accountId, updatedConv);
+        }
+      } catch (broadcastError) {
+        console.warn('⚠️ Socket broadcast error:', broadcastError.message);
+      }
+    }
+
+    // ✅ Return successful response
     return res.status(201).json({
       success: true,
       message: 'Message sent successfully',
-      data: message
+      data: transformMessage(message)
     });
   } catch (error) {
     console.error('❌ Error sending message:', {

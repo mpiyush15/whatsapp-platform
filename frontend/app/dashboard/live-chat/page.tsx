@@ -85,6 +85,30 @@ const getMediaPreviewEmoji = (messageType?: string) => {
   }
 };
 
+// Format last seen status like WhatsApp
+const formatLastSeen = (lastSeen?: string | Date) => {
+  if (!lastSeen) return 'Last seen unknown';
+  
+  const date = new Date(lastSeen);
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+  if (diff < 60) {
+    return 'Online';
+  } else if (diff < 3600) {
+    const mins = Math.floor(diff / 60);
+    return `Last seen ${mins}m ago`;
+  } else if (diff < 86400) {
+    const hours = Math.floor(diff / 3600);
+    return `Last seen ${hours}h ago`;
+  } else if (diff < 604800) {
+    const days = Math.floor(diff / 86400);
+    return `Last seen ${days}d ago`;
+  } else {
+    return `Last seen ${date.toLocaleDateString()}`;
+  }
+};
+
 export default function LiveChat() {
   const searchParams = useSearchParams();
 
@@ -105,10 +129,12 @@ export default function LiveChat() {
   const [socket, setSocket] = useState<Socket | null>(null);
   
   const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [conversationStatus, setConversationStatus] = useState<'open' | 'closed' | 'pending'>('open');
   const [contactTags, setContactTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [editingContactName, setEditingContactName] = useState(false);
+  const [sentMessageIds, setSentMessageIds] = useState<Set<string>>(new Set());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -237,6 +263,13 @@ export default function LiveChat() {
       if (response.data.success && response.data.data) {
         const sorted = sortConversations(response.data.data);
         setConversations(sorted);
+        
+        // Extract accountId from first conversation if available
+        if (sorted.length > 0 && sorted[0].accountId && socket) {
+          // Join user room to receive conversation updates
+          socket.emit('join_user_room', { accountId: sorted[0].accountId });
+          console.log('📡 Joined user room for account:', sorted[0].accountId);
+        }
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -256,8 +289,22 @@ export default function LiveChat() {
 
       if (response.data.success && response.data.data) {
         // Backend returns array directly in data field
-        const msgs = Array.isArray(response.data.data) ? response.data.data : response.data.data.messages;
+        let msgs = Array.isArray(response.data.data) ? response.data.data : response.data.data.messages;
+        
+        // Deduplicate messages by _id in case server returns duplicates
+        const seenIds = new Set<string>();
+        msgs = msgs.filter(msg => {
+          if (seenIds.has(msg._id)) {
+            console.warn('⏭️ Duplicate message filtered:', msg._id);
+            return false;
+          }
+          seenIds.add(msg._id);
+          return true;
+        });
+        
         setMessages(msgs);
+        // Clear any temp message IDs after refresh
+        setSentMessageIds(new Set());
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -274,8 +321,9 @@ export default function LiveChat() {
 
     try {
       // Optimistic update - add message immediately
+      const tempMessageId = `temp_${Date.now()}`;
       const tempMessage: Message = {
-        _id: `temp_${Date.now()}`,
+        _id: tempMessageId,
         content: messageText,
         direction: 'outbound',
         status: 'sent',
@@ -302,6 +350,8 @@ export default function LiveChat() {
         return sortConversations(updated);
       });
 
+      console.log('📤 Sending message:', { tempMessageId, content: messageText });
+
       // Send to server
       const response = await axios.post(`${API_BASE_URL()}/live-chat/messages`, {
         conversationId: selectedConversation,
@@ -313,8 +363,25 @@ export default function LiveChat() {
 
       // Replace temp message with actual message
       if (response.data.success && response.data.data) {
+        const actualMessage = response.data.data;
+        const actualMessageId = actualMessage._id;
+        
+        console.log('✅ Message saved with ID:', actualMessageId);
+        
+        // Mark this message as sent so socket doesn't add duplicate
+        setSentMessageIds(prev => new Set([...prev, actualMessageId]));
+        
         setMessages(prev =>
-          prev.map(msg => msg._id === tempMessage._id ? response.data.data : msg)
+          prev.map(msg => 
+            msg._id === tempMessageId 
+              ? {
+                  ...actualMessage,
+                  content: actualMessage.content || messageText,  // Ensure content is set
+                  senderType: 'agent',
+                  isInternalNote: false
+                }
+              : msg
+          )
         );
         // Socket will handle conversation_update event
       }
@@ -400,43 +467,46 @@ export default function LiveChat() {
       console.log('❌ Socket disconnected');
     });
 
-    // Message events - SINGLE UNIFIED HANDLER (prevents duplicates)
-    const handleNewMessage = (data: any) => {
-      console.log('📨 Message received:', data);
-      
-      // Support both data formats
-      const message = data.message || data;
-      const conversationId = data.conversationId || message.conversationId;
-      
-      if (!conversationId) return;
-      
-      // Update messages in current conversation
-      if (conversationId === selectedConversation) {
-        setMessages(prev => {
-          // Avoid duplicates
-          const messageId = message._id || data._id;
-          if (prev.some(m => m._id === messageId)) return prev;
-          
-          const newMessage: Message = {
-            _id: messageId,
-            content: message.content?.text || message.content || data.senderPhone || 'Message',
-            direction: message.direction || 'inbound',
-            status: message.status || 'delivered',
-            createdAt: message.createdAt,
-            senderType: (message.direction === 'outbound') ? 'agent' : 'customer',
-            isInternalNote: false,
-            messageType: message.messageType || 'text',
-            mediaUrl: message.mediaUrl || undefined,
-            caption: message.caption || undefined,
-            fileName: message.fileName || undefined,
-            fileSize: message.fileSize || undefined
-          };
-          
-          return [...prev, newMessage].sort((a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          );
-        });
-      }
+// Message events - SINGLE UNIFIED HANDLER (prevents duplicates)
+  const handleNewMessage = (data: any) => {
+    console.log('📨 Message received:', data);
+    
+    // Support both data formats
+    const message = data.message || data;
+    const conversationId = data.conversationId || message.conversationId;
+    const messageId = message._id || data._id;
+    
+    if (!conversationId) return;
+    
+    // Update messages in current conversation
+    if (conversationId === selectedConversation) {
+      setMessages(prev => {
+        // Avoid duplicates - if message already exists in our array, skip
+        if (prev.some(m => m._id === messageId)) {
+          console.log('⏭️ Message already in chat:', messageId);
+          return prev;
+        }
+        
+        const newMessage: Message = {
+          _id: messageId,
+          content: message.content?.text || message.content || data.senderPhone || 'Message',
+          direction: message.direction || 'inbound',
+          status: message.status || 'delivered',
+          createdAt: message.createdAt,
+          senderType: (message.direction === 'outbound') ? 'agent' : 'customer',
+          isInternalNote: false,
+          messageType: message.messageType || 'text',
+          mediaUrl: message.mediaUrl || undefined,
+          caption: message.caption || undefined,
+          fileName: message.fileName || undefined,
+          fileSize: message.fileSize || undefined
+        };
+        
+        return [...prev, newMessage].sort((a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      });
+    }
       
       // Update conversation list
       setConversations(prev => {
@@ -455,17 +525,28 @@ export default function LiveChat() {
       });
     };
     
-    // Register single handler for all message events (removes duplicates)
+    // Register handler for ALL message event types from backend
+    // Backend emits: new_message, message.received, message_received
     newSocket.on('new_message', handleNewMessage);
     newSocket.on('message.received', handleNewMessage);
     newSocket.on('message_received', handleNewMessage);
 
     // Conversation events - Update specific conversation directly from socket
     newSocket.on('conversation_update', (data: any) => {
-      console.log('🔄 Conversation updated:', data);
-      // Use socket data directly instead of refetching - conversation already has unreadCount: 0
+      console.log('🔄 Conversation updated from socket:', data);
       setConversations(prev => {
-        const updated = prev.map(conv => conv._id === data._id ? data : conv);
+        const updated = prev.map(conv => {
+          // Match by _id or conversationId
+          if (conv._id === data._id || conv._id === data.conversationId) {
+            return {
+              ...conv,
+              ...data,
+              lastMessageAt: data.lastMessageAt || new Date().toISOString(),
+              lastMessagePreview: data.lastMessagePreview || conv.lastMessagePreview
+            };
+          }
+          return conv;
+        });
         return sortConversations(updated);
       });
     });
@@ -486,25 +567,37 @@ export default function LiveChat() {
     if (selectedConversation) {
       fetchMessages(selectedConversation);
 
-      // Load conversation details
-      const conv = conversations.find(c => c._id === selectedConversation);
-      if (conv) {
-        setContactName(conv.userName);
-        setConversationStatus(conv.status);
-        setContactTags(conv.tags || []);
-      }
-
       // Join conversation room for real-time updates
       if (socket?.connected) {
         socket.emit('join_conversation', { conversationId: selectedConversation });
       }
     }
-  }, [selectedConversation, conversations, fetchMessages, socket]);
+    // ⚠️ CRITICAL: Only fetch when selectedConversation ID changes, not when conversations list updates
+    // Otherwise socket updates trigger re-fetches and lose temp messages
+  }, [selectedConversation, fetchMessages, socket]);
+
+  // Separate effect to update conversation details without re-fetching messages
+  useEffect(() => {
+    if (selectedConversation) {
+      const conv = conversations.find(c => c._id === selectedConversation);
+      if (conv) {
+        setContactName(conv.userName);
+        setContactPhone(conv.userPhone || '');
+        setConversationStatus(conv.status);
+        setContactTags(conv.tags || []);
+      }
+    }
+  }, [selectedConversation, conversations]);
 
   // ===== AUTO-SCROLL =====
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // On first load or when messages change, scroll to bottom instantly
+    if (messagesEndRef.current) {
+      // Use 'auto' for instant scroll on load, 'smooth' for subsequent updates
+      const behavior = messages.length > 0 ? 'auto' : 'auto';
+      messagesEndRef.current.scrollIntoView({ behavior });
+    }
   }, [messages]);
 
   // ===== RENDER =====
@@ -609,20 +702,37 @@ export default function LiveChat() {
       {selectedConversation ? (
         <div className="flex w-full flex-col bg-white overflow-hidden">
           {/* Header */}
-          <div className="h-16 border-b border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0 bg-white">
-            <div className="flex items-center gap-4 flex-1">
+          <div className="h-20 border-b border-gray-200 px-6 py-3 flex items-center justify-between flex-shrink-0 bg-white">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
               <button 
                 onClick={() => setSelectedConversation(null)}
-                className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition"
+                className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition flex-shrink-0"
               >
                 ← Back
               </button>
-              <div>
-                <h2 className="font-semibold text-gray-900">{contactName}</h2>
-                <p className="text-xs text-gray-500">{conversations.find(c => c._id === selectedConversation)?.userPhone}</p>
+              <div className="flex-1 min-w-0">
+                {/* Phone Number - Bigger Font */}
+                <div className="flex items-center gap-2">
+                  <h2 className="font-bold text-lg text-gray-900 truncate">{contactPhone || 'Unknown'}</h2>
+                  {/* Online Status Indicator */}
+                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                    conversations.find(c => c._id === selectedConversation)?.status === 'open' 
+                      ? 'bg-green-500' 
+                      : 'bg-gray-400'
+                  }`} title={conversations.find(c => c._id === selectedConversation)?.status} />
+                </div>
+                {/* Contact Name */}
+                <p className="text-sm font-medium text-gray-700 truncate">{contactName || 'No name'}</p>
+                {/* Last Seen Status */}
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {conversations.find(c => c._id === selectedConversation)?.lastMessageAt 
+                    ? formatLastSeen(conversations.find(c => c._id === selectedConversation)?.lastMessageAt)
+                    : 'Never contacted'
+                  }
+                </p>
               </div>
             </div>
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition">
+            <button className="p-2 hover:bg-gray-100 rounded-lg transition flex-shrink-0">
               <Settings size={20} className="text-gray-600" />
             </button>
           </div>

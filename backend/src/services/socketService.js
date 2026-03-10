@@ -159,6 +159,28 @@ export const initSocketIO = (server) => {
     });
 
     /**
+     * Join user room - receives conversation updates when messages are sent
+     * This allows the conversation list to update in real-time without page refresh
+     */
+    socket.on('join_user_room', (data) => {
+      const { accountId } = data;
+      const roomName = `user:${accountId}`;
+      
+      // Verify accountId matches authenticated user
+      if (accountId && String(accountId) === String(socket.accountId)) {
+        socket.join(roomName);
+        console.log('✅ Socket joined user room:', roomName, 'for socket:', socket.id);
+      } else {
+        console.error('❌ Unauthorized join_user_room attempt:', {
+          socketId: socket.id,
+          email: socket.email,
+          socketAccountId: socket.accountId,
+          requestedAccountId: accountId
+        });
+      }
+    });
+
+    /**
      * Leave a conversation room
      */
     socket.on('leave_conversation', (data) => {
