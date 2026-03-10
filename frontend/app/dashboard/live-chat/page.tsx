@@ -263,13 +263,6 @@ export default function LiveChat() {
       if (response.data.success && response.data.data) {
         const sorted = sortConversations(response.data.data);
         setConversations(sorted);
-        
-        // Extract accountId from first conversation if available
-        if (sorted.length > 0 && sorted[0].accountId && socket) {
-          // Join user room to receive conversation updates
-          socket.emit('join_user_room', { accountId: sorted[0].accountId });
-          console.log('📡 Joined user room for account:', sorted[0].accountId);
-        }
       }
     } catch (error) {
       console.error('Error fetching conversations:', error);
