@@ -56,16 +56,26 @@ export const login = async (req, res) => {
       accountId: account.accountId,
       name: account.name,
       role: account.role || 'user',
-      workspaceId: account.accountId
+      workspaceId: account.accountId,
+      isDemoAccount: account.isDemoAccount || false,
+      demoLabel: account.demoLabel || null,
+      demoNote: account.demoNote || null
     };
     
     const token = generateToken(user);
+    
+    // Log demo account login
+    if (account.isDemoAccount) {
+      console.log(`🎭 DEMO ACCOUNT LOGIN: ${account.email} (${account.accountId})`);
+    }
     
     return res.json({
       success: true,
       message: 'Login successful',
       token,
-      user
+      user,
+      isDemo: account.isDemoAccount || false,
+      demoLabel: account.demoLabel || null
     });
     
   } catch (error) {

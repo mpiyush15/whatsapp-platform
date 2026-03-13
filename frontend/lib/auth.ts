@@ -20,6 +20,9 @@ export interface User {
   status?: string // 'active' or 'pending' (payment pending)
   plan?: string // 'free', 'starter', 'pro', 'enterprise'
   billingCycle?: string // 'monthly', 'quarterly', 'annual'
+  isDemoAccount?: boolean // Demo account flag
+  demoLabel?: string | null // 'demo', 'test', 'staging', null
+  demoNote?: string // Demo account description
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050/api"
@@ -66,7 +69,10 @@ export const authService = {
           accountId: data.user.accountId,
           status: data.user.status,
           plan: data.user.plan,
-          billingCycle: data.user.billingCycle
+          billingCycle: data.user.billingCycle,
+          isDemoAccount: data.user.isDemoAccount || false,
+          demoLabel: data.user.demoLabel || null,
+          demoNote: data.user.demoNote || null
         }
 
         // Store JWT token instead of session
@@ -77,7 +83,8 @@ export const authService = {
         console.log('✅ Token stored:', {
           isAuthenticated: localStorage.getItem("isAuthenticated"),
           hasToken: !!localStorage.getItem("token"),
-          tokenLength: data.token.length
+          tokenLength: data.token.length,
+          isDemoAccount: user.isDemoAccount
         });
 
         return { success: true, user }
@@ -117,7 +124,10 @@ export const authService = {
           accountId: data.user.accountId,
           status: data.user.status,
           plan: data.user.plan,
-          billingCycle: data.user.billingCycle
+          billingCycle: data.user.billingCycle,
+          isDemoAccount: data.user.isDemoAccount || false,
+          demoLabel: data.user.demoLabel || null,
+          demoNote: data.user.demoNote || null
         }
 
         // Store JWT token instead of session

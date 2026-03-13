@@ -656,6 +656,26 @@ export default function LiveChat() {
     }
   }, [selectedConversation, conversations]);
 
+  // ===== HANDLE QUERY PARAMETERS (Phone from Contact Drawer) =====
+  useEffect(() => {
+    const phoneParam = searchParams?.get('phone');
+    
+    if (phoneParam && conversations.length > 0 && !selectedConversation) {
+      // Try to find conversation matching the phone number
+      const matchingConversation = conversations.find(conv =>
+        conv.userPhone === phoneParam || 
+        conv.userPhone === decodeURIComponent(phoneParam) ||
+        conv.userPhone.includes(phoneParam.replace(/[^0-9]/g, ''))
+      );
+      
+      if (matchingConversation) {
+        // Auto-select the conversation
+        setSelectedConversation(matchingConversation._id);
+        console.log('✅ Auto-selected conversation from phone parameter:', phoneParam);
+      }
+    }
+  }, [searchParams, conversations, selectedConversation]);
+
   // ===== AUTO-SCROLL =====
 
   useEffect(() => {

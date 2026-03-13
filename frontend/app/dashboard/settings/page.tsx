@@ -718,16 +718,29 @@ export default function SettingsPage() {
           lastUsedAt: undefined
         })
 
-        // Add to connected platforms
-        setConnectedPlatforms([
-          ...(connectedPlatforms || []),
-          {
-            name: selectedPlatform,
-            isConnected: false,
-            connectedAt: null,
-            testStatus: 'pending'
+        // Add to connected platforms (avoid duplicates)
+        setConnectedPlatforms(prev => {
+          const existing = (prev || []).find(p => p.name === selectedPlatform)
+          if (existing) {
+            // Update existing platform
+            return (prev || []).map(p => 
+              p.name === selectedPlatform 
+                ? { ...p, testStatus: 'pending' }
+                : p
+            )
+          } else {
+            // Add new platform
+            return [
+              ...(prev || []),
+              {
+                name: selectedPlatform,
+                isConnected: false,
+                connectedAt: null,
+                testStatus: 'pending'
+              }
+            ]
           }
-        ])
+        })
       } else {
         const errorMsg = result.message || result.error || `HTTP ${response.status}`
         console.error("❌ Token generation failed:", errorMsg);

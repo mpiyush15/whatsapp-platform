@@ -222,6 +222,23 @@ const accountSchema = new mongoose.Schema({
     _id: false
   }],
   
+  // Demo Account Settings (for testing & email app review)
+  isDemoAccount: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  demoLabel: {
+    type: String,
+    enum: ['demo', 'test', 'staging', null],
+    default: null,
+    sparse: true
+  },
+  demoNote: {
+    type: String,
+    default: 'Demo account for testing WhatsApp integration features and email app review'
+  },
+  
   // Metadata
   createdAt: { type: Date, default: Date.now },
   lastActiveAt: Date,

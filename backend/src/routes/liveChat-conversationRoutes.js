@@ -1048,4 +1048,93 @@ router.post('/sync-all-contacts', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/live-chat/conversations/stats
+ * Get conversation and message statistics for a given month/year
+ */
+router.get('/stats', async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = req.query;
+
+    // Convert month/year to date range
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+    console.log('📊 Fetching stats for:', { accountId, month, year, startDate, endDate });
+
+    // Import Message model
+    const { default: Message } = await import('../models/Message.js');
+
+    // Count messages by direction
+    const messageStats = await Message.aggregate([
+      {
+        $match: {
+          accountId: accountId,
+          createdAt: { $gte: startDate, $lte: endDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$direction',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Count total unread conversations
+    const unreadStats = await Conversation.countDocuments({
+      accountId: accountId,
+      unreadCount: { $gt: 0 }
+    });
+
+    // Count total conversations
+    const totalConversations = await Conversation.countDocuments({
+      accountId: accountId
+    });
+
+    // Parse message stats
+    let messagesSent = 0;
+    let messagesReceived = 0;
+    
+    messageStats.forEach(stat => {
+      if (stat._id === 'outbound') {
+        messagesSent = stat.count;
+      } else if (stat._id === 'inbound') {
+        messagesReceived = stat.count;
+      }
+    });
+
+    const totalMessages = messagesSent + messagesReceived;
+
+    const stats = {
+      messagesSent,
+      messagesReceived,
+      totalMessages,
+      unreadCount: unreadStats,
+      broadcastedCount: totalConversations,
+      period: {
+        month: parseInt(month),
+        year: parseInt(year),
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString()
+      }
+    };
+
+    console.log('✅ Stats calculated:', stats);
+
+    return res.status(200).json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('❌ Error fetching stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch conversation stats',
+      error: error.message
+    });
+  }
+});
+
 export default router;

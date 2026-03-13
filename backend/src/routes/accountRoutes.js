@@ -21,6 +21,9 @@ const router = express.Router();
 // SELF-SERVICE ROUTES (requires account auth)
 // ==========================================
 
+// Apply JWT authentication to all routes in this router
+router.use(requireJWT);
+
 /**
  * @route   GET /api/account/me
  * @desc    Get own account details

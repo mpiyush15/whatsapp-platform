@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { authService, UserRole } from '@/lib/auth'
 import { getSidebarItems } from '@/lib/rbac'
+import DemoBadge from './DemoBadge'
 import { useState } from 'react'
 
 const iconMap = {
@@ -112,6 +113,20 @@ export default function Sidebar() {
         <div className="p-4 border-b border-gray-800">
           <div className="text-sm">
             <p className="font-semibold text-white">{user.name}</p>
+            
+            {/* Demo Badge */}
+            {user.isDemoAccount && (
+              <div className="mt-2 mb-2">
+                <DemoBadge 
+                  isDemoAccount={user.isDemoAccount}
+                  demoLabel={user.demoLabel}
+                  demoNote={user.demoNote}
+                  size="sm"
+                  showIcon={true}
+                />
+              </div>
+            )}
+            
             <p className="text-gray-400 text-xs capitalize mt-1">{user.role}</p>
             <p className="text-gray-500 text-xs mt-2 truncate">{user.email}</p>
             

@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Users, Plus, Upload, Download, Search, MoreVertical, Edit, Trash2, X, Tag, Mail, Phone as PhoneIcon, User, Building2, MapPin, MessageCircle } from "lucide-react"
+import { Users, Plus, Upload, Download, Edit, Trash2, X, Tag, Mail, Phone as PhoneIcon, User, Building2, MapPin, MessageCircle, ChevronUp, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ErrorToast } from "@/components/ErrorToast"
 import { authService } from "@/lib/auth"
 import { getSocket } from "@/lib/socket"
+import { ContactsTable } from "@/components/tables/ContactsTable"
 
 interface Contact {
   _id: string
@@ -17,7 +18,8 @@ interface Contact {
   businessName?: string
   city?: string
   type: 'customer' | 'lead' | 'other'
-  tags: string[]
+  tags?: string[]
+  score?: number
   lastMessageAt?: string
   messageCount: number
   isOptedIn: boolean
@@ -45,17 +47,14 @@ interface Message {
 
 interface ContactDetail extends Contact {
   messages?: Message[]
-  score?: number  // For leads, shows their quality score
+  score?: number
 }
+
+type SortKey = 'name' | 'type' | 'lastMessageAt' | 'createdAt' | 'messageCount'
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [stats, setStats] = useState<Stats>({ total: 0, active: 0, newThisMonth: 0, optedIn: 0 })
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filterCity, setFilterCity] = useState("")
-  const [filterBusinessName, setFilterBusinessName] = useState("")
-  const [filterMobile, setFilterMobile] = useState("")
-  const [showFilters, setShowFilters] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
@@ -63,10 +62,6 @@ export default function ContactsPage() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPreview, setImportPreview] = useState<any[]>([])
   const [isImporting, setIsImporting] = useState(false)
-  const [showQuickViewDrawer, setShowQuickViewDrawer] = useState(false)
-  const [drawerContact, setDrawerContact] = useState<ContactDetail | null>(null)
-  const [drawerMessages, setDrawerMessages] = useState<Message[]>([])
-  const [drawerLoading, setDrawerLoading] = useState(false)
   const router = useRouter()
   const [formData, setFormData] = useState({
     name: '',
@@ -79,6 +74,16 @@ export default function ContactsPage() {
     tags: [] as string[],
   })
   const [tagInput, setTagInput] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filterCity, setFilterCity] = useState("")
+  const [filterBusinessName, setFilterBusinessName] = useState("")
+  const [filterType, setFilterType] = useState<'all' | 'customer' | 'lead' | 'other'>('all')
+  const [sortKey, setSortKey] = useState<'name' | 'type' | 'lastMessageAt' | 'createdAt' | 'messageCount'>('name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [showQuickViewDrawer, setShowQuickViewDrawer] = useState(false)
+  const [drawerContact, setDrawerContact] = useState<Contact | null>(null)
+  const [drawerLoading, setDrawerLoading] = useState(false)
+  const [drawerMessages, setDrawerMessages] = useState<Message[]>([])
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050/api"
 
@@ -154,15 +159,13 @@ export default function ContactsPage() {
   }
 
   // Delete contact
-  const deleteContact = async (id: string) => {
+  const deleteContact = async (contact: Contact) => {
     if (!confirm("Are you sure you want to delete this contact?")) return
     
     try {
-      const response = await fetch(`${API_URL}/contacts/${id}`, {
+      const response = await fetch(`${API_URL}/contacts/${contact._id}`, {
         method: 'DELETE',
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: getHeaders(),
       })
 
       if (response.ok) {
@@ -178,53 +181,7 @@ export default function ContactsPage() {
 
   // Open chat for a contact
   const openContactChat = (contact: Contact) => {
-    // Navigate to live chat page with contact phone number
     router.push(`/dashboard/live-chat?phone=${encodeURIComponent(contact.whatsappNumber)}`)
-  }
-
-  // Open quick view drawer
-  const openQuickViewDrawer = async (contact: Contact) => {
-    setDrawerContact(contact)
-    setDrawerLoading(true)
-    setShowQuickViewDrawer(true)
-    
-    try {
-      // Try to fetch conversations for this contact
-      const response = await fetch(`${API_URL}/conversations?phone=${contact.whatsappNumber}`, {
-        headers: getHeaders(),
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        const conversations = data.conversations || []
-        
-        if (conversations.length > 0) {
-          const firstConversation = conversations[0]
-          
-          // Fetch messages from this conversation
-          const messagesResponse = await fetch(
-            `${API_URL}/conversations/${firstConversation._id}/messages`,
-            { headers: getHeaders() }
-          )
-          
-          if (messagesResponse.ok) {
-            const msgData = await messagesResponse.json()
-            setDrawerMessages((msgData.messages || []).slice(0, 5).reverse())
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching messages:", error)
-    } finally {
-      setDrawerLoading(false)
-    }
-  }
-
-  // Close quick view drawer
-  const closeQuickViewDrawer = () => {
-    setShowQuickViewDrawer(false)
-    setDrawerContact(null)
-    setDrawerMessages([])
   }
 
   // Open modal for add/edit
@@ -281,7 +238,7 @@ export default function ContactsPage() {
   const exportContacts = () => {
     const csv = [
       ['Name', 'WhatsApp Number', 'Phone', 'Email', 'Type', 'Tags', 'Last Message', 'Message Count', 'Opted In'].join(','),
-      ...filteredContacts.map(c => [
+      ...contacts.map(c => [
         c.name,
         c.whatsappNumber,
         c.phone,
@@ -464,21 +421,49 @@ export default function ContactsPage() {
     }
   }, [])
 
-  // Filter contacts
-  const filteredContacts = contacts.filter((contact) => {
-    const matchesSearch = contact.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      contact.phone?.includes(searchQuery) ||
-      contact.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      contact.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-    
-    const matchesCity = !filterCity || contact.city?.toLowerCase().includes(filterCity.toLowerCase())
-    const matchesBusiness = !filterBusinessName || contact.businessName?.toLowerCase().includes(filterBusinessName.toLowerCase())
-    const matchesMobile = !filterMobile || contact.phone?.includes(filterMobile) || contact.whatsappNumber?.includes(filterMobile)
-    
-    return matchesSearch && matchesCity && matchesBusiness && matchesMobile
-  })
+  // Filter and sort contacts using useMemo for performance
+  const filteredAndSortedContacts = useMemo(() => {
+    let filtered = contacts.filter((contact) => {
+      const matchesSearch = contact.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contact.phone?.includes(searchQuery) ||
+        contact.whatsappNumber?.includes(searchQuery) ||
+        contact.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        contact.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+      
+      const matchesCity = !filterCity || contact.city?.toLowerCase().includes(filterCity.toLowerCase())
+      const matchesBusiness = !filterBusinessName || contact.businessName?.toLowerCase().includes(filterBusinessName.toLowerCase())
+      const matchesType = filterType === 'all' || contact.type === filterType
+      
+      return matchesSearch && matchesCity && matchesBusiness && matchesType
+    })
 
-  // Format date
+    // Sort contacts
+    filtered.sort((a, b) => {
+      let aVal: any = a[sortKey]
+      let bVal: any = b[sortKey]
+
+      if (sortKey === 'name' || sortKey === 'type') {
+        aVal = String(aVal).toLowerCase()
+        bVal = String(bVal).toLowerCase()
+        return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
+      }
+
+      if (sortKey === 'lastMessageAt' || sortKey === 'createdAt') {
+        aVal = aVal ? new Date(aVal).getTime() : 0
+        bVal = bVal ? new Date(bVal).getTime() : 0
+      }
+
+      if (sortOrder === 'asc') {
+        return aVal > bVal ? 1 : aVal < bVal ? -1 : 0
+      } else {
+        return aVal < bVal ? 1 : aVal > bVal ? -1 : 0
+      }
+    })
+
+    return filtered
+  }, [contacts, searchQuery, filterCity, filterBusinessName, filterType, sortKey, sortOrder])
+
+  // Format date with relative time
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Never'
     const date = new Date(dateString)
@@ -486,11 +471,40 @@ export default function ContactsPage() {
     const diff = now.getTime() - date.getTime()
     const hours = diff / (1000 * 60 * 60)
     
-    if (hours < 24) return `${Math.floor(hours)} hours ago`
+    if (hours < 1) return 'Just now'
+    if (hours < 24) return `${Math.floor(hours)}h ago`
     const days = Math.floor(hours / 24)
-    if (days === 1) return '1 day ago'
-    if (days < 30) return `${days} days ago`
+    if (days === 1) return 'Yesterday'
+    if (days < 30) return `${days}d ago`
     return date.toLocaleDateString()
+  }
+
+  const getTypeColor = (type: string) => {
+    switch(type) {
+      case 'customer': return 'bg-blue-100 text-blue-700 border-blue-200'
+      case 'lead': return 'bg-yellow-100 text-yellow-700 border-yellow-200'
+      case 'other': return 'bg-gray-100 text-gray-700 border-gray-200'
+      default: return 'bg-gray-100 text-gray-700 border-gray-200'
+    }
+  }
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortOrder('asc')
+    }
+  }
+
+  const SortIcon = ({ col }: { col: SortKey }) => {
+    if (sortKey !== col) return <div className="w-4 h-4" />
+    return sortOrder === 'asc' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />
+  }
+
+  const closeQuickViewDrawer = () => {
+    setShowQuickViewDrawer(false)
+    setDrawerContact(null)
   }
 
   return (
@@ -499,7 +513,7 @@ export default function ContactsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Contacts</h1>
-          <p className="text-gray-600 mt-1">Manage your WhatsApp contacts</p>
+          <p className="text-gray-600 mt-1">Manage and organize your WhatsApp contacts</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setShowImportModal(true)}>
@@ -517,201 +531,35 @@ export default function ContactsPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <p className="text-sm text-gray-600">Total Contacts</p>
-          <p className="text-2xl font-bold text-gray-900">{stats.total.toLocaleString()}</p>
-          <p className="text-xs text-gray-600 mt-1">All contacts</p>
+      {/* Quick Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+          <p className="text-xs font-semibold text-blue-600 uppercase">Total</p>
+          <p className="text-2xl font-bold text-blue-900 mt-1">{stats.total}</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <p className="text-sm text-gray-600">Active Contacts</p>
-          <p className="text-2xl font-bold text-gray-900">{stats.active.toLocaleString()}</p>
-          <p className="text-xs text-gray-600 mt-1">Have messaged</p>
+        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+          <p className="text-xs font-semibold text-green-600 uppercase">Active</p>
+          <p className="text-2xl font-bold text-green-900 mt-1">{stats.active}</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <p className="text-sm text-gray-600">New This Month</p>
-          <p className="text-2xl font-bold text-gray-900">{stats.newThisMonth}</p>
-          <p className="text-xs text-green-600 mt-1">Added recently</p>
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+          <p className="text-xs font-semibold text-purple-600 uppercase">Opted In</p>
+          <p className="text-2xl font-bold text-purple-900 mt-1">{stats.optedIn}</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4">
-          <p className="text-xs sm:text-sm text-gray-600">Opted In</p>
-          <p className="text-lg sm:text-2xl font-bold text-gray-900">{stats.optedIn}</p>
-          <p className="text-xs text-gray-600 mt-1">Active subscriptions</p>
+        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+          <p className="text-xs font-semibold text-orange-600 uppercase">New</p>
+          <p className="text-2xl font-bold text-orange-900 mt-1">{stats.newThisMonth}</p>
         </div>
       </div>
 
-      {/* Contacts Table */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-3 sm:p-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900">All Contacts ({filteredContacts.length})</h2>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="px-3 sm:px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-xs sm:text-sm font-medium text-gray-700 transition whitespace-nowrap"
-              >
-                🔍 {showFilters ? 'Hide' : 'Show'} Filters
-              </button>
-              <div className="relative flex-1 sm:flex-none">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent w-full sm:w-64 text-xs sm:text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Filter Panel - Mobile Optimized */}
-          {showFilters && (
-            <div className="mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Filter by City</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., Mumbai..."
-                    value={filterCity}
-                    onChange={(e) => setFilterCity(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-xs sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Filter by Business</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., ABC Corp..."
-                    value={filterBusinessName}
-                    onChange={(e) => setFilterBusinessName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-xs sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">Filter by Mobile</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., 987654..."
-                    value={filterMobile}
-                    onChange={(e) => setFilterMobile(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-xs sm:text-sm"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => {
-                    setFilterCity('')
-                    setFilterBusinessName('')
-                    setFilterMobile('')
-                  }}
-                  className="px-3 py-1 text-xs sm:text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-white transition"
-                >
-                  Clear All Filters
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {isLoading ? (
-            <div className="text-center py-12">
-              <p className="text-gray-600">Loading contacts...</p>
-            </div>
-          ) : filteredContacts.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-600">No contacts found</p>
-              <Button className="mt-4 bg-green-600 hover:bg-green-700" onClick={openAddModal}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Your First Contact
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredContacts.map((contact) => (
-                <div 
-                  key={contact._id} 
-                  onClick={() => openQuickViewDrawer(contact)}
-                  className="border border-gray-200 rounded-lg p-3 sm:p-4 hover:bg-gray-50 transition cursor-pointer"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="h-8 w-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-green-700 font-medium text-sm">
-                          {contact.name[0]?.toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{contact.name}</p>
-                        <p className="text-xs text-gray-500 truncate">{contact.whatsappNumber}</p>
-                      </div>
-                    </div>
-                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full flex-shrink-0 ${
-                      contact.type === 'customer' ? 'bg-blue-100 text-blue-700' :
-                      contact.type === 'lead' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {contact.type}
-                    </span>
-                  </div>
-
-                  {contact.businessName && (
-                    <p className="text-xs text-gray-600 mb-2 truncate"><span className="font-medium">Business:</span> {contact.businessName}</p>
-                  )}
-                  
-                  {contact.tags && contact.tags.length > 0 && (
-                    <div className="flex gap-1 flex-wrap mb-2">
-                      {contact.tags.map((tag, index) => (
-                        <span key={index} className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-600">
-                    <div>{contact.messageCount} messages</div>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openContactChat(contact)
-                        }}
-                        className="text-green-600 hover:text-green-700 p-1 hover:bg-green-50 rounded"
-                        title="Send Message"
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openEditModal(contact)
-                        }}
-                        className="text-blue-600 hover:text-blue-700 p-1 hover:bg-blue-50 rounded"
-                        title="Edit"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteContact(contact._id)
-                        }}
-                        className="text-red-600 hover:text-red-700 p-1 hover:bg-red-50 rounded"
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {/* Main Table Component */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <ContactsTable 
+          contacts={contacts}
+          isLoading={isLoading}
+          onEdit={openEditModal}
+          onDelete={deleteContact}
+          onView={(contact) => openContactChat(contact)}
+        />
       </div>
 
       {/* Add/Edit Modal */}
