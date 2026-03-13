@@ -102,7 +102,7 @@ export const getPhoneNumbers = async (req, res) => {
 export const addPhoneNumber = async (req, res) => {
   try {
     const accountId = req.account?.accountId; // Use String accountId
-    const { phoneNumberId, wabaId, accessToken, displayName, displayPhone } = req.body;
+    const { phoneNumberId, wabaId, accessToken, displayName, displayPhone, phone } = req.body;
     
     if (!phoneNumberId || !wabaId || !accessToken) {
       return res.status(400).json({
@@ -127,10 +127,22 @@ export const addPhoneNumber = async (req, res) => {
     });
     
     if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: 'This phone number is already connected to your account',
-        existingId: existing._id
+      // ✅ AUTO-SYNC: Update existing record with latest data
+      console.log('📱 Auto-syncing existing phone number...');
+      existing.wabaId = wabaId;
+      existing.accessToken = accessToken;
+      existing.isConnected = true;
+      existing.displayName = displayName || existing.displayName || 'WhatsApp Business';
+      existing.displayPhone = displayPhone || phone || existing.displayPhone || phoneNumberId;
+      existing.phone = phone || existing.phone;
+      existing.syncedAt = new Date();
+      await existing.save();
+      
+      return res.json({
+        success: true,
+        message: 'Phone number synced successfully',
+        phoneNumber: existing,
+        synced: true
       });
     }
     
@@ -157,10 +169,13 @@ export const addPhoneNumber = async (req, res) => {
         phoneNumberId,
         wabaId,
         accessToken,
+        phone: phone || displayPhone || phoneNumberId,  // ✅ NEW: Store actual phone number
         displayName: displayName || 'WhatsApp Business',
         displayPhone: displayPhone || phoneNumberId,
         isActive: isFirst, // First phone number is active by default
-        verifiedAt: new Date()
+        isConnected: true,  // ✅ NEW: Mark as connected immediately
+        verifiedAt: new Date(),
+        syncedAt: new Date()  // ✅ NEW: Track sync time
       });
       
       // ✅ NEW: Save wabaId to Account for webhook routing
