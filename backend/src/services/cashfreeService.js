@@ -199,66 +199,37 @@ export const cashfreeService = {
     try {
       logger.info('🔄 Syncing REAL payments from Cashfree API...');
       
-      // Step 1: DELETE demo/test payments (those NOT from Cashfree)
-      const deletedDemo = await Payment.deleteMany({ 
-        paymentGateway: { $ne: 'cashfree' } 
-      });
-      logger.info(`🗑️  Deleted ${deletedDemo.deletedCount} demo payments from database`);
+      // Step 1: Get all order IDs from our Payment DB (both old and new)
+      logger.info('📚 Fetching order IDs from local database...');
+      const existingPayments = await Payment.find(
+        { orderId: { $exists: true } },
+        { orderId: 1 }
+      ).limit(100);
       
-      // Try multiple Cashfree endpoints to get transactions
+      const orderIds = existingPayments.map(p => p.orderId);
+      logger.info(`✅ Found ${orderIds.length} orders in database`);
+      
+      if (orderIds.length === 0) {
+        logger.warn('⚠️ No orders found in database to sync');
+        return {
+          success: true,
+          synced: true,
+          count: 0,
+          total: 0,
+          message: 'No orders to sync from database'
+        };
+      }
+      
       let orders = [];
       
-      try {
-        // Try direct Orders endpoint with filters to get transactions
-        logger.info('📡 Fetching orders from Cashfree /orders endpoint...');
-        const ordersResponse = await axios.get(
-          `${CASHFREE_BASE_URL}/orders`,
-          {
-            params: {
-              count: 100,
-              skip: 0
-            },
-            headers: {
-              'X-Client-Id': CASHFREE_CLIENT_ID,
-              'X-Client-Secret': CASHFREE_API_KEY,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        
-        logger.info(`✅ Orders endpoint response:`, ordersResponse.status);
-        logger.info(`📊 Response structure:`, Object.keys(ordersResponse.data));
-        
-        if (ordersResponse.data && Array.isArray(ordersResponse.data)) {
-          logger.info(`✅ Got orders array directly`);
-          orders = ordersResponse.data;
-        } else if (ordersResponse.data?.data && Array.isArray(ordersResponse.data.data)) {
-          logger.info(`✅ Got orders from .data property`);
-          orders = ordersResponse.data.data;
-        } else if (ordersResponse.data?.orders && Array.isArray(ordersResponse.data.orders)) {
-          logger.info(`✅ Got orders from .orders property`);
-          orders = ordersResponse.data.orders;
-        } else {
-          logger.warn('⚠️ Orders response format unexpected:', typeof ordersResponse.data);
-          orders = [];
-        }
-      } catch (ordersError) {
-        logger.error('❌ Orders endpoint failed:', {
-          status: ordersError.response?.status,
-          message: ordersError.message,
-          data: ordersError.response?.data
-        });
-        
-        // Fallback: Try settlements endpoint if orders fails
+      // Step 2: Fetch payment details for each order from Cashfree
+      logger.info(`📡 Fetching payment details from Cashfree for ${orderIds.length} orders...`);
+      for (const orderId of orderIds) {
         try {
-          logger.info('📡 Trying settlements endpoint as fallback...');
-          const settleResponse = await axios.get(
-            `${CASHFREE_BASE_URL}/settlements`,
+          logger.info(`  🔍 Fetching payments for order: ${orderId}`);
+          const paymentResponse = await axios.get(
+            `${CASHFREE_BASE_URL}/orders/${orderId}/payments`,
             {
-              params: {
-                count: 100,
-                skip: 0
-              },
               headers: {
                 'X-Client-Id': CASHFREE_CLIENT_ID,
                 'X-Client-Secret': CASHFREE_API_KEY,
@@ -266,11 +237,30 @@ export const cashfreeService = {
               }
             }
           );
-          orders = settleResponse.data?.data || settleResponse.data || [];
-          logger.info(`✅ Got settlements data`);
-        } catch (settleError) {
-          logger.error('❌ Settlements endpoint also failed:', settleError.message);
-          orders = [];
+          
+          if (paymentResponse.data && Array.isArray(paymentResponse.data)) {
+            logger.info(`  ✅ Got ${paymentResponse.data.length} payment(s) for ${orderId}`);
+            // Get order details too
+            const orderResponse = await axios.get(
+              `${CASHFREE_BASE_URL}/orders/${orderId}`,
+              {
+                headers: {
+                  'X-Client-Id': CASHFREE_CLIENT_ID,
+                  'X-Client-Secret': CASHFREE_API_KEY,
+                  'Content-Type': 'application/json'
+                }
+              }
+            );
+            
+            if (orderResponse.data) {
+              // Attach payments to order object
+              orderResponse.data.payments = paymentResponse.data;
+              orders.push(orderResponse.data);
+            }
+          }
+        } catch (err) {
+          logger.error(`  ❌ Failed to fetch payments for ${orderId}:`, err.response?.status, err.response?.data?.message || err.message);
+          // Continue with next order
         }
       }
       
@@ -445,11 +435,28 @@ export const cashfreeService = {
         base_url: CASHFREE_BASE_URL
       });
 
-      // Simple test - fetch orders (limit to 1 to verify connection)
+      // Get first order from database to test connection
+      const testOrder = await Payment.findOne({ orderId: { $exists: true } })
+        .select('orderId')
+        .limit(1);
+
+      if (!testOrder?.orderId) {
+        logger.warn('⚠️ No test order found in database, connection test skipped');
+        return {
+          success: true,
+          message: '⚠️ No orders in database to test, but Cashfree credentials are configured',
+          credentials_valid: !!CASHFREE_CLIENT_ID && !!CASHFREE_API_KEY,
+          has_client_id: !!CASHFREE_CLIENT_ID,
+          has_secret: !!CASHFREE_API_KEY,
+          base_url: CASHFREE_BASE_URL
+        };
+      }
+
+      // Test with real order endpoint
+      logger.info(`📡 Testing with order: ${testOrder.orderId}`);
       const testResponse = await axios.get(
-        `${CASHFREE_BASE_URL}/orders`,
+        `${CASHFREE_BASE_URL}/orders/${testOrder.orderId}`,
         {
-          params: { count: 1 },
           headers: {
             'X-Client-Id': CASHFREE_CLIENT_ID,
             'X-Client-Secret': CASHFREE_API_KEY,
@@ -468,9 +475,9 @@ export const cashfreeService = {
         message: '✅ Connected to Cashfree API successfully',
         response_status: testResponse.status,
         has_data: !!testResponse.data,
-        data_type: typeof testResponse.data,
-        data_keys: testResponse.data ? Object.keys(testResponse.data).slice(0, 5) : [],
-        sample_data: testResponse.data ? JSON.stringify(testResponse.data).substring(0, 200) : null
+        order_tested: testOrder.orderId,
+        order_status: testResponse.data?.order_status,
+        credentials_valid: true
       };
     } catch (error) {
       logger.error('❌ Cashfree API connection FAILED');
