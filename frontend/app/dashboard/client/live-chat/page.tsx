@@ -373,7 +373,7 @@ export default function LiveChat() {
       // Update conversation optimistically
       setConversations(prev => {
         const updated = prev.map(conv =>
-          conv.conversationId === selectedConversation
+          conv._id === selectedConversation
             ? {
                 ...conv,
                 lastMessagePreview: messageText.substring(0, 100),
@@ -530,7 +530,7 @@ export default function LiveChat() {
       // Update conversations list
       setConversations(prev =>
         prev.map(conv =>
-          conv.conversationId === selectedConversation
+          conv._id === selectedConversation
             ? { ...conv, userName: updatedName, status: conversationStatus }
             : conv
         )
