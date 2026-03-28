@@ -726,7 +726,7 @@ export default function LiveChat() {
   useEffect(() => {
     if (selectedConversation) {
       // selectedConversation is now conversationId (string), not _id
-      const conv = conversations.find(c => c.conversationId === selectedConversation);
+      const conv = conversations.find(c => c._id === selectedConversation);
       if (conv) {
         setContactName(conv.userName);
         setEditingName(conv.userName || ''); // Sync editingName to prevent uncontrolled input warning
@@ -811,15 +811,15 @@ export default function LiveChat() {
               <button
                 key={conv._id}
                 onClick={async () => {
-                  // ✅ Use conversationId (string) not _id (ObjectId)
-                  setSelectedConversation(conv.conversationId);
+                  // ✅ Use _id for selecting conversation
+                  setSelectedConversation(conv._id);
                   // Reset unread count when conversation is opened
                   setConversations(prev => prev.map(c => c._id === conv._id ? { ...c, unreadCount: 0 } : c));
                   
                   // Call backend API to mark conversation as read
                   try {
                     // Get the actual conversation object to access the _id for the API
-                    const conversation = conversations.find(c => c.conversationId === conv.conversationId);
+                    const conversation = conversations.find(c => c._id === conv._id);
                     if (conversation) {
                       await axios.post(
                         `${API_BASE_URL()}/live-chat/conversations/${conversation._id}/mark-read`,
@@ -832,7 +832,7 @@ export default function LiveChat() {
                   }
                 }}
                 className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition ${
-                  selectedConversation === conv.conversationId ? 'bg-green-50 border-l-4 border-green-500' : ''
+                  selectedConversation === conv._id ? 'bg-green-50 border-l-4 border-green-500' : ''
                 }`}
               >
                 <div className="flex items-center gap-3">
