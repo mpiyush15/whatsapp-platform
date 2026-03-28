@@ -178,6 +178,30 @@ export const syncRealTransactions = async (req, res) => {
   }
 };
 
+export const testCashfreeConnection = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    // Only superadmin can test
+    if (user?.role !== 'superadmin') {
+      return sendValidationError(res, 'Only superadmin can test Cashfree connection', 403);
+    }
+    
+    logger.info('🧪 Testing Cashfree connection...');
+    const result = await cashfreeService.testCashfreeConnection();
+    
+    if (result.success) {
+      logger.info(`✅ Cashfree connection test passed`);
+      return sendSuccess(res, result, '✅ Cashfree API connection successful');
+    } else {
+      logger.error('❌ Cashfree connection test failed:', result.message);
+      return sendValidationError(res, result.message, 500);
+    }
+  } catch (error) {
+    return handleControllerError(res, error, 'testCashfreeConnection');
+  }
+};
+
 export default { 
   initiatePayment, 
   getPaymentStatus,
@@ -188,5 +212,6 @@ export default {
   getAllPayments,
   getPaymentStats,
   syncCashfreePayments,
+  testCashfreeConnection,
   syncRealTransactions
 };

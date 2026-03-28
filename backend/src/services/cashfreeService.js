@@ -433,5 +433,66 @@ export const cashfreeService = {
         count: 0
       };
     }
+  },
+
+  // Test Cashfree connection and credentials
+  testCashfreeConnection: async () => {
+    try {
+      logger.info('🧪 Testing Cashfree connection...');
+      logger.info('🔑 Using credentials:', {
+        client_id: CASHFREE_CLIENT_ID ? `${CASHFREE_CLIENT_ID.substring(0, 8)}...` : 'MISSING',
+        has_secret: !!CASHFREE_API_KEY,
+        base_url: CASHFREE_BASE_URL
+      });
+
+      // Simple test - fetch orders (limit to 1 to verify connection)
+      const testResponse = await axios.get(
+        `${CASHFREE_BASE_URL}/orders`,
+        {
+          params: { count: 1 },
+          headers: {
+            'X-Client-Id': CASHFREE_CLIENT_ID,
+            'X-Client-Secret': CASHFREE_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+
+      logger.info('✅ Cashfree API connection SUCCESS');
+      logger.info('📊 Response status:', testResponse.status);
+      logger.info('📦 Response type:', typeof testResponse.data);
+      
+      return {
+        success: true,
+        message: '✅ Connected to Cashfree API successfully',
+        response_status: testResponse.status,
+        has_data: !!testResponse.data,
+        data_type: typeof testResponse.data,
+        data_keys: testResponse.data ? Object.keys(testResponse.data).slice(0, 5) : [],
+        sample_data: testResponse.data ? JSON.stringify(testResponse.data).substring(0, 200) : null
+      };
+    } catch (error) {
+      logger.error('❌ Cashfree API connection FAILED');
+      logger.error('Error details:', {
+        status: error.response?.status,
+        message: error.message,
+        error_data: error.response?.data
+      });
+
+      return {
+        success: false,
+        message: `❌ Failed to connect to Cashfree API`,
+        error: error.message,
+        status: error.response?.status,
+        response_data: error.response?.data,
+        credentials_check: {
+          has_client_id: !!CASHFREE_CLIENT_ID,
+          has_secret: !!CASHFREE_API_KEY,
+          env_mode: process.env.NODE_ENV,
+          base_url: CASHFREE_BASE_URL
+        }
+      };
+    }
   }
-};
+}

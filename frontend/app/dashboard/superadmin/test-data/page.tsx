@@ -12,6 +12,8 @@ export default function TestDataPage() {
   const [error, setError] = useState("")
   const [syncLoading, setSyncLoading] = useState(false)
   const [syncResult, setSyncResult] = useState<any>(null)
+  const [testLoading, setTestLoading] = useState(false)
+  const [testResult, setTestResult] = useState<any>(null)
   const [debugInfo, setDebugInfo] = useState<any>({})
 
   useEffect(() => {
@@ -252,21 +254,60 @@ export default function TestDataPage() {
     }
   }
 
+  const handleTestCashfreeConnection = async () => {
+    try {
+      setTestLoading(true)
+      setTestResult(null)
+      const token = localStorage.getItem("token")
+      
+      if (!token) {
+        setTestResult({ error: "❌ No token found!" })
+        return
+      }
+
+      console.log("🧪 Testing Cashfree connection...")
+      const testResponse = await fetch(`${API_URL}/payment/test/cashfree-connection`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      const testData = await testResponse.json()
+      console.log("✅ Test response:", testData)
+      setTestResult(testData)
+    } catch (err: any) {
+      console.error("Test error:", err)
+      setTestResult({ error: `Error: ${err.message}` })
+    } finally {
+      setTestLoading(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">🧪 Test Data Page</h1>
           <p className="text-gray-600 mt-1">Debug organizations and users data fetch</p>
         </div>
-        <button
-          onClick={handleCashfreeSync}
-          disabled={syncLoading}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium transition"
-        >
-          {syncLoading ? "🔄 Syncing..." : "🔄 Sync Cashfree"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleTestCashfreeConnection}
+            disabled={testLoading}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 font-medium transition text-sm"
+          >
+            {testLoading ? "🧪 Testing..." : "🧪 Test Cashfree"}
+          </button>
+          <button
+            onClick={handleCashfreeSync}
+            disabled={syncLoading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium transition text-sm"
+          >
+            {syncLoading ? "🔄 Syncing..." : "🔄 Sync Cashfree"}
+          </button>
+        </div>
       </div>
 
       {/* Debug Info */}
@@ -276,6 +317,43 @@ export default function TestDataPage() {
           {JSON.stringify(debugInfo, null, 2)}
         </pre>
       </div>
+
+      {/* Test Result */}
+      {testResult && (
+        <div className={`border rounded-lg p-4 ${
+          testResult.success 
+            ? 'bg-purple-50 border-purple-200' 
+            : 'bg-orange-50 border-orange-200'
+        }`}>
+          <h3 className={`font-bold mb-2 ${
+            testResult.success 
+              ? 'text-purple-900' 
+              : 'text-orange-900'
+          }`}>
+            {testResult.success ? '✅ Cashfree Connection Test PASSED' : '⚠️ Cashfree Connection Test Result'}
+          </h3>
+          <div className={`text-sm ${testResult.success ? 'text-purple-800' : 'text-orange-800'}`}>
+            <p><strong>Status:</strong> {testResult.success ? 'CONNECTED' : 'FAILED'}</p>
+            {testResult.message && <p><strong>Message:</strong> {testResult.message}</p>}
+            {testResult.response_status && <p><strong>HTTP Status:</strong> {testResult.response_status}</p>}
+            {testResult.data_type && <p><strong>Response Type:</strong> {testResult.data_type}</p>}
+            {testResult.error && <p><strong>Error:</strong> {testResult.error}</p>}
+            {testResult.credentials_check && (
+              <div className="mt-2">
+                <p><strong>Credentials Check:</strong></p>
+                <ul className="list-disc list-inside text-xs ml-2">
+                  <li>Client ID: {testResult.credentials_check.has_client_id ? '✅ Present' : '❌ Missing'}</li>
+                  <li>Secret Key: {testResult.credentials_check.has_secret ? '✅ Present' : '❌ Missing'}</li>
+                  <li>Environment: {testResult.credentials_check.env_mode}</li>
+                </ul>
+              </div>
+            )}
+          </div>
+          <pre className="bg-white p-2 rounded text-xs overflow-auto max-h-40 mt-2 text-gray-800">
+            {JSON.stringify(testResult, null, 2)}
+          </pre>
+        </div>
+      )}
 
       {/* Sync Result */}
       {syncResult && (
