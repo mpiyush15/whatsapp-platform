@@ -85,7 +85,7 @@ export default function PlatformBillingPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {error && <ErrorToast message={error} />}
+      {error && <ErrorToast message={error} onDismiss={() => setError('')} />}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
