@@ -1,7 +1,9 @@
 import express from 'express';
 import { paymentTimeoutJobHandler } from '../jobs/paymentTimeoutJob.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 /**
@@ -19,7 +21,7 @@ router.post('/check-payment-timeouts', requireJWT, async (req, res) => {
     const result = await paymentTimeoutJobHandler(req, res);
     return result;
   } catch (error) {
-    console.error('❌ Payment timeout job error:', error);
+    logger.error('❌ Payment timeout job error:', error);
     return res.status(500).json({
       success: false,
       error: error.message

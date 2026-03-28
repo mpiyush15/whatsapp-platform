@@ -1,7 +1,9 @@
 import express from 'express';
 import tagService from '../services/tagService.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 // ✅ All routes require JWT authentication
@@ -24,7 +26,7 @@ router.get('/', async (req, res) => {
       data: tags
     });
   } catch (error) {
-    console.error('❌ Error listing tags:', error);
+    logger.error('❌ Error listing tags:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to list tags',
@@ -68,7 +70,7 @@ router.post('/', async (req, res) => {
       data: tag
     });
   } catch (error) {
-    console.error('❌ Error creating tag:', error);
+    logger.error('❌ Error creating tag:', error);
     if (error.message.includes('already exists')) {
       return res.status(409).json({
         success: false,
@@ -101,7 +103,7 @@ router.get('/:tagId', async (req, res) => {
       data: tag
     });
   } catch (error) {
-    console.error('❌ Error getting tag:', error);
+    logger.error('❌ Error getting tag:', error);
     if (error.message === 'Tag not found') {
       return res.status(404).json({
         success: false,
@@ -152,7 +154,7 @@ router.patch('/:tagId', async (req, res) => {
       data: tag
     });
   } catch (error) {
-    console.error('❌ Error updating tag:', error);
+    logger.error('❌ Error updating tag:', error);
     if (error.message === 'Tag not found') {
       return res.status(404).json({
         success: false,
@@ -186,7 +188,7 @@ router.delete('/:tagId', async (req, res) => {
       data: tag
     });
   } catch (error) {
-    console.error('❌ Error deleting tag:', error);
+    logger.error('❌ Error deleting tag:', error);
     if (error.message === 'Tag not found') {
       return res.status(404).json({
         success: false,
@@ -223,7 +225,7 @@ router.get('/popular', async (req, res) => {
       data: tags
     });
   } catch (error) {
-    console.error('❌ Error getting popular tags:', error);
+    logger.error('❌ Error getting popular tags:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to get popular tags',
@@ -258,7 +260,7 @@ router.get('/search', async (req, res) => {
       query: q
     });
   } catch (error) {
-    console.error('❌ Error searching tags:', error);
+    logger.error('❌ Error searching tags:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to search tags',

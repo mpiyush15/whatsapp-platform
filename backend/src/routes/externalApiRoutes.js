@@ -42,7 +42,9 @@ import * as accountController from '../controllers/accountController.js';
 
 // Import middleware
 import { resolvePhoneNumber } from '../middlewares/phoneNumberHelper.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 // Apply API Key auth to ALL external routes
@@ -252,7 +254,7 @@ router.get('/account/config', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error fetching account config:', error);
+    logger.error('❌ Error fetching account config:', error);
     res.status(500).json({
       success: false,
       code: 'ACCOUNT_CONFIG_ERROR',

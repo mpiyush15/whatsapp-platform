@@ -5,7 +5,9 @@
 
 import axios from 'axios';
 import WebhookLog from '../models/WebhookLog.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 class WebhookRetryService {
   constructor() {
     this.maxRetries = 5;
@@ -33,7 +35,7 @@ class WebhookRetryService {
       attemptNumber = attempt;
 
       try {
-        console.log(`📤 Webhook attempt ${attempt + 1}/${this.maxRetries} to ${webhookUrl}`);
+        logger.info(`📤 Webhook attempt ${attempt + 1}/${this.maxRetries} to ${webhookUrl}`);
 
         const response = await axios.post(webhookUrl, payload, {
           timeout: 10000,
@@ -47,7 +49,7 @@ class WebhookRetryService {
 
         // ✅ Success (2xx status)
         if (response.status >= 200 && response.status < 300) {
-          console.log(`✅ Webhook delivered successfully on attempt ${attempt + 1}`);
+          logger.info(`✅ Webhook delivered successfully on attempt ${attempt + 1}`);
 
           // Log successful delivery
           await WebhookLog.create({
@@ -60,7 +62,7 @@ class WebhookRetryService {
             attempts: attempt + 1,
             response: response.data,
             deliveredAt: new Date()
-          }).catch(err => console.error('Failed to log webhook:', err));
+          }).catch(err => logger.error('Failed to log webhook:', err));
 
           return { success: true, attempts: attempt + 1, statusCode: response.status };
         }
@@ -69,12 +71,12 @@ class WebhookRetryService {
         lastError = new Error(`HTTP ${response.status}: ${response.statusText}`);
       } catch (error) {
         lastError = error;
-        console.error(`❌ Webhook attempt ${attempt + 1} failed:`, error.message);
+        logger.error(`❌ Webhook attempt ${attempt + 1} failed:`, error.message);
 
         // Don't retry on certain errors
         if (error.response?.status === 410) {
           // 410 Gone - endpoint no longer exists
-          console.error('Webhook endpoint no longer exists (410). Stopping retries.');
+          logger.error('Webhook endpoint no longer exists (410). Stopping retries.');
           await WebhookLog.create({
             accountId,
             eventType,
@@ -85,14 +87,14 @@ class WebhookRetryService {
             attempts: attempt + 1,
             error: 'Endpoint no longer exists (410 Gone)',
             failedAt: new Date()
-          }).catch(err => console.error('Failed to log webhook:', err));
+          }).catch(err => logger.error('Failed to log webhook:', err));
 
           return { success: false, attempts: attempt + 1, statusCode: 410, error: 'Endpoint no longer exists' };
         }
 
         if (error.response?.status === 403 || error.response?.status === 401) {
           // 403/401 Unauthorized - credentials invalid
-          console.error('Webhook authentication failed. Stopping retries.');
+          logger.error('Webhook authentication failed. Stopping retries.');
           await WebhookLog.create({
             accountId,
             eventType,
@@ -103,7 +105,7 @@ class WebhookRetryService {
             attempts: attempt + 1,
             error: 'Authentication failed',
             failedAt: new Date()
-          }).catch(err => console.error('Failed to log webhook:', err));
+          }).catch(err => logger.error('Failed to log webhook:', err));
 
           return { success: false, attempts: attempt + 1, statusCode: error.response.status, error: 'Authentication failed' };
         }
@@ -111,14 +113,14 @@ class WebhookRetryService {
         // For other errors (network, timeout, 5xx), retry with exponential backoff
         if (attempt < this.maxRetries - 1) {
           const delay = this.getBackoffDelay(attempt);
-          console.log(`⏳ Retrying in ${Math.round(delay)}ms...`);
+          logger.info(`⏳ Retrying in ${Math.round(delay)}ms...`);
           await this.sleep(delay);
         }
       }
     }
 
     // ❌ All retries exhausted
-    console.error(`❌ Webhook delivery failed after ${this.maxRetries} attempts`);
+    logger.error(`❌ Webhook delivery failed after ${this.maxRetries} attempts`);
 
     await WebhookLog.create({
       accountId,
@@ -130,7 +132,7 @@ class WebhookRetryService {
       attempts: this.maxRetries,
       error: lastError?.message || 'Unknown error',
       failedAt: new Date()
-    }).catch(err => console.error('Failed to log webhook:', err));
+    }).catch(err => logger.error('Failed to log webhook:', err));
 
     return {
       success: false,
@@ -159,7 +161,7 @@ class WebhookRetryService {
         createdAt: { $gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
       }).limit(100);
 
-      console.log(`🔄 Found ${failedWebhooks.length} webhooks to retry`);
+      logger.info(`🔄 Found ${failedWebhooks.length} webhooks to retry`);
 
       for (const webhook of failedWebhooks) {
         const result = await this.sendWithRetry(
@@ -184,9 +186,9 @@ class WebhookRetryService {
         }
       }
 
-      console.log('✅ Webhook retry batch completed');
+      logger.info('✅ Webhook retry batch completed');
     } catch (error) {
-      console.error('❌ Webhook retry batch error:', error);
+      logger.error('❌ Webhook retry batch error:', error);
     }
   }
 }

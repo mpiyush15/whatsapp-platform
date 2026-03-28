@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/jwt.js';
 import Account from '../models/Account.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * JWT Authentication Middleware (Dashboard & Internal)
  * ✅ AUTH TYPE: JWT Bearer token (from login)
@@ -35,6 +37,7 @@ export const requireJWT = async (req, res, next) => {
       accountId: decoded.accountId,
       role: decoded.role
     };
+    req.authType = 'jwt';
 
     // Look up account in database
     let account;
@@ -82,7 +85,7 @@ export const requireJWT = async (req, res, next) => {
   } catch (error) {
     // Log JWT errors only in development for debugging
     if (process.env.NODE_ENV === 'development') {
-      console.error('[JWT Error]', error.message);
+      logger.error('[JWT Error]', error.message);
     }
     return res.status(401).json({
       success: false,
@@ -101,7 +104,8 @@ export const generateToken = (user) => {
       email: user.email,
       name: user.name,
       accountId: user.accountId,
-      role: user.role
+      role: user.role,
+      type: user.type // Include type: internal, client, company
     },
     JWT_SECRET,
     { expiresIn: '24h' } // Token valid for 24 hours

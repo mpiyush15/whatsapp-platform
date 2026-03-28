@@ -6,7 +6,9 @@
 
 import crypto from 'crypto';
 import Account from '../models/Account.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 // Admin key stored securely in environment
 const ADMIN_API_KEY_HASH = process.env.ADMIN_API_KEY_HASH;
 
@@ -43,7 +45,7 @@ export const authenticateAdmin = async (req, res, next) => {
     if (token.startsWith('wpk_admin_')) {
       // Validate against hashed admin key
       if (!ADMIN_API_KEY_HASH) {
-        console.error('❌ ADMIN_API_KEY_HASH not configured in environment');
+        logger.error('❌ ADMIN_API_KEY_HASH not configured in environment');
         return res.status(500).json({
           success: false,
           message: 'Admin authentication not configured'
@@ -61,7 +63,15 @@ export const authenticateAdmin = async (req, res, next) => {
       
       // Mark request as admin authenticated
       req.isAdmin = true;
-      req.accountId = 'pixels_internal'; // Internal platform account
+      req.accountId = 'pixels_internal';
+      req.account = {
+        accountId: 'pixels_internal',
+        name: 'Internal Admin',
+        email: 'admin@pixels.internal',
+        type: 'internal',
+        plan: 'enterprise',
+        status: 'active'
+      };
       
       return next();
     }
@@ -75,12 +85,21 @@ export const authenticateAdmin = async (req, res, next) => {
           // Allow internal account to manage its own phone numbers
           req.isAdmin = false;
           req.accountId = account.accountId;
-          req.account = account;
+          req.account = {
+            id: account._id,
+            accountId: account.accountId,
+            name: account.name,
+            email: account.email,
+            type: account.type,
+            plan: account.plan,
+            status: account.status,
+            _id: account._id
+          };
           
           return next();
         }
       } catch (error) {
-        console.error('Error validating regular API key:', error);
+        logger.error('Error validating regular API key:', error);
       }
     }
     
@@ -91,7 +110,7 @@ export const authenticateAdmin = async (req, res, next) => {
     });
     
   } catch (error) {
-    console.error('Admin auth error:', error);
+    logger.error('Admin auth error:', error);
     return res.status(500).json({
       success: false,
       message: 'Authentication error'
@@ -122,7 +141,7 @@ export const authenticateAdmin = async (req, res, next) => {
     
     next();
   } catch (error) {
-    console.error('Admin auth error:', error);
+    logger.error('Admin auth error:', error);
     return res.status(500).json({
       success: false,
       message: 'Authentication error'
@@ -139,16 +158,16 @@ export function generateAdminKey() {
   const adminKey = `wpk_admin_${randomBytes}`;
   const adminKeyHash = hashKey(adminKey);
   
-  console.log('\n🔑 ========== ADMIN API KEY ==========\n');
-  console.log('⚠️  SAVE THESE VALUES SECURELY\n');
-  console.log('1. Add to .env file:');
-  console.log(`   ADMIN_API_KEY_HASH="${adminKeyHash}"\n`);
-  console.log('2. Use this key for admin operations:');
-  console.log(`   ${adminKey}\n`);
-  console.log('⚠️  This key has FULL PLATFORM ACCESS');
-  console.log('⚠️  Never commit to git');
-  console.log('⚠️  Store in secure password manager\n');
-  console.log('=====================================\n');
+  logger.info('\n🔑 ========== ADMIN API KEY ==========\n');
+  logger.info('⚠️  SAVE THESE VALUES SECURELY\n');
+  logger.info('1. Add to .env file:');
+  logger.info(`   ADMIN_API_KEY_HASH="${adminKeyHash}"\n`);
+  logger.info('2. Use this key for admin operations:');
+  logger.info(`   ${adminKey}\n`);
+  logger.info('⚠️  This key has FULL PLATFORM ACCESS');
+  logger.info('⚠️  Never commit to git');
+  logger.info('⚠️  Store in secure password manager\n');
+  logger.info('=====================================\n');
   
   return { adminKey, adminKeyHash };
 }

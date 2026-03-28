@@ -1,5 +1,7 @@
 import axios from 'axios';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const ZEPTO_API_KEY = process.env.ZEPTOMAIL_API_TOKEN || process.env.ZEPTO_API_TOKEN || process.env.ZEPTO_API_KEY;
 const ZEPTO_BASE_URL = process.env.ZEPTO_API_URL || 'https://api.zeptomail.in/v1.1/email';
 const FROM_EMAIL = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'support@replysys.com';
@@ -32,7 +34,7 @@ const sendViaZepto = async (to, subject, htmlbody) => {
     );
     return { success: true };
   } catch (error) {
-    console.error('  Zepto Error:', error.response?.data || error.message);
+    logger.error('  Zepto Error:', error.response?.data || error.message);
     throw error;
   }
 };
@@ -42,13 +44,13 @@ export const emailService = {
   sendEmail: async (to, subject, htmlbody) => {
     try {
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping');
+        logger.info('✅ Email service disabled - skipping');
         return { success: true, skipped: true };
       }
       await sendViaZepto(to, subject, htmlbody);
       return { success: true };
     } catch (error) {
-      console.error('❌ Error sending email:', error.message);
+      logger.error('❌ Error sending email:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -56,14 +58,14 @@ export const emailService = {
   // Send welcome email on signup
   sendWelcomeEmail: async (email, name) => {
     try {
-      console.log('📧 [EMAIL SERVICE] Attempting to send welcome email...');
-      console.log('  To:', email);
-      console.log('  Name:', name);
-      console.log('  From:', FROM_EMAIL);
-      console.log('  Email enabled:', ENABLE_EMAIL);
+      logger.info('📧 [EMAIL SERVICE] Attempting to send welcome email...');
+      logger.info('  To:', email);
+      logger.info('  Name:', name);
+      logger.info('  From:', FROM_EMAIL);
+      logger.info('  Email enabled:', ENABLE_EMAIL);
       
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping (set ENABLE_EMAIL=true to enable)');
+        logger.info('✅ Email service disabled - skipping (set ENABLE_EMAIL=true to enable)');
         return { success: true, skipped: true };
       }
 
@@ -107,12 +109,12 @@ export const emailService = {
         `
       );
       
-      console.log('✅ Welcome email sent to', email);
+      logger.info('✅ Welcome email sent to', email);
       return { success: true };
     } catch (error) {
-      console.error('❌ Welcome email failed:', error.message);
+      logger.error('❌ Welcome email failed:', error.message);
       if (error.response?.data) {
-        console.error('  Response:', error.response.data);
+        logger.error('  Response:', error.response.data);
       }
       return { success: false, error: error.message };
     }
@@ -165,10 +167,10 @@ export const emailService = {
           }
         }
       );
-      console.log('✅ Invoice email sent to', email);
+      logger.info('✅ Invoice email sent to', email);
       return { success: true };
     } catch (error) {
-      console.error('❌ Invoice email failed:', error.message);
+      logger.error('❌ Invoice email failed:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -217,10 +219,10 @@ export const emailService = {
           }
         }
       );
-      console.log('✅ Password reset email sent to', email);
+      logger.info('✅ Password reset email sent to', email);
       return { success: true };
     } catch (error) {
-      console.error('❌ Password reset email failed:', error.message);
+      logger.error('❌ Password reset email failed:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -281,10 +283,10 @@ export const emailService = {
           }
         }
       );
-      console.log('✅ Payment confirmation email sent to', email);
+      logger.info('✅ Payment confirmation email sent to', email);
       return { success: true };
     } catch (error) {
-      console.error('❌ Payment email failed:', error.message);
+      logger.error('❌ Payment email failed:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -336,10 +338,10 @@ export const emailService = {
           }
         }
       );
-      console.log('✅ Renewal reminder email sent to', email);
+      logger.info('✅ Renewal reminder email sent to', email);
       return { success: true };
     } catch (error) {
-      console.error('❌ Renewal reminder email failed:', error.message);
+      logger.error('❌ Renewal reminder email failed:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -347,14 +349,14 @@ export const emailService = {
   // Send payment link email (when admin generates payment link for client)
   sendPaymentLinkEmail: async (email, paymentLink, invoiceNumber, amount, clientName) => {
     try {
-      console.log('📧 [EMAIL SERVICE] Sending payment link email...');
-      console.log('  To:', email);
-      console.log('  Invoice:', invoiceNumber);
-      console.log('  Amount:', amount);
-      console.log('  Endpoint:', ZEPTO_BASE_URL);
+      logger.info('📧 [EMAIL SERVICE] Sending payment link email...');
+      logger.info('  To:', email);
+      logger.info('  Invoice:', invoiceNumber);
+      logger.info('  Amount:', amount);
+      logger.info('  Endpoint:', ZEPTO_BASE_URL);
       
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping (set ENABLE_EMAIL=true to enable)');
+        logger.info('✅ Email service disabled - skipping (set ENABLE_EMAIL=true to enable)');
         return { success: true, skipped: true };
       }
 
@@ -412,12 +414,12 @@ export const emailService = {
         `
       );
       
-      console.log('✅ Payment link email sent to', email);
+      logger.info('✅ Payment link email sent to', email);
       return { success: true };
     } catch (error) {
-      console.error('❌ Payment link email failed:', error.message);
+      logger.error('❌ Payment link email failed:', error.message);
       if (error.response?.data) {
-        console.error('  Response:', error.response.data);
+        logger.error('  Response:', error.response.data);
       }
       return { success: false, error: error.message };
     }
@@ -426,12 +428,12 @@ export const emailService = {
   // Send pending payment notification for subscription plans
   sendPendingPaymentEmail: async (email, name, plan, planAmount, billingCycle, paymentLink) => {
     try {
-      console.log('📧 [EMAIL SERVICE] Sending pending payment email...');
-      console.log('  To:', email);
-      console.log('  Plan:', plan, 'Amount:', planAmount);
+      logger.info('📧 [EMAIL SERVICE] Sending pending payment email...');
+      logger.info('  To:', email);
+      logger.info('  Plan:', plan, 'Amount:', planAmount);
       
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping');
+        logger.info('✅ Email service disabled - skipping');
         return { success: true };
       }
 
@@ -542,7 +544,7 @@ export const emailService = {
         htmlbody
       );
     } catch (error) {
-      console.error('❌ Pending payment email failed:', error.message);
+      logger.error('❌ Pending payment email failed:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -550,12 +552,12 @@ export const emailService = {
   // Send payment reminder email (for users who registered but haven't paid)
   sendPaymentReminderEmail: async (email, name, plan, planAmount, billingCycle, paymentLink) => {
     try {
-      console.log('📧 [EMAIL SERVICE] Sending payment reminder email...');
-      console.log('  To:', email);
-      console.log('  Plan:', plan);
+      logger.info('📧 [EMAIL SERVICE] Sending payment reminder email...');
+      logger.info('  To:', email);
+      logger.info('  Plan:', plan);
       
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping');
+        logger.info('✅ Email service disabled - skipping');
         return { success: true };
       }
 
@@ -638,7 +640,7 @@ export const emailService = {
         htmlbody
       );
     } catch (error) {
-      console.error('❌ Payment reminder email failed:', error.message);
+      logger.error('❌ Payment reminder email failed:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -646,12 +648,12 @@ export const emailService = {
   // Send payment confirmation email
   sendPaymentConfirmationEmail: async (email, name, plan, planAmount, transactionId) => {
     try {
-      console.log('📧 [EMAIL SERVICE] Sending payment confirmation email...');
-      console.log('  To:', email);
-      console.log('  Transaction ID:', transactionId);
+      logger.info('📧 [EMAIL SERVICE] Sending payment confirmation email...');
+      logger.info('  To:', email);
+      logger.info('  Transaction ID:', transactionId);
       
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping');
+        logger.info('✅ Email service disabled - skipping');
         return { success: true };
       }
 
@@ -735,7 +737,7 @@ export const emailService = {
         htmlbody
       );
     } catch (error) {
-      console.error('❌ Payment confirmation email failed:', error.message);
+      logger.error('❌ Payment confirmation email failed:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -743,13 +745,13 @@ export const emailService = {
   // 🔴 Send payment confirmation email using pricing snapshot (NEVER fetch live prices)
   sendPaymentConfirmationEmailWithSnapshot: async (email, name, pricingSnapshot, transactionId) => {
     try {
-      console.log('📧 [EMAIL SERVICE] Sending payment confirmation email with pricing snapshot...');
-      console.log('  To:', email);
-      console.log('  Plan:', pricingSnapshot?.planName);
-      console.log('  Amount:', pricingSnapshot?.calculatedAmount);
+      logger.info('📧 [EMAIL SERVICE] Sending payment confirmation email with pricing snapshot...');
+      logger.info('  To:', email);
+      logger.info('  Plan:', pricingSnapshot?.planName);
+      logger.info('  Amount:', pricingSnapshot?.calculatedAmount);
       
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping');
+        logger.info('✅ Email service disabled - skipping');
         return { success: true };
       }
 
@@ -847,10 +849,10 @@ export const emailService = {
         htmlbody
       );
 
-      console.log('✅ Payment confirmation email (with snapshot) sent to', email);
+      logger.info('✅ Payment confirmation email (with snapshot) sent to', email);
       return { success: true };
     } catch (error) {
-      console.error('❌ Payment confirmation email (with snapshot) failed:', error.message);
+      logger.error('❌ Payment confirmation email (with snapshot) failed:', error.message);
       return { success: false, error: error.message };
     }
   },
@@ -858,13 +860,13 @@ export const emailService = {
   // ✅ Send payment failed/timeout email
   sendPaymentFailedEmail: async ({ email, name, plan, amount, paymentDeadline, retryLink, reason }) => {
     try {
-      console.log('📧 [EMAIL SERVICE] Sending payment failed email...');
-      console.log('  To:', email);
-      console.log('  Plan:', plan);
-      console.log('  Reason:', reason);
+      logger.info('📧 [EMAIL SERVICE] Sending payment failed email...');
+      logger.info('  To:', email);
+      logger.info('  Plan:', plan);
+      logger.info('  Reason:', reason);
       
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping');
+        logger.info('✅ Email service disabled - skipping');
         return { success: true };
       }
 
@@ -961,12 +963,12 @@ export const emailService = {
         htmlbody
       );
 
-      console.log('✅ Payment failed email sent to', email);
+      logger.info('✅ Payment failed email sent to', email);
       return { success: true };
     } catch (error) {
-      console.error('❌ Payment failed email failed:', error.message);
+      logger.error('❌ Payment failed email failed:', error.message);
       if (error.response?.data) {
-        console.error('  Response:', error.response.data);
+        logger.error('  Response:', error.response.data);
       }
       return { success: false, error: error.message };
     }
@@ -976,7 +978,7 @@ export const emailService = {
   sendAdminSignupNotification: async (email, name, company = 'N/A', selectedPlan = 'Starter') => {
     try {
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping admin notification');
+        logger.info('✅ Email service disabled - skipping admin notification');
         return { success: true, skipped: true };
       }
 
@@ -1043,10 +1045,10 @@ export const emailService = {
         }
       );
       
-      console.log('✅ Admin signup notification sent to', ADMIN_EMAIL);
+      logger.info('✅ Admin signup notification sent to', ADMIN_EMAIL);
       return { success: true };
     } catch (error) {
-      console.error('❌ Admin notification failed:', error.message);
+      logger.error('❌ Admin notification failed:', error.message);
       // Don't fail the signup if admin email fails
       return { success: false, error: error.message };
     }
@@ -1055,12 +1057,12 @@ export const emailService = {
   // Send agent invitation email
   sendAgentInvitationEmail: async (agentEmail, agentName, invitationToken, accountName) => {
     try {
-      console.log('📧 [EMAIL SERVICE] Sending agent invitation email...');
-      console.log('  To:', agentEmail);
-      console.log('  Agent:', agentName);
+      logger.info('📧 [EMAIL SERVICE] Sending agent invitation email...');
+      logger.info('  To:', agentEmail);
+      logger.info('  Agent:', agentName);
       
       if (!ENABLE_EMAIL) {
-        console.log('✅ Email service disabled - skipping (set ENABLE_EMAIL=true to enable)');
+        logger.info('✅ Email service disabled - skipping (set ENABLE_EMAIL=true to enable)');
         return { success: true, skipped: true };
       }
 
@@ -1128,10 +1130,10 @@ export const emailService = {
         `
       );
       
-      console.log('✅ Agent invitation email sent to', agentEmail);
+      logger.info('✅ Agent invitation email sent to', agentEmail);
       return { success: true };
     } catch (error) {
-      console.error('❌ Agent invitation email failed:', error.message);
+      logger.error('❌ Agent invitation email failed:', error.message);
       return { success: false, error: error.message };
     }
   }

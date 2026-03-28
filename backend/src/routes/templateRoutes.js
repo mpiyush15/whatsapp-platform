@@ -7,7 +7,9 @@ import templateController from '../controllers/templateController.js';
 import { templateLimiter } from '../middlewares/rateLimiter.js';
 import validators from '../middlewares/validators.js';
 import handleMulterError from '../middlewares/multerErrorHandler.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = express.Router();
 

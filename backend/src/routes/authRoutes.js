@@ -2,7 +2,9 @@ import express from 'express';
 import authController from '../controllers/authController.js';
 import googleAuthController from '../controllers/googleAuthController.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 /**

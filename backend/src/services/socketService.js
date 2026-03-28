@@ -2,7 +2,9 @@ import jwt from 'jsonwebtoken';
 import { Server } from 'socket.io';
 import { JWT_SECRET } from '../config/jwt.js';
 import Conversation from '../models/Conversation.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Initialize Socket.io for real-time chat
  * Handles WebSocket connections, authentication, and event broadcasting
@@ -44,7 +46,7 @@ export const initSocketIO = (server) => {
 
   // ✅ CRITICAL FIX: Add connection error handler at server level
   io.engine.on('connection_error', (err) => {
-    console.error('❌ Socket.io engine connection error:', {
+    logger.error('❌ Socket.io engine connection error:', {
       code: err.code,
       message: err.message,
       type: err.type
@@ -56,7 +58,7 @@ export const initSocketIO = (server) => {
     const token = socket.handshake.auth.token;
     
     if (!token) {
-      console.error('❌ Socket: No token provided');
+      logger.error('❌ Socket: No token provided');
       return next(new Error('Authentication error - no token'));
     }
 
@@ -70,7 +72,7 @@ export const initSocketIO = (server) => {
       socket.isAuthenticated = true;  // ✅ Mark as authenticated for event verification
       next();
     } catch (error) {
-      console.error('❌ JWT Verification FAILED:', error.message);
+      logger.error('❌ JWT Verification FAILED:', error.message);
       next(new Error('Invalid token: ' + error.message));
     }
   });
@@ -102,7 +104,7 @@ export const initSocketIO = (server) => {
     socket.on('join_conversation', async (data) => {
       const { conversationId } = data;
       if (!conversationId) {
-        console.error('❌ join_conversation: No conversationId provided');
+        logger.error('❌ join_conversation: No conversationId provided');
         return;
       }
 
@@ -111,7 +113,7 @@ export const initSocketIO = (server) => {
         const conversation = await Conversation.findById(conversationId).select('accountId _id').lean();
         
         if (!conversation) {
-          console.error('❌ Unauthorized join_conversation attempt:', {
+          logger.error('❌ Unauthorized join_conversation attempt:', {
             socketId: socket.id,
             email: socket.email,
             accountId: socket.accountId,
@@ -127,7 +129,7 @@ export const initSocketIO = (server) => {
         const socketAccountId = String(socket.accountId);
         
         if (conversationAccountId !== socketAccountId) {
-          console.error('❌ SECURITY ALERT: Cross-account join_conversation attempt!', {
+          logger.error('❌ SECURITY ALERT: Cross-account join_conversation attempt!', {
             socketId: socket.id,
             email: socket.email,
             socketAccountId: socketAccountId,
@@ -149,7 +151,7 @@ export const initSocketIO = (server) => {
         }
         conversationUsers.get(conversationId).add(socket.id);
       } catch (error) {
-        console.error('❌ Error in join_conversation:', {
+        logger.error('❌ Error in join_conversation:', {
           error: error.message,
           conversationId,
           socketId: socket.id
@@ -169,9 +171,9 @@ export const initSocketIO = (server) => {
       // Verify accountId matches authenticated user
       if (accountId && String(accountId) === String(socket.accountId)) {
         socket.join(roomName);
-        console.log('✅ Socket joined user room:', roomName, 'for socket:', socket.id);
+        logger.info('✅ Socket joined user room:', roomName, 'for socket:', socket.id);
       } else {
-        console.error('❌ Unauthorized join_user_room attempt:', {
+        logger.error('❌ Unauthorized join_user_room attempt:', {
           socketId: socket.id,
           email: socket.email,
           socketAccountId: socket.accountId,
@@ -209,7 +211,7 @@ export const initSocketIO = (server) => {
       try {
         // Validate input
         if (!conversationId || !phoneNumberId || !recipientPhone || !message) {
-          console.error('❌ send_message: Missing required fields');
+          logger.error('❌ send_message: Missing required fields');
           return callback({ success: false, message: 'Missing required fields' });
         }
 
@@ -217,7 +219,7 @@ export const initSocketIO = (server) => {
         const conversation = await Conversation.findById(conversationId).select('accountId _id').lean();
         
         if (!conversation) {
-          console.error('❌ send_message: Conversation not found');
+          logger.error('❌ send_message: Conversation not found');
           return callback({ success: false, message: 'Conversation not found' });
         }
 
@@ -225,7 +227,7 @@ export const initSocketIO = (server) => {
         const socketAccountId = String(socket.accountId);
         
         if (conversationAccountId !== socketAccountId) {
-          console.error('❌ SECURITY ALERT: Cross-account send_message attempt!', {
+          logger.error('❌ SECURITY ALERT: Cross-account send_message attempt!', {
             socketId: socket.id,
             email: socket.email,
             conversationId,
@@ -254,11 +256,11 @@ export const initSocketIO = (server) => {
         if (apiResponse.success) {
           callback({ success: true, message: 'Message sent' });
         } else {
-          console.error('❌ API failed to send message:', apiResponse);
+          logger.error('❌ API failed to send message:', apiResponse);
           callback({ success: false, message: apiResponse.message || 'Failed to send message' });
         }
       } catch (error) {
-        console.error('❌ Error in send_message:', error.message);
+        logger.error('❌ Error in send_message:', error.message);
         callback({ success: false, message: 'Error sending message: ' + error.message });
       }
     });
@@ -277,7 +279,7 @@ export const initSocketIO = (server) => {
     socket.on('typing', async (data) => {
       const { conversationId, isTyping } = data;
       if (!conversationId) {
-        console.error('❌ typing: No conversationId provided');
+        logger.error('❌ typing: No conversationId provided');
         return;
       }
 
@@ -286,7 +288,7 @@ export const initSocketIO = (server) => {
         const conversation = await Conversation.findById(conversationId).select('accountId _id').lean();
         
         if (!conversation) {
-          console.error('❌ Unauthorized typing attempt: Conversation not found', {
+          logger.error('❌ Unauthorized typing attempt: Conversation not found', {
             conversationId,
             socketId: socket.id,
             email: socket.email
@@ -299,7 +301,7 @@ export const initSocketIO = (server) => {
         const socketAccountId = String(socket.accountId);
         
         if (conversationAccountId !== socketAccountId) {
-          console.error('❌ SECURITY ALERT: Cross-account typing attempt!', {
+          logger.error('❌ SECURITY ALERT: Cross-account typing attempt!', {
             socketId: socket.id,
             email: socket.email,
             socketAccountId: socketAccountId,
@@ -317,7 +319,7 @@ export const initSocketIO = (server) => {
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
-        console.error('❌ Error in typing indicator:', {
+        logger.error('❌ Error in typing indicator:', {
           error: error.message,
           conversationId,
           socketId: socket.id
@@ -331,7 +333,7 @@ export const initSocketIO = (server) => {
     });
 
     socket.on('error', (error) => {
-      console.error(`❌ Socket error for ${socket.email}:`, error);
+      logger.error(`❌ Socket error for ${socket.email}:`, error);
     });
   });
 
@@ -346,7 +348,7 @@ export const initSocketIO = (server) => {
 export const broadcastNewMessage = (io, conversationId, message) => {
   // ✅ CRITICAL: Validate io instance exists
   if (!io) {
-    console.error('❌ Socket.io instance is null - cannot broadcast new message');
+    logger.error('❌ Socket.io instance is null - cannot broadcast new message');
     return;
   }
   
@@ -377,11 +379,11 @@ export const broadcastNewMessage = (io, conversationId, message) => {
     // ✅ Emit with acknowledgment callback to detect failures
     io.to(room).emit('new_message', payload, (err) => {
       if (err) {
-        console.error('❌ Broadcast new_message failed:', err.message);
+        logger.error('❌ Broadcast new_message failed:', err.message);
       }
     });
   } catch (error) {
-    console.error('❌ Error broadcasting new message:', {
+    logger.error('❌ Error broadcasting new message:', {
       error: error.message,
       conversationId,
       stack: error.stack
@@ -396,7 +398,7 @@ export const broadcastNewMessage = (io, conversationId, message) => {
 export const broadcastConversationUpdate = (io, accountId, conversation) => {
   // ✅ CRITICAL: Validate io instance exists
   if (!io) {
-    console.error('❌ Socket.io instance is null - cannot broadcast conversation update');
+    logger.error('❌ Socket.io instance is null - cannot broadcast conversation update');
     return;
   }
   
@@ -436,11 +438,11 @@ export const broadcastConversationUpdate = (io, accountId, conversation) => {
     // ✅ Emit with acknowledgment callback
     io.to(room).emit('conversation_update', enrichedConversation, (err) => {
       if (err) {
-        console.error('❌ Broadcast conversation_update failed:', err.message);
+        logger.error('❌ Broadcast conversation_update failed:', err.message);
       }
     });
   } catch (error) {
-    console.error('❌ Error broadcasting conversation update:', {
+    logger.error('❌ Error broadcasting conversation update:', {
       error: error.message,
       accountId,
       stack: error.stack
@@ -454,7 +456,7 @@ export const broadcastConversationUpdate = (io, accountId, conversation) => {
 export const broadcastMessageStatus = (io, conversationId, messageId, status) => {
   // ✅ CRITICAL: Validate io instance exists
   if (!io) {
-    console.error('❌ Socket.io instance is null - cannot broadcast message status');
+    logger.error('❌ Socket.io instance is null - cannot broadcast message status');
     return;
   }
   
@@ -468,11 +470,11 @@ export const broadcastMessageStatus = (io, conversationId, messageId, status) =>
     // ✅ Emit with acknowledgment callback
     io.to(`conversation:${conversationId}`).emit('message_status', payload, (err) => {
       if (err) {
-        console.error('❌ Broadcast message_status failed');
+        logger.error('❌ Broadcast message_status failed');
       }
     });
   } catch (error) {
-    console.error('❌ Error broadcasting message status:', {
+    logger.error('❌ Error broadcasting message status:', {
       error: error.message,
       conversationId,
       messageId,
@@ -488,7 +490,7 @@ export const broadcastMessageStatus = (io, conversationId, messageId, status) =>
 export const broadcastPhoneStatusChange = (io, accountId, phoneNumber) => {
   // ✅ CRITICAL: Validate io instance exists
   if (!io) {
-    console.error('❌ Socket.io instance is null - cannot broadcast phone status');
+    logger.error('❌ Socket.io instance is null - cannot broadcast phone status');
     return;
   }
   
@@ -507,11 +509,11 @@ export const broadcastPhoneStatusChange = (io, accountId, phoneNumber) => {
     // ✅ Emit with acknowledgment callback
     io.to(`user:${accountId}`).emit('phone_status_changed', payload, (err) => {
       if (err) {
-        console.error('❌ Broadcast phone_status_changed failed');
+        logger.error('❌ Broadcast phone_status_changed failed');
       }
     });
   } catch (error) {
-    console.error('❌ Error broadcasting phone status:', {
+    logger.error('❌ Error broadcasting phone status:', {
       error: error.message,
       accountId,
       stack: error.stack
@@ -527,7 +529,7 @@ export const broadcastSentMessage = (io, message, accountId) => {
   if (!io) return;
   
   try {
-    console.log('📤 Broadcasting sent message:', {
+    logger.info('📤 Broadcasting sent message:', {
       accountId,
       messageId: message._id,
       recipientPhone: message.recipientPhone,
@@ -535,8 +537,8 @@ export const broadcastSentMessage = (io, message, accountId) => {
     });
     
     const payload = {
-      _id: message._id,
-      conversationId: message.conversationId,
+      _id: message._id?.toString(),
+      conversationId: message.conversationId?.toString(),
       recipientPhone: message.recipientPhone,
       messageType: message.messageType,
       content: message.content?.text || message.content || '',
@@ -544,15 +546,15 @@ export const broadcastSentMessage = (io, message, accountId) => {
       direction: 'outbound',
       waMessageId: message.waMessageId,
       sentAt: message.sentAt,
-      createdAt: message.createdAt,
+      createdAt: message.createdAt ? new Date(message.createdAt).toISOString() : new Date().toISOString(),
       timestamp: new Date().toISOString()
     };
     
-    // Broadcast to all clients in this account
-    io.to(`user:${accountId}`).emit('message.sent', payload);
-    console.log('✅ Sent message broadcast complete');
+    // ✅ Use 'new_message' for consistency with receiving flow (prevents frontend duplicate listener confusion)
+    io.to(`user:${accountId}`).emit('new_message', payload);
+    logger.info('✅ Sent message broadcast complete');
   } catch (error) {
-    console.error('❌ Error broadcasting sent message:', {
+    logger.error('❌ Error broadcasting sent message:', {
       error: error.message,
       accountId,
       messageId: message._id
@@ -571,7 +573,7 @@ export const broadcastReceivedMessage = (io, message, accountId, contactName = n
     // Use recipientPhone (it's the sender in inbound messages)
     const senderPhone = message.senderPhone || message.recipientPhone;
     
-    console.log('📥 Broadcasting received message:', {
+    logger.info('📥 Broadcasting received message:', {
       accountId,
       messageId: message._id,
       senderPhone,
@@ -599,9 +601,9 @@ export const broadcastReceivedMessage = (io, message, accountId, contactName = n
     
     // Broadcast to all clients in this account
     io.to(`user:${accountId}`).emit('message.received', payload);
-    console.log('✅ Received message broadcast complete');
+    logger.info('✅ Received message broadcast complete');
   } catch (error) {
-    console.error('❌ Error broadcasting received message:', {
+    logger.error('❌ Error broadcasting received message:', {
       error: error.message,
       accountId,
       messageId: message._id

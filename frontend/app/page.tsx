@@ -30,6 +30,7 @@ import { useState, useEffect } from "react"
 import { API_URL } from "@/lib/config/api"
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"
+import { getJWT } from "@/lib/auth"
 
 // Landing page - WhatsApp Platform
 export default function LandingPage() {
@@ -42,6 +43,29 @@ export default function LandingPage() {
   const [activeUseCase, setActiveUseCase] = useState<"marketing" | "sales" | "support">("marketing")
   const [selectedChat, setSelectedChat] = useState(0)
   const [selectedProblem, setSelectedProblem] = useState(0)
+
+  // Check if user is authenticated and redirect to appropriate dashboard
+  useEffect(() => {
+    const token = getJWT()
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        
+        // Route based on user type
+        if (payload.type === 'internal') {
+          router.push('/superadmin')
+        } else if (payload.type === 'client') {
+          if (payload.accountId === '2600000') {
+            router.push('/company')
+          } else {
+            router.push('/client')
+          }
+        }
+      } catch (e) {
+        // Token parse error, continue to landing
+      }
+    }
+  }, [router])
 
   const fallbackPlans = [
     {

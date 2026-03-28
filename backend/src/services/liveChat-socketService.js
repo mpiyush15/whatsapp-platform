@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Socket.IO Service
  * Handles all real-time event broadcasting for live chat
@@ -11,7 +13,7 @@ let io = null;
  */
 export const initializeSocketIO = (socketIOInstance) => {
   io = socketIOInstance;
-  console.log('✅ Socket.IO initialized');
+  logger.info('✅ Socket.IO initialized');
   return io;
 };
 
@@ -20,7 +22,7 @@ export const initializeSocketIO = (socketIOInstance) => {
  */
 export const getSocketIO = () => {
   if (!io) {
-    throw new Error('Socket.IO not initialized');
+    throw createAppError('Socket.IO not initialized');
   }
   return io;
 };

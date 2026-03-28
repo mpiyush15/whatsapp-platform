@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, MapPin, Building2, Mail, Phone } from 'lucide-react';
+import { ContactType } from '@/lib/enums';
 
 interface Contact {
   _id: string;
@@ -11,7 +12,7 @@ interface Contact {
   email?: string;
   businessName?: string;
   city?: string;
-  type: 'customer' | 'lead' | 'other';
+  type: ContactType;
   tags?: string[];
   lastMessageAt?: string;
   messageCount: number;
@@ -40,7 +41,7 @@ export function ContactsTable({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [filterType, setFilterType] = useState<'all' | 'customer' | 'lead' | 'other'>('all');
+  const [filterType, setFilterType] = useState<'all' | ContactType>('all');
 
   // Filter and sort contacts
   const filteredAndSorted = useMemo(() => {
@@ -228,9 +229,9 @@ export function ContactsTable({
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      contact.type === 'customer'
+                      contact.type === ContactType.CUSTOMER
                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
-                        : contact.type === 'lead'
+                        : contact.type === ContactType.LEAD
                         ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200'
                         : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
                     }`}>

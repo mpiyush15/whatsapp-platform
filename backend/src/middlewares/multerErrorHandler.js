@@ -4,13 +4,15 @@
  */
 
 import multer from 'multer';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Handle multer errors with friendly messages
  */
 export const handleMulterError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
-    console.error('❌ Multer error:', err.code, err.message);
+    logger.error('❌ Multer error:', err.code, err.message);
 
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({

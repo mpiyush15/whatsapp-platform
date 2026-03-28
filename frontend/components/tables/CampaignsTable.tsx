@@ -2,13 +2,14 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, Play, Pause, CheckCircle, Clock, Zap } from 'lucide-react';
+import { CampaignType, CampaignStatus } from '@/lib/enums';
 
 interface Campaign {
   _id: string;
   name: string;
   description: string;
-  type: 'broadcast' | 'drip' | 'automation' | 'ab-test';
-  status: 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed';
+  type: CampaignType;
+  status: CampaignStatus;
   audience?: {
     estimatedReach?: number;
   };

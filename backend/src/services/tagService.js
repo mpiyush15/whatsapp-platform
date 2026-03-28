@@ -1,5 +1,7 @@
 import Tag from '../models/Tag.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * TagService
  * Business logic for tag management
@@ -65,7 +67,7 @@ export const getTag = async (tagId, accountId) => {
   });
 
   if (!tag) {
-    throw new Error('Tag not found');
+    throw new NotFoundError('Tag not found');
   }
 
   return tag;
@@ -92,7 +94,7 @@ export const updateTag = async (tagId, accountId, updates) => {
   );
 
   if (!tag) {
-    throw new Error('Tag not found');
+    throw new NotFoundError('Tag not found');
   }
 
   return tag;
@@ -108,7 +110,7 @@ export const deleteTag = async (tagId, accountId) => {
   });
 
   if (!tag) {
-    throw new Error('Tag not found');
+    throw new NotFoundError('Tag not found');
   }
 
   return tag;

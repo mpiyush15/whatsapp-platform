@@ -2,7 +2,9 @@ import Broadcast from '../models/Broadcast.js';
 import Message from '../models/Message.js';
 import Contact from '../models/Contact.js';
 import whatsappService from './whatsappService.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 export class BroadcastExecutionService {
   constructor() {
     this.THROTTLE_RATES = {
@@ -38,28 +40,28 @@ export class BroadcastExecutionService {
     });
 
     if (!broadcast) {
-      throw new Error('Broadcast not found');
+      throw new NotFoundError('Broadcast not found');
     }
 
     if (broadcast.status !== 'running' && broadcast.status !== 'draft') {
       throw new Error(`Cannot execute broadcast with status: ${broadcast.status}`);
     }
 
-    console.log(`\n${'═'.repeat(60)}`);
-    console.log(`📢 STARTING BROADCAST EXECUTION`);
-    console.log(`${'═'.repeat(60)}`);
-    console.log(`Broadcast ID: ${broadcastId}`);
-    console.log(`Account ID: ${accountIdStr}`);
-    console.log(`Phone Number ID: ${phoneNumberId}`);
-    console.log(`Message Type: ${broadcast.messageType}`);
+    logger.info(`\n${'═'.repeat(60)}`);
+    logger.info(`📢 STARTING BROADCAST EXECUTION`);
+    logger.info(`${'═'.repeat(60)}`);
+    logger.info(`Broadcast ID: ${broadcastId}`);
+    logger.info(`Account ID: ${accountIdStr}`);
+    logger.info(`Phone Number ID: ${phoneNumberId}`);
+    logger.info(`Message Type: ${broadcast.messageType}`);
 
     // Get all recipients
     const recipients = await this.buildRecipientList(accountId, broadcast.recipients);
 
-    console.log(`Recipients Count: ${recipients.length}\n`);
+    logger.info(`Recipients Count: ${recipients.length}\n`);
 
     if (recipients.length === 0) {
-      console.log('⚠️  No recipients found, marking as completed\n');
+      logger.info('⚠️  No recipients found, marking as completed\n');
       broadcast.status = 'completed';
       broadcast.completedAt = new Date();
       await broadcast.save();
@@ -91,7 +93,7 @@ export class BroadcastExecutionService {
         broadcast.stats.sent = sent;
         broadcast.stats.inProgress = recipients.length - i - 1;
         broadcast.stats.pending = recipients.length - sent;
-        console.log(`✅ [${i + 1}/${recipients.length}] Message sent to ${recipient}`);
+        logger.info(`✅ [${i + 1}/${recipients.length}] Message sent to ${recipient}`);
 
       } catch (error) {
         failed++;
@@ -107,7 +109,7 @@ export class BroadcastExecutionService {
         broadcast.stats.inProgress = recipients.length - i - 1;
         broadcast.stats.pending = recipients.length - sent;
         
-        console.error(`❌ [${i + 1}/${recipients.length}] Failed to send to ${recipient}: ${error.message}`);
+        logger.error(`❌ [${i + 1}/${recipients.length}] Failed to send to ${recipient}: ${error.message}`);
       }
 
       // Save progress every 10 messages
@@ -126,13 +128,13 @@ export class BroadcastExecutionService {
     broadcast.completedAt = new Date();
     await broadcast.save();
 
-    console.log(`\n${'═'.repeat(60)}`);
-    console.log(`✅ BROADCAST EXECUTION COMPLETED`);
-    console.log(`${'═'.repeat(60)}`);
-    console.log(`Total Sent: ${sent}/${recipients.length}`);
-    console.log(`Total Failed: ${failed}/${recipients.length}`);
-    console.log(`Success Rate: ${((sent / recipients.length) * 100).toFixed(2)}%`);
-    console.log(`${'═'.repeat(60)}\n`);
+    logger.info(`\n${'═'.repeat(60)}`);
+    logger.info(`✅ BROADCAST EXECUTION COMPLETED`);
+    logger.info(`${'═'.repeat(60)}`);
+    logger.info(`Total Sent: ${sent}/${recipients.length}`);
+    logger.info(`Total Failed: ${failed}/${recipients.length}`);
+    logger.info(`Success Rate: ${((sent / recipients.length) * 100).toFixed(2)}%`);
+    logger.info(`${'═'.repeat(60)}\n`);
 
     return {
       broadcastId: broadcast._id,
@@ -151,7 +153,7 @@ export class BroadcastExecutionService {
       
       // Validate phoneNumberId
       if (!phoneNumberId) {
-        throw new Error('Phone number ID is required for broadcast execution');
+        throw createAppError('Phone number ID is required for broadcast execution');
       }
 
       // Send based on message type
@@ -313,14 +315,14 @@ export class BroadcastExecutionService {
       return { success: true, messageId };
 
     } catch (error) {
-      console.error(`❌ [BROADCAST ERROR] Failed to send to ${recipientPhone}:`);
-      console.error(`   Error: ${error.message}`);
-      console.error(`   Type: ${error.response?.status || error.code || 'Unknown'}`);
+      logger.error(`❌ [BROADCAST ERROR] Failed to send to ${recipientPhone}:`);
+      logger.error(`   Error: ${error.message}`);
+      logger.error(`   Type: ${error.response?.status || error.code || 'Unknown'}`);
       if (error.response?.data?.error) {
-        console.error(`   API Details: ${JSON.stringify(error.response.data.error)}`);
+        logger.error(`   API Details: ${JSON.stringify(error.response.data.error)}`);
       }
       if (error.code === 11000) {
-        console.error(`   Issue: Duplicate key on MongoDB - likely concurrent write conflict`);
+        logger.error(`   Issue: Duplicate key on MongoDB - likely concurrent write conflict`);
       }
       throw error;
     }
@@ -374,7 +376,7 @@ export class BroadcastExecutionService {
     });
 
     if (!broadcast) {
-      throw new Error('Broadcast not found');
+      throw new NotFoundError('Broadcast not found');
     }
 
     // Resume execution from where it left off

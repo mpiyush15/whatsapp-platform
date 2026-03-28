@@ -1,6 +1,8 @@
 import Subscription from '../models/Subscription.js';
 import Account from '../models/Account.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Middleware to require active subscription/payment
  * Blocks dashboard access if user hasn't completed payment
@@ -35,26 +37,26 @@ export const requireSubscription = async (req, res, next) => {
 
     // ✅ ALLOW: Superadmins (internal accounts) skip subscription check
     if (account.type === 'internal') {
-      console.log(`✅ Superadmin account (${accountId}) allowed - type='internal'`);
+      logger.info(`✅ Superadmin account (${accountId}) allowed - type='internal'`);
       return next();
     }
 
     // ✅ ALLOW: Superadmin role always gets access (backup check)
     if (user && user.role === 'superadmin') {
-      console.log(`✅ Superadmin user (${user._id}) allowed - role='superadmin'`);
+      logger.info(`✅ Superadmin user (${user._id}) allowed - role='superadmin'`);
       return next();
     }
 
     // ✅ ALLOW: Whitelisted demo/test accounts (Enromatics: 2600002, etc.)
     const whitelistedAccounts = ['2600002']; // Enromatics account
     if (whitelistedAccounts.includes(accountId)) {
-      console.log(`✅ Whitelisted account (${accountId}) allowed - demo/test account`);
+      logger.info(`✅ Whitelisted account (${accountId}) allowed - demo/test account`);
       return next();
     }
 
     // ✅ ALLOW: Development environment allows any account to bypass subscription for testing
     if (process.env.NODE_ENV === 'development') {
-      console.log(`✅ Development mode - subscription check bypassed for ${accountId}`);
+      logger.info(`✅ Development mode - subscription check bypassed for ${accountId}`);
       return next();
     }
 
@@ -65,7 +67,7 @@ export const requireSubscription = async (req, res, next) => {
     });
 
     if (!subscription) {
-      console.log(`⚠️ User ${accountId} blocked - no active subscription`);
+      logger.info(`⚠️ User ${accountId} blocked - no active subscription`);
       return res.status(403).json({
         success: false,
         message: 'Active subscription required. Please complete payment.',
@@ -76,7 +78,7 @@ export const requireSubscription = async (req, res, next) => {
     // User has active subscription, continue
     next();
   } catch (error) {
-    console.error('Subscription check error:', error);
+    logger.error('Subscription check error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error during subscription verification'

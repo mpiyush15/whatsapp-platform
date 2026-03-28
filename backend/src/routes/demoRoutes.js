@@ -2,7 +2,9 @@ import express from 'express'
 import DemoRequest from '../models/DemoRequest.js'
 import { emailService } from '../services/emailService.js'
 import { requireJWT } from '../middlewares/jwtAuth.js'
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router()
 
 // Book a demo (PUBLIC)
@@ -77,7 +79,7 @@ router.post('/book', async (req, res) => {
       demoRequest
     })
   } catch (error) {
-    console.error('Error booking demo:', error)
+    logger.error('Error booking demo:', error)
     res.status(500).json({ message: 'Failed to book demo' })
   }
 })
@@ -93,7 +95,7 @@ router.get('/', requireJWT, async (req, res) => {
     const demoRequests = await DemoRequest.find().sort({ requestedAt: -1 })
     res.json({ demoRequests })
   } catch (error) {
-    console.error('Error fetching demo requests:', error)
+    logger.error('Error fetching demo requests:', error)
     res.status(500).json({ message: 'Failed to fetch demo requests' })
   }
 })
@@ -112,7 +114,7 @@ router.get('/:id', requireJWT, async (req, res) => {
 
     res.json({ demoRequest })
   } catch (error) {
-    console.error('Error fetching demo request:', error)
+    logger.error('Error fetching demo request:', error)
     res.status(500).json({ message: 'Failed to fetch demo request' })
   }
 })
@@ -170,7 +172,7 @@ router.post('/:id/confirm', requireJWT, async (req, res) => {
       demoRequest
     })
   } catch (error) {
-    console.error('Error confirming demo:', error)
+    logger.error('Error confirming demo:', error)
     res.status(500).json({ message: 'Failed to confirm demo' })
   }
 })
@@ -197,7 +199,7 @@ router.post('/:id/cancel', requireJWT, async (req, res) => {
       demoRequest
     })
   } catch (error) {
-    console.error('Error cancelling demo:', error)
+    logger.error('Error cancelling demo:', error)
     res.status(500).json({ message: 'Failed to cancel demo' })
   }
 })

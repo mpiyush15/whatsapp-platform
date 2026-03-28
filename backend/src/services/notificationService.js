@@ -1,5 +1,7 @@
 import Notification from '../models/Notification.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 export class NotificationService {
   /**
    * Create a new notification
@@ -21,7 +23,7 @@ export class NotificationService {
       await notification.save();
       return notification;
     } catch (error) {
-      console.error('Error creating notification:', error);
+      logger.error('Error creating notification:', error);
       throw error;
     }
   }
@@ -48,7 +50,7 @@ export class NotificationService {
 
       return { notifications, total, unreadCount };
     } catch (error) {
-      console.error('Error getting notifications:', error);
+      logger.error('Error getting notifications:', error);
       throw error;
     }
   }
@@ -66,7 +68,7 @@ export class NotificationService {
 
       return notification;
     } catch (error) {
-      console.error('Error marking notification as read:', error);
+      logger.error('Error marking notification as read:', error);
       throw error;
     }
   }
@@ -83,7 +85,7 @@ export class NotificationService {
 
       return result;
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      logger.error('Error marking all notifications as read:', error);
       throw error;
     }
   }
@@ -103,7 +105,7 @@ export class NotificationService {
 
       return result;
     } catch (error) {
-      console.error('Error deleting old notifications:', error);
+      logger.error('Error deleting old notifications:', error);
       throw error;
     }
   }

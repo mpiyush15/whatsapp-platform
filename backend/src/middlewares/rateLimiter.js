@@ -1,5 +1,7 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Rate Limiting Middleware
  * Prevents abuse and DDoS attacks

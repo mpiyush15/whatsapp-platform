@@ -4,7 +4,9 @@ import axios from 'axios';
 import crypto from 'crypto';
 import path from 'path';
 import dotenv from 'dotenv';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 // Load environment variables
 dotenv.config();
 
@@ -30,8 +32,8 @@ const MEDIA_PREFIX = process.env.WHATSAPP_MEDIA_PREFIX || 'whatsapp-media/';
 
 // Validate configuration
 if (!AWS_CONFIG.accessKeyId || !AWS_CONFIG.secretAccessKey) {
-  console.error('❌ AWS credentials not configured!');
-  console.error('Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env file');
+  logger.error('❌ AWS credentials not configured!');
+  logger.error('Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env file');
 }
 
 // Initialize S3 Client
@@ -97,7 +99,7 @@ const getExtensionFromMimeType = (mimeType) => {
  */
 export const downloadMediaFromWhatsApp = async (mediaId, accessToken) => {
   try {
-    console.log(`📥 Downloading media from WhatsApp: ${mediaId}`);
+    logger.info(`📥 Downloading media from WhatsApp: ${mediaId}`);
     
     // Step 1: Get media URL from WhatsApp
     const mediaUrlResponse = await axios.get(
@@ -110,7 +112,7 @@ export const downloadMediaFromWhatsApp = async (mediaId, accessToken) => {
     );
     
     const { url, mime_type, file_size, sha256 } = mediaUrlResponse.data;
-    console.log(`📄 Media info - Type: ${mime_type}, Size: ${file_size} bytes`);
+    logger.info(`📄 Media info - Type: ${mime_type}, Size: ${file_size} bytes`);
     
     // Step 2: Download media file
     const mediaResponse = await axios.get(url, {
@@ -124,7 +126,7 @@ export const downloadMediaFromWhatsApp = async (mediaId, accessToken) => {
     const extension = getExtensionFromMimeType(mime_type);
     const filename = `${mediaId}${extension}`;
     
-    console.log(`✅ Downloaded ${buffer.length} bytes from WhatsApp`);
+    logger.info(`✅ Downloaded ${buffer.length} bytes from WhatsApp`);
     
     return {
       buffer,
@@ -134,9 +136,9 @@ export const downloadMediaFromWhatsApp = async (mediaId, accessToken) => {
       sha256,
     };
   } catch (error) {
-    console.error('❌ Error downloading media from WhatsApp:', error.message);
+    logger.error('❌ Error downloading media from WhatsApp:', error.message);
     if (error.response) {
-      console.error('Response:', error.response.data);
+      logger.error('Response:', error.response.data);
     }
     throw new Error(`Failed to download media: ${error.message}`);
   }
@@ -156,7 +158,7 @@ export const uploadToS3 = async (buffer, accountId, mediaType, mimeType, origina
   try {
     const s3Key = generateS3Key(accountId, mediaType, originalFilename);
     
-    console.log(`☁️  Uploading to S3: ${s3Key}`);
+    logger.info(`☁️  Uploading to S3: ${s3Key}`);
     
     const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,
@@ -172,14 +174,14 @@ export const uploadToS3 = async (buffer, accountId, mediaType, mimeType, origina
     // Generate public URL (if bucket is public) or signed URL
     const s3Url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
     
-    console.log(`✅ Uploaded to S3: ${s3Url}`);
+    logger.info(`✅ Uploaded to S3: ${s3Url}`);
     
     return {
       s3Key,
       s3Url,
     };
   } catch (error) {
-    console.error('❌ Error uploading to S3:', error.message);
+    logger.error('❌ Error uploading to S3:', error.message);
     throw new Error(`Failed to upload to S3: ${error.message}`);
   }
 };
@@ -202,7 +204,7 @@ export const getSignedUrlForS3Object = async (s3Key, expiresIn = 3600) => {
     
     return signedUrl;
   } catch (error) {
-    console.error('❌ Error generating signed URL:', error.message);
+    logger.error('❌ Error generating signed URL:', error.message);
     throw new Error(`Failed to generate signed URL: ${error.message}`);
   }
 };
@@ -218,8 +220,8 @@ export const getSignedUrlForS3Object = async (s3Key, expiresIn = 3600) => {
  */
 export const downloadAndUploadMedia = async (mediaId, accessToken, accountId, mediaType) => {
   try {
-    console.log(`🔄 Starting media transfer: WhatsApp → S3`);
-    console.log(`Media ID: ${mediaId}, Type: ${mediaType}, Account: ${accountId}`);
+    logger.info(`🔄 Starting media transfer: WhatsApp → S3`);
+    logger.info(`Media ID: ${mediaId}, Type: ${mediaType}, Account: ${accountId}`);
     
     // Step 1: Download from WhatsApp
     const { buffer, mimeType, filename, fileSize, sha256 } = await downloadMediaFromWhatsApp(
@@ -230,7 +232,7 @@ export const downloadAndUploadMedia = async (mediaId, accessToken, accountId, me
     // Step 2: Upload to S3
     const { s3Key, s3Url } = await uploadToS3(buffer, accountId, mediaType, mimeType, filename);
     
-    console.log(`✅ Media transfer complete: ${mediaId} → ${s3Url}`);
+    logger.info(`✅ Media transfer complete: ${mediaId} → ${s3Url}`);
     
     return {
       mediaId,
@@ -243,7 +245,7 @@ export const downloadAndUploadMedia = async (mediaId, accessToken, accountId, me
       mediaType,
     };
   } catch (error) {
-    console.error(`❌ Failed to transfer media ${mediaId}:`, error.message);
+    logger.error(`❌ Failed to transfer media ${mediaId}:`, error.message);
     throw error;
   }
 };
@@ -277,7 +279,7 @@ export const uploadMediaToS3 = async (fileBuffer, accountId, mediaType, mimeType
       mediaType,
     };
   } catch (error) {
-    console.error('❌ Failed to upload media:', error.message);
+    logger.error('❌ Failed to upload media:', error.message);
     throw error;
   }
 };

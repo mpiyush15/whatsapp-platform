@@ -7,12 +7,14 @@
 import Subscription from '../models/Subscription.js';
 import Account from '../models/Account.js';
 import { emailService } from '../services/emailService.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const PAYMENT_TIMEOUT_MINUTES = 60; // 1 hour
 
 export const checkPaymentTimeouts = async () => {
   try {
-    console.log('⏰ Starting payment timeout check...');
+    logger.info('⏰ Starting payment timeout check...');
 
     // Calculate cutoff time (1 hour ago)
     const cutoffTime = new Date(Date.now() - PAYMENT_TIMEOUT_MINUTES * 60 * 1000);
@@ -25,7 +27,7 @@ export const checkPaymentTimeouts = async () => {
       createdAt: { $lt: cutoffTime }
     }).populate('accountId');
 
-    console.log(`📋 Found ${pendingSubscriptions.length} pending payments older than ${PAYMENT_TIMEOUT_MINUTES} minutes`);
+    logger.info(`📋 Found ${pendingSubscriptions.length} pending payments older than ${PAYMENT_TIMEOUT_MINUTES} minutes`);
 
     const results = {
       failed: [],
@@ -47,14 +49,14 @@ export const checkPaymentTimeouts = async () => {
         subscription.failedAt = new Date();
         await subscription.save();
 
-        console.log(`❌ Marked subscription ${subscription.subscriptionId} as FAILED`);
+        logger.info(`❌ Marked subscription ${subscription.subscriptionId} as FAILED`);
 
         // ✅ Revert account status to 'pending' (payment not completed)
         // Only revert if account status is 'active' and created recently
         if (account.status === 'active') {
           account.status = 'pending';
           await account.save();
-          console.log(`⏳ Reverted account ${account.accountId} status to 'pending'`);
+          logger.info(`⏳ Reverted account ${account.accountId} status to 'pending'`);
         }
 
         results.failed.push({
@@ -78,12 +80,12 @@ export const checkPaymentTimeouts = async () => {
             reason: 'Payment was not completed within 1 hour. Your subscription requires payment to activate.'
           });
 
-          console.log(`📧 Payment failed notification sent to ${account.email}`);
+          logger.info(`📧 Payment failed notification sent to ${account.email}`);
         } catch (emailErr) {
-          console.error(`⚠️  Failed to send payment failure email to ${account.email}:`, emailErr.message);
+          logger.error(`⚠️  Failed to send payment failure email to ${account.email}:`, emailErr.message);
         }
       } catch (err) {
-        console.error(`❌ Error processing subscription ${subscription.subscriptionId}:`, err.message);
+        logger.error(`❌ Error processing subscription ${subscription.subscriptionId}:`, err.message);
         results.errors.push({
           subscriptionId: subscription.subscriptionId,
           error: err.message
@@ -91,7 +93,7 @@ export const checkPaymentTimeouts = async () => {
       }
     }
 
-    console.log('✅ Payment timeout check completed:', {
+    logger.info('✅ Payment timeout check completed:', {
       total: pendingSubscriptions.length,
       failed: results.failed.length,
       errors: results.errors.length
@@ -104,7 +106,7 @@ export const checkPaymentTimeouts = async () => {
       details: results.failed
     };
   } catch (error) {
-    console.error('❌ Payment timeout job error:', error);
+    logger.error('❌ Payment timeout job error:', error);
     return {
       success: false,
       error: error.message
@@ -122,7 +124,7 @@ export const paymentTimeoutJobHandler = async (req, res) => {
     const result = await checkPaymentTimeouts();
     res.json(result);
   } catch (error) {
-    console.error('Payment timeout job handler error:', error);
+    logger.error('Payment timeout job handler error:', error);
     res.status(500).json({
       success: false,
       error: error.message

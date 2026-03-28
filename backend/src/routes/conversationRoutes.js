@@ -1,7 +1,9 @@
 import express from 'express';
 import conversationController from '../controllers/conversationController.js';
 import webhookController from '../controllers/webhookController.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 /**
@@ -24,7 +26,7 @@ router.patch('/:conversationId/status', conversationController.updateStatus);
 // 🔴 LOCAL TESTING ONLY: Simulate incoming webhook message
 router.post('/test/simulate-message', async (req, res) => {
   try {
-    console.log('\n🧪 SIMULATING WEBHOOK MESSAGE FOR LOCAL TESTING');
+    logger.info('\n🧪 SIMULATING WEBHOOK MESSAGE FOR LOCAL TESTING');
     const { phoneNumberId, senderPhone, messageText } = req.body;
     
     if (!phoneNumberId || !senderPhone || !messageText) {
@@ -80,7 +82,7 @@ router.post('/test/simulate-message', async (req, res) => {
       webhook: mockWebhookBody
     });
   } catch (error) {
-    console.error('❌ Test message error:', error);
+    logger.error('❌ Test message error:', error);
     res.status(500).json({
       success: false,
       message: error.message

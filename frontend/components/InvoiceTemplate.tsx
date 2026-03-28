@@ -3,6 +3,7 @@
 import React from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { PaymentStatus } from '@/lib/enums';
 
 interface InvoiceTemplateProps {
   invoice: any;
@@ -85,13 +86,15 @@ export default function InvoiceTemplate({ invoice, organization }: InvoiceTempla
           <div>
             <p className="text-xs text-gray-500 uppercase font-semibold mb-1">Status</p>
             <span className={`inline-block text-xs font-bold px-2 py-1 rounded ${
-              invoice?.status === 'paid' 
+              invoice?.status === PaymentStatus.PAID
                 ? 'bg-green-100 text-green-700' 
-                : invoice?.status === 'pending'
-                ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-red-100 text-red-700'
+                : invoice?.status === PaymentStatus.SENT
+                ? 'bg-blue-100 text-blue-700'
+                : invoice?.status === PaymentStatus.OVERDUE
+                ? 'bg-orange-100 text-orange-700'
+                : 'bg-gray-100 text-gray-700'
             }`}>
-              {(invoice?.status || 'Pending').toUpperCase()}
+              {(invoice?.status || PaymentStatus.SENT).toUpperCase()}
             </span>
           </div>
         </div>

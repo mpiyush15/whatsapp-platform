@@ -1,5 +1,7 @@
 import crypto from 'crypto';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Middleware to validate WhatsApp webhook HMAC signature
  * Verifies that incoming webhooks are really from Meta/WhatsApp
@@ -14,7 +16,7 @@ export const validateWebhookSignature = (req, res, next) => {
   
   // Validate that app secret is configured
   if (!appSecret) {
-    console.error('❌ CRITICAL: META_APP_SECRET environment variable not set');
+    logger.error('❌ CRITICAL: META_APP_SECRET environment variable not set');
     return res.status(500).json({
       success: false,
       code: 'MISSING_APP_SECRET',
@@ -26,7 +28,7 @@ export const validateWebhookSignature = (req, res, next) => {
   const rawBody = req.rawBody || JSON.stringify(req.body);
   
   if (!signature) {
-    console.error('❌ WEBHOOK SECURITY: Missing X-Hub-Signature-256 header');
+    logger.error('❌ WEBHOOK SECURITY: Missing X-Hub-Signature-256 header');
     return res.status(401).json({
       success: false,
       code: 'INVALID_WEBHOOK_SIGNATURE',
@@ -39,7 +41,7 @@ export const validateWebhookSignature = (req, res, next) => {
     const [algorithm, receivedHash] = signature.split('=');
     
     if (algorithm !== 'sha256') {
-      console.error('❌ WEBHOOK SECURITY: Invalid signature algorithm:', algorithm);
+      logger.error('❌ WEBHOOK SECURITY: Invalid signature algorithm:', algorithm);
       return res.status(401).json({
         success: false,
         code: 'INVALID_WEBHOOK_ALGORITHM',
@@ -60,9 +62,9 @@ export const validateWebhookSignature = (req, res, next) => {
     const isValid = crypto.timingSafeEqual(hashBuffer1, hashBuffer2);
     
     if (!isValid) {
-      console.error('❌ WEBHOOK SECURITY: Signature mismatch');
-      console.error('  Expected:', computedHash);
-      console.error('  Received:', receivedHash);
+      logger.error('❌ WEBHOOK SECURITY: Signature mismatch');
+      logger.error('  Expected:', computedHash);
+      logger.error('  Received:', receivedHash);
       return res.status(401).json({
         success: false,
         code: 'WEBHOOK_SIGNATURE_MISMATCH',
@@ -70,11 +72,11 @@ export const validateWebhookSignature = (req, res, next) => {
       });
     }
     
-    console.log('✅ WEBHOOK SECURITY: Signature valid - trusted source confirmed');
+    logger.info('✅ WEBHOOK SECURITY: Signature valid - trusted source confirmed');
     next();
     
   } catch (error) {
-    console.error('❌ WEBHOOK SECURITY: Signature validation error:', error.message);
+    logger.error('❌ WEBHOOK SECURITY: Signature validation error:', error.message);
     res.status(401).json({
       success: false,
       code: 'SIGNATURE_VALIDATION_ERROR',

@@ -94,5 +94,6 @@ contactSchema.index({ accountId: 1, whatsappNumber: 1 }, { unique: true });
 contactSchema.index({ accountId: 1, type: 1 });
 contactSchema.index({ accountId: 1, isOptedIn: 1 });
 contactSchema.index({ accountId: 1, tags: 1 });
+contactSchema.index({ accountId: 1, createdAt: -1 });
 
 export default mongoose.model('Contact', contactSchema);

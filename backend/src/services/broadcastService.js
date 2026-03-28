@@ -1,7 +1,9 @@
 import Broadcast from '../models/Broadcast.js';
 import Contact from '../models/Contact.js';
 import Message from '../models/Message.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 export class BroadcastService {
   /**
    * Create a new broadcast campaign
@@ -65,7 +67,7 @@ export class BroadcastService {
    * Get broadcast by ID
    */
   async getBroadcastById(accountId, broadcastId) {
-    console.log(`🔍 BroadcastService: Looking for broadcast ${broadcastId} in account ${accountId}`);
+    logger.info(`🔍 BroadcastService: Looking for broadcast ${broadcastId} in account ${accountId}`);
     
     const broadcast = await Broadcast.findOne({
       _id: broadcastId,
@@ -73,9 +75,9 @@ export class BroadcastService {
     });
     
     if (!broadcast) {
-      console.log(`❌ Broadcast not found. Query: { _id: "${broadcastId}", accountId: "${accountId}" }`);
+      logger.info(`❌ Broadcast not found. Query: { _id: "${broadcastId}", accountId: "${accountId}" }`);
     } else {
-      console.log(`✅ Broadcast found: ${broadcast.name} (status: ${broadcast.status})`);
+      logger.info(`✅ Broadcast found: ${broadcast.name} (status: ${broadcast.status})`);
     }
     
     return broadcast;
@@ -128,7 +130,7 @@ export class BroadcastService {
     const broadcast = await this.getBroadcastById(accountId, broadcastId);
 
     if (!broadcast) {
-      throw new Error('Broadcast not found');
+      throw new NotFoundError('Broadcast not found');
     }
 
     // Allow starting from draft or failed statuses
@@ -171,7 +173,7 @@ export class BroadcastService {
     const broadcast = await this.getBroadcastById(accountId, broadcastId);
 
     if (!broadcast) {
-      throw new Error('Broadcast not found');
+      throw new NotFoundError('Broadcast not found');
     }
 
     broadcast.status = 'cancelled';
@@ -187,7 +189,7 @@ export class BroadcastService {
     const broadcast = await this.getBroadcastById(accountId, broadcastId);
 
     if (!broadcast) {
-      throw new Error('Broadcast not found');
+      throw new NotFoundError('Broadcast not found');
     }
 
     return {
@@ -218,7 +220,7 @@ export class BroadcastService {
 
     // Only allow deletion if broadcast is not running
     if (broadcast.status === 'running') {
-      throw new Error('Cannot delete a broadcast that is currently running');
+      throw createAppError('Cannot delete a broadcast that is currently running');
     }
 
     await Broadcast.deleteOne({

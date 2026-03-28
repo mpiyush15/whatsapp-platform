@@ -5,7 +5,9 @@ import ActivityTimeline from '../models/ActivityTimeline.js';
 import ConversationAssignment from '../models/ConversationAssignment.js';
 import Contact from '../models/Contact.js';
 import Tag from '../models/Tag.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * ConversationService
  * Business logic for conversation operations
@@ -97,7 +99,7 @@ export const getConversationDetail = async (conversationId, accountId) => {
   }).populate('assignedAgentId', 'name email phone status');
 
   if (!conversation) {
-    throw new Error('Conversation not found');
+    throw new NotFoundError('Conversation not found');
   }
 
   // Get last 50 messages

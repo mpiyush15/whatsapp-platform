@@ -1,5 +1,7 @@
 import Account from '../models/Account.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Subdomain Detection Middleware
  * Extracts subdomain from request hostname
@@ -63,7 +65,7 @@ export const subdomainDetectionMiddleware = async (req, res, next) => {
     // Continue to next middleware/route
     next();
   } catch (error) {
-    console.error('Error in subdomain detection middleware:', error);
+    logger.error('Error in subdomain detection middleware:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',
@@ -124,7 +126,7 @@ export const validateWorkspaceAccess = async (req, res, next) => {
     req.workspace = userWorkspace;
     next();
   } catch (error) {
-    console.error('Error validating workspace access:', error);
+    logger.error('Error validating workspace access:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error',

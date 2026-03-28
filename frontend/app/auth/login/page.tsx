@@ -24,8 +24,31 @@ export default function LoginPage() {
       const result = await login(email, password)
       if (result.success) {
         setSuccess(true)
+        
+        // Get JWT token to check user type
+        const token = localStorage.getItem('token')
+        let redirectPath = "/dashboard"
+        
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]))
+            console.log('Login payload:', payload)
+            
+            // Redirect based on account type
+            if (payload.type === 'internal' && payload.role === 'superadmin') {
+              redirectPath = "/dashboard/superadmin"
+            } else if (payload.type === 'company') {
+              redirectPath = "/dashboard/company"
+            } else if (payload.type === 'client') {
+              redirectPath = "/dashboard/client"
+            }
+          } catch (e) {
+            console.error('Error parsing token:', e)
+          }
+        }
+        
         setTimeout(() => {
-          router.push("/dashboard")
+          router.push(redirectPath)
         }, 1500)
       } else {
         setError(result.error || "Login failed")

@@ -22,8 +22,8 @@ const templateSchema = new mongoose.Schema({
   // Meta template data
   category: {
     type: String,
-    enum: ['MARKETING', 'UTILITY', 'AUTHENTICATION'],
-    default: 'UTILITY'
+    enum: ['marketing', 'utility', 'authentication'],
+    default: 'utility'
   },
   content: {
     type: String,
@@ -56,8 +56,8 @@ const templateSchema = new mongoose.Schema({
   },
   mediaType: {
     type: String,
-    enum: ['IMAGE', 'VIDEO', 'DOCUMENT'],
-    default: 'IMAGE'
+    enum: ['image', 'video', 'document'],
+    default: 'image'
   },
   mediaUrl: String,              // For URL-based media
   mediaFilePath: String,         // For uploaded files (stored path)
@@ -87,7 +87,7 @@ const templateSchema = new mongoose.Schema({
   rejectedReason: String,
   
   // Soft delete
-  deleted: {
+  isDeleted: {
     type: Boolean,
     default: false
   }
@@ -98,6 +98,6 @@ const templateSchema = new mongoose.Schema({
 // Indexes
 templateSchema.index({ accountId: 1, name: 1 });
 templateSchema.index({ accountId: 1, status: 1 });
-templateSchema.index({ accountId: 1, deleted: 1 });
+templateSchema.index({ accountId: 1, isDeleted: 1 });
 
 export default mongoose.model('Template', templateSchema);

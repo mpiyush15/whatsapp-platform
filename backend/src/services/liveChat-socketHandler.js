@@ -1,5 +1,7 @@
 import { getSocketIO } from './liveChat-socketService.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Socket.IO Connection Handler
  * Manages socket connections, authentication, and event listeners
@@ -30,29 +32,29 @@ export const setupSocketIOHandlers = (io) => {
 
       next();
     } catch (error) {
-      console.error('❌ Socket auth error:', error);
+      logger.error('❌ Socket auth error:', error);
       next(new Error('Authentication failed'));
     }
   });
 
   // Handle socket connection
   io.on('connection', (socket) => {
-    console.log(`✅ Agent connected: ${socket.id}`);
+    logger.info(`✅ Agent connected: ${socket.id}`);
 
     // Handle room joining
     socket.on('join_account', (accountId) => {
-      console.log(`📍 Agent ${socket.id} joined account room: ${accountId}`);
+      logger.info(`📍 Agent ${socket.id} joined account room: ${accountId}`);
       socket.join(`account:${accountId}`);
     });
 
     socket.on('join_conversation', (accountId, conversationId) => {
-      console.log(`📍 Agent ${socket.id} joined conversation: ${conversationId}`);
+      logger.info(`📍 Agent ${socket.id} joined conversation: ${conversationId}`);
       socket.join(`account:${accountId}`);
       socket.join(`account:${accountId}:conversation:${conversationId}`);
     });
 
     socket.on('leave_conversation', (accountId, conversationId) => {
-      console.log(`📍 Agent ${socket.id} left conversation: ${conversationId}`);
+      logger.info(`📍 Agent ${socket.id} left conversation: ${conversationId}`);
       socket.leave(`account:${accountId}:conversation:${conversationId}`);
     });
 
@@ -122,16 +124,16 @@ export const setupSocketIOHandlers = (io) => {
 
     // Handle disconnect
     socket.on('disconnect', () => {
-      console.log(`❌ Agent disconnected: ${socket.id}`);
+      logger.info(`❌ Agent disconnected: ${socket.id}`);
     });
 
     // Handle errors
     socket.on('error', (error) => {
-      console.error(`❌ Socket error for ${socket.id}:`, error);
+      logger.error(`❌ Socket error for ${socket.id}:`, error);
     });
   });
 
-  console.log('✅ Socket.IO handlers setup complete');
+  logger.info('✅ Socket.IO handlers setup complete');
 };
 
 /**
@@ -147,7 +149,7 @@ export const emitToConversation = (accountId, conversationId, eventName, data) =
       timestamp: new Date()
     });
   } catch (error) {
-    console.error('❌ Error emitting to conversation:', error);
+    logger.error('❌ Error emitting to conversation:', error);
   }
 };
 
@@ -164,7 +166,7 @@ export const emitToAccount = (accountId, eventName, data) => {
       timestamp: new Date()
     });
   } catch (error) {
-    console.error('❌ Error emitting to account:', error);
+    logger.error('❌ Error emitting to account:', error);
   }
 };
 
@@ -181,7 +183,7 @@ export const emitToAgent = (agentId, eventName, data) => {
       timestamp: new Date()
     });
   } catch (error) {
-    console.error('❌ Error emitting to agent:', error);
+    logger.error('❌ Error emitting to agent:', error);
   }
 };
 

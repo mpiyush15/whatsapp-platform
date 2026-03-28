@@ -1,6 +1,8 @@
 import PDFDocument from 'pdfkit';
 import { uploadToS3 } from './s3Service.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Generate Invoice PDF
  * Creates a professional PDF invoice and returns buffer
@@ -154,7 +156,7 @@ export const generateInvoicePDF = (invoiceData) => {
  */
 export const generateAndUploadInvoicePDF = async (invoiceData, accountId) => {
   try {
-    console.log(`📄 Generating PDF for invoice: ${invoiceData.invoiceNumber}`);
+    logger.info(`📄 Generating PDF for invoice: ${invoiceData.invoiceNumber}`);
 
     // Generate PDF
     const pdfBuffer = await generateInvoicePDF(invoiceData);
@@ -168,7 +170,7 @@ export const generateAndUploadInvoicePDF = async (invoiceData, accountId) => {
       `${invoiceData.invoiceNumber}.pdf`
     );
 
-    console.log(`✅ Invoice PDF uploaded to S3: ${s3Url}`);
+    logger.info(`✅ Invoice PDF uploaded to S3: ${s3Url}`);
 
     return {
       s3Url,
@@ -176,7 +178,7 @@ export const generateAndUploadInvoicePDF = async (invoiceData, accountId) => {
       fileName: `${invoiceData.invoiceNumber}.pdf`
     };
   } catch (error) {
-    console.error('❌ Error generating/uploading invoice PDF:', error.message);
+    logger.error('❌ Error generating/uploading invoice PDF:', error.message);
     throw error;
   }
 };

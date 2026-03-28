@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import Account from '../models/Account.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Webhook Service
  * Handles sending webhook events to external integrations (Enromatics, Zapier, etc.)
@@ -26,13 +28,13 @@ class WebhookService {
       const account = await Account.findById(accountId);
       
       if (!account?.webhookUrl || !account?.webhookSecret || !account?.webhookEnabled) {
-        console.log(`⚠️  No webhook config for account ${accountId}`);
+        logger.info(`⚠️  No webhook config for account ${accountId}`);
         return null;
       }
 
       // Check if event type is enabled
       if (account.webhookEvents && !account.webhookEvents.includes(eventType)) {
-        console.log(`⚠️  Event ${eventType} not enabled for account ${accountId}`);
+        logger.info(`⚠️  Event ${eventType} not enabled for account ${accountId}`);
         return null;
       }
 
@@ -48,7 +50,7 @@ class WebhookService {
       const signature = this.signPayload(payload, account.webhookSecret);
 
       // Send webhook
-      console.log(`📤 Sending webhook to ${account.name}:`, eventType);
+      logger.info(`📤 Sending webhook to ${account.name}:`, eventType);
       
       const response = await fetch(account.webhookUrl, {
         method: 'POST',
@@ -63,21 +65,21 @@ class WebhookService {
       });
 
       if (!response.ok) {
-        console.error(`❌ Webhook failed for ${account.name}:`, response.status);
+        logger.error(`❌ Webhook failed for ${account.name}:`, response.status);
         return { success: false, status: response.status };
       }
 
-      console.log(`✅ Webhook sent to ${account.name}`);
+      logger.info(`✅ Webhook sent to ${account.name}`);
       
       // Update last webhook sent timestamp (async, don't wait)
       Account.updateOne(
         { _id: account._id },
         { webhookLastSentAt: new Date() }
-      ).catch(err => console.error('Error updating webhookLastSentAt:', err));
+      ).catch(err => logger.error('Error updating webhookLastSentAt:', err));
 
       return { success: true, status: response.status };
     } catch (error) {
-      console.error(`❌ Webhook error for account ${accountId}:`, error.message);
+      logger.error(`❌ Webhook error for account ${accountId}:`, error.message);
       return { success: false, error: error.message };
     }
   }

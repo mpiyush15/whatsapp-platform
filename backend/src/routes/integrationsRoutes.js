@@ -14,6 +14,8 @@
 
 import express from 'express';
 import { authenticateIntegration } from '../middlewares/integrationAuth.js';
+import logger from '../utils/logger.js';
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 import {
   // Conversations
   getConversationsViaIntegration,

@@ -5,7 +5,9 @@ import { resolvePhoneNumber } from '../middlewares/phoneNumberHelper.js';
 import { messageLimiter } from '../middlewares/rateLimiter.js';
 import validators from '../middlewares/validators.js';
 import handleMulterError from '../middlewares/multerErrorHandler.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 // Configure multer for memory storage (files stored in buffer)

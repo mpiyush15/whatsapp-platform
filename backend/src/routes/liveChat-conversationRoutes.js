@@ -6,7 +6,9 @@ import { requireJWT } from '../middlewares/jwtAuth.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
 import Conversation from '../models/Conversation.js';
 import Contact from '../models/Contact.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 // ✅ All routes require JWT authentication
@@ -22,7 +24,7 @@ router.get('/', async (req, res) => {
     const workspaceId = req.account.workspaceId;
     const phoneNumberId = req.headers['x-phone-number-id'];
 
-    console.log('📡 Fetching conversations:', { accountId, workspaceId, phoneNumberId });
+    logger.info('📡 Fetching conversations:', { accountId, workspaceId, phoneNumberId });
 
     // Parse query parameters
     const {
@@ -53,7 +55,7 @@ router.get('/', async (req, res) => {
       filters
     );
 
-    console.log('✅ Conversations fetched:', result.conversations.length);
+    logger.info('✅ Conversations fetched:', result.conversations.length);
 
     return res.status(200).json({
       success: true,
@@ -66,7 +68,7 @@ router.get('/', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error listing conversations:', error);
+    logger.error('❌ Error listing conversations:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to list conversations',
@@ -107,7 +109,7 @@ router.get('/debug/count', async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('❌ Error in debug count:', error);
+    logger.error('❌ Error in debug count:', error);
     return res.status(500).json({ error: error.message });
   }
 });
@@ -127,7 +129,7 @@ router.get('/quick-replies', async (req, res) => {
       });
     }
     
-    console.log('📝 Fetching quick replies for accountId:', accountId);
+    logger.info('📝 Fetching quick replies for accountId:', accountId);
     
     // Import QuickReply model (separate from Meta templates)
     const QuickReply = await import('../models/QuickReply.js');
@@ -141,7 +143,7 @@ router.get('/quick-replies', async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
     
-    console.log('✅ Quick replies found:', quickReplies.length);
+    logger.info('✅ Quick replies found:', quickReplies.length);
     
     return res.status(200).json({
       success: true,
@@ -149,7 +151,7 @@ router.get('/quick-replies', async (req, res) => {
       data: quickReplies || []
     });
   } catch (error) {
-    console.error('❌ Error fetching quick replies:', error.message, error.stack);
+    logger.error('❌ Error fetching quick replies:', error.message, error.stack);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch quick replies',
@@ -183,7 +185,7 @@ router.post('/quick-replies', async (req, res) => {
       });
     }
 
-    console.log('➕ Creating quick reply:', { accountId, name });
+    logger.info('➕ Creating quick reply:', { accountId, name });
 
     // Import QuickReply model
     const QuickReply = await import('../models/QuickReply.js');
@@ -203,7 +205,7 @@ router.post('/quick-replies', async (req, res) => {
 
     await quickReply.save();
 
-    console.log('✅ Quick reply created:', quickReply._id);
+    logger.info('✅ Quick reply created:', quickReply._id);
 
     return res.status(201).json({
       success: true,
@@ -211,7 +213,7 @@ router.post('/quick-replies', async (req, res) => {
       data: quickReply
     });
   } catch (error) {
-    console.error('❌ Error creating quick reply:', error.message, error.stack);
+    logger.error('❌ Error creating quick reply:', error.message, error.stack);
     return res.status(500).json({
       success: false,
       message: 'Failed to create quick reply',
@@ -250,7 +252,7 @@ router.delete('/quick-replies/:replyId', async (req, res) => {
       message: 'Quick reply deleted successfully'
     });
   } catch (error) {
-    console.error('❌ Error deleting quick reply:', error);
+    logger.error('❌ Error deleting quick reply:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to delete quick reply',
@@ -279,7 +281,7 @@ router.get('/:conversationId', async (req, res) => {
       data: conversation
     });
   } catch (error) {
-    console.error('❌ Error getting conversation:', error);
+    logger.error('❌ Error getting conversation:', error);
     if (error.message === 'Conversation not found') {
       return res.status(404).json({
         success: false,
@@ -354,7 +356,7 @@ router.patch('/:conversationId', async (req, res) => {
       data: conversation
     });
   } catch (error) {
-    console.error('❌ Error updating conversation:', error);
+    logger.error('❌ Error updating conversation:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to update conversation',
@@ -402,7 +404,7 @@ router.post('/:conversationId/assign', async (req, res) => {
       data: conversation
     });
   } catch (error) {
-    console.error('❌ Error assigning conversation:', error);
+    logger.error('❌ Error assigning conversation:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to assign conversation',
@@ -443,7 +445,7 @@ router.post('/:conversationId/close', async (req, res) => {
       data: conversation
     });
   } catch (error) {
-    console.error('❌ Error closing conversation:', error);
+    logger.error('❌ Error closing conversation:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to close conversation',
@@ -481,7 +483,7 @@ router.post('/:conversationId/reopen', async (req, res) => {
       data: conversation
     });
   } catch (error) {
-    console.error('❌ Error reopening conversation:', error);
+    logger.error('❌ Error reopening conversation:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to reopen conversation',
@@ -528,7 +530,7 @@ router.post('/:conversationId/tags', async (req, res) => {
       data: conversation
     });
   } catch (error) {
-    console.error('❌ Error adding tag:', error);
+    logger.error('❌ Error adding tag:', error);
     if (error.message.includes('not found')) {
       return res.status(404).json({
         success: false,
@@ -573,7 +575,7 @@ router.delete('/:conversationId/tags/:tagName', async (req, res) => {
       data: conversation
     });
   } catch (error) {
-    console.error('❌ Error removing tag:', error);
+    logger.error('❌ Error removing tag:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to remove tag',
@@ -605,7 +607,7 @@ router.post('/:conversationId/mark-read', async (req, res) => {
       data: conversation
     });
   } catch (error) {
-    console.error('❌ Error marking conversation as read:', error);
+    logger.error('❌ Error marking conversation as read:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to mark as read',
@@ -636,7 +638,7 @@ router.get('/:conversationId/timeline', async (req, res) => {
       data: timeline
     });
   } catch (error) {
-    console.error('❌ Error getting timeline:', error);
+    logger.error('❌ Error getting timeline:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to get timeline',
@@ -680,7 +682,7 @@ router.post('/:conversationId/notes', async (req, res) => {
       data: note
     });
   } catch (error) {
-    console.error('❌ Error creating note:', error);
+    logger.error('❌ Error creating note:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to create note',
@@ -711,7 +713,7 @@ router.get('/:conversationId/notes', async (req, res) => {
       data: notes
     });
   } catch (error) {
-    console.error('❌ Error getting notes:', error);
+    logger.error('❌ Error getting notes:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to get notes',
@@ -753,7 +755,7 @@ router.patch('/:conversationId/notes/:noteId', async (req, res) => {
       data: note
     });
   } catch (error) {
-    console.error('❌ Error updating note:', error);
+    logger.error('❌ Error updating note:', error);
     if (error.message === 'Note not found') {
       return res.status(404).json({
         success: false,
@@ -792,7 +794,7 @@ router.delete('/:conversationId/notes/:noteId', async (req, res) => {
       data: note
     });
   } catch (error) {
-    console.error('❌ Error deleting note:', error);
+    logger.error('❌ Error deleting note:', error);
     if (error.message === 'Note not found') {
       return res.status(404).json({
         success: false,
@@ -843,7 +845,7 @@ router.post('/sync-contact', async (req, res) => {
 
     if (contact) {
       // Update existing contact (no duplicate)
-      console.log(`📝 Updating existing contact: ${whatsappNumber}`);
+      logger.info(`📝 Updating existing contact: ${whatsappNumber}`);
       contact = await Contact.findByIdAndUpdate(
         contact._id,
         {
@@ -859,7 +861,7 @@ router.post('/sync-contact', async (req, res) => {
       );
     } else {
       // Create new contact (handles duplicate prevention via unique index)
-      console.log(`✨ Creating new contact: ${whatsappNumber}`);
+      logger.info(`✨ Creating new contact: ${whatsappNumber}`);
       try {
         contact = await Contact.create({
           accountId,
@@ -878,7 +880,7 @@ router.post('/sync-contact', async (req, res) => {
       } catch (err) {
         if (err.code === 11000) {
           // Duplicate key error - try to fetch and update
-          console.log(`⚠️ Duplicate contact detected, fetching existing: ${whatsappNumber}`);
+          logger.info(`⚠️ Duplicate contact detected, fetching existing: ${whatsappNumber}`);
           contact = await Contact.findOne({
             accountId,
             whatsappNumber
@@ -906,7 +908,7 @@ router.post('/sync-contact', async (req, res) => {
       }
     }
 
-    console.log(`✅ Contact synced successfully: ${contact._id}`);
+    logger.info(`✅ Contact synced successfully: ${contact._id}`);
 
     return res.status(200).json({
       success: true,
@@ -917,7 +919,7 @@ router.post('/sync-contact', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error syncing contact:', error);
+    logger.error('❌ Error syncing contact:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to sync contact',
@@ -958,7 +960,7 @@ router.post('/sync-all-contacts', async (req, res) => {
     for (const conv of conversations) {
       try {
         if (!conv.userPhone || !conv.userName) {
-          console.log(`⏭️ Skipping conversation ${conv._id} - missing phone/name`);
+          logger.info(`⏭️ Skipping conversation ${conv._id} - missing phone/name`);
           skipped++;
           continue;
         }
@@ -1020,13 +1022,13 @@ router.post('/sync-all-contacts', async (req, res) => {
             skipped++;
           }
         } else {
-          console.error(`❌ Failed to sync conversation ${conv._id}:`, err);
+          logger.error(`❌ Failed to sync conversation ${conv._id}:`, err);
           failed++;
         }
       }
     }
 
-    console.log(`✅ Bulk sync completed: ${synced} synced, ${skipped} updated, ${failed} failed`);
+    logger.info(`✅ Bulk sync completed: ${synced} synced, ${skipped} updated, ${failed} failed`);
 
     return res.status(200).json({
       success: true,
@@ -1039,7 +1041,7 @@ router.post('/sync-all-contacts', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error in bulk sync:', error);
+    logger.error('❌ Error in bulk sync:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to bulk sync contacts',
@@ -1061,7 +1063,7 @@ router.get('/stats', async (req, res) => {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
-    console.log('📊 Fetching stats for:', { accountId, month, year, startDate, endDate });
+    logger.info('📊 Fetching stats for:', { accountId, month, year, startDate, endDate });
 
     // Import Message model
     const { default: Message } = await import('../models/Message.js');
@@ -1121,14 +1123,14 @@ router.get('/stats', async (req, res) => {
       }
     };
 
-    console.log('✅ Stats calculated:', stats);
+    logger.info('✅ Stats calculated:', stats);
 
     return res.status(200).json({
       success: true,
       data: stats
     });
   } catch (error) {
-    console.error('❌ Error fetching stats:', error);
+    logger.error('❌ Error fetching stats:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch conversation stats',

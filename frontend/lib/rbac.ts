@@ -1,15 +1,14 @@
 /**
  * Role-Based Access Control (RBAC) Configuration
  * Defines permissions for each user role
+ * 
+ * NOTE: Uses centralized UserRole enum from lib/enums.ts
  */
 
-export enum UserRole {
-  SUPERADMIN = 'superadmin',
-  ADMIN = 'admin',
-  MANAGER = 'manager',
-  AGENT = 'agent',
-  USER = 'user'
-}
+import { UserRole } from './enums';
+
+// Re-export UserRole for backward compatibility
+export { UserRole } from './enums';
 
 /**
  * Route access configuration

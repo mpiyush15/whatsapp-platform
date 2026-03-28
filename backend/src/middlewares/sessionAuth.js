@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Session Authentication Middleware
  * For dashboard users - uses sessions, NOT API keys

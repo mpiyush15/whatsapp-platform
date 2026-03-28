@@ -146,6 +146,7 @@ const conversationSchema = new mongoose.Schema({
 conversationSchema.index({ accountId: 1, phoneNumberId: 1 });
 conversationSchema.index({ accountId: 1, lastMessageAt: -1 });
 conversationSchema.index({ accountId: 1, status: 1 });
+conversationSchema.index({ accountId: 1, createdAt: -1 });
 
 // ✅ CRITICAL: Unique compound index to prevent duplicate conversations for same phone number
 conversationSchema.index(

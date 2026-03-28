@@ -8,7 +8,9 @@ import Conversation from '../models/Conversation.js';
 import KeywordRule from '../models/KeywordRule.js';
 import WorkflowSession from '../models/WorkflowSession.js';
 import { broadcastMessageStatus } from './socketService.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
 
 /**
@@ -58,7 +60,7 @@ class WhatsAppService {
     }
     
     // ✅ Log token status for debugging
-    console.log('📱 Phone config loaded:', {
+    logger.info('📱 Phone config loaded:', {
       phoneNumberId: config.phoneNumberId,
       wabaId: config.wabaId,
       isActive: config.isActive,
@@ -111,7 +113,7 @@ class WhatsAppService {
           lastMessageAt: new Date()
         });
         
-        console.log('✅ Created new contact:', {
+        logger.info('✅ Created new contact:', {
           accountId,
           phone: formattedPhone,
           name: contact.name
@@ -128,7 +130,7 @@ class WhatsAppService {
         
         await contact.save();
         
-        console.log('✅ Updated contact:', {
+        logger.info('✅ Updated contact:', {
           accountId,
           phone: formattedPhone,
           name: contact.name,
@@ -138,7 +140,7 @@ class WhatsAppService {
       
       return contact;
     } catch (error) {
-      console.error('❌ Error in getOrCreateContact:', error.message);
+      logger.error('❌ Error in getOrCreateContact:', error.message);
       throw error;
     }
   }
@@ -210,7 +212,7 @@ class WhatsAppService {
       
       return conversation;
     } catch (error) {
-      console.error('⚠️ Error in getOrCreateConversation:', error.message);
+      logger.error('⚠️ Error in getOrCreateConversation:', error.message);
       // Create minimal conversation to ensure message can be saved
       throw error;
     }
@@ -256,12 +258,12 @@ class WhatsAppService {
       // Clean phone number (remove + and spaces)
       const cleanPhone = recipientPhone.replace(/[\s+()-]/g, '');
       
-      console.log('📱 Preparing to send WhatsApp message:');
-      console.log('  Account ID:', accountId);
-      console.log('  Phone Number ID:', phoneNumberId);
-      console.log('  Original Phone:', recipientPhone);
-      console.log('  Cleaned Phone:', cleanPhone);
-      console.log('  Message:', messageText);
+      logger.info('📱 Preparing to send WhatsApp message:');
+      logger.info('  Account ID:', accountId);
+      logger.info('  Phone Number ID:', phoneNumberId);
+      logger.info('  Original Phone:', recipientPhone);
+      logger.info('  Cleaned Phone:', cleanPhone);
+      logger.info('  Message:', messageText);
       
       // ✅ CRITICAL FIX: Use helper function for conversation management
       const conversation = await this.getOrCreateConversation(accountId, phoneNumberId, cleanPhone);
@@ -283,10 +285,10 @@ class WhatsAppService {
       });
       
       await message.save();
-      console.log('✅ Message saved to DB with status: queued');
+      logger.info('✅ Message saved to DB with status: queued');
 
       // Send via WhatsApp Cloud API
-      console.log('🚀 Sending to Meta API...');
+      logger.info('🚀 Sending to Meta API...');
       const response = await axios.post(
         `${GRAPH_API_URL}/${phoneNumberId}/messages`,
         {
@@ -304,7 +306,7 @@ class WhatsAppService {
         }
       );
 
-      console.log('✅ Meta API Response:', response.data);
+      logger.info('✅ Meta API Response:', response.data);
 
       // Update message with WhatsApp message ID
       message.waMessageId = response.data.messages[0].id;
@@ -340,9 +342,9 @@ class WhatsAppService {
           },
           { upsert: true, new: true }
         );
-        console.log('✅ Conversation created/updated for live chat display');
+        logger.info('✅ Conversation created/updated for live chat display');
       } catch (convError) {
-        console.error('⚠️ Conversation update warning (non-critical):', convError.message);
+        logger.error('⚠️ Conversation update warning (non-critical):', convError.message);
         // Don't throw - message was already sent successfully
       }
 
@@ -364,7 +366,7 @@ class WhatsAppService {
       };
 
     } catch (error) {
-      console.error('❌ Send message error:', error.response?.data || error.message);
+      logger.error('❌ Send message error:', error.response?.data || error.message);
       
       // Save failed message to database
       if (message) {
@@ -415,17 +417,17 @@ class WhatsAppService {
       
       // ✅ CRITICAL FIX: Validate phone is ACTIVE
       if (!config.isActive) {
-        throw new Error('Phone number is not active. Cannot send template messages.');
+        throw createAppError('Phone number is not active. Cannot send template messages.');
       }
 
       const cleanPhone = recipientPhone.replace(/[\s+()-]/g, '');
 
-      console.log('📋 ========== SENDING TEMPLATE MESSAGE ==========');
-      console.log('Account ID:', accountId);
-      console.log('Phone Number ID:', phoneNumberId);
-      console.log('Template Name:', templateName);
-      console.log('Recipient Phone:', cleanPhone);
-      console.log('Parameters:', params);
+      logger.info('📋 ========== SENDING TEMPLATE MESSAGE ==========');
+      logger.info('Account ID:', accountId);
+      logger.info('Phone Number ID:', phoneNumberId);
+      logger.info('Template Name:', templateName);
+      logger.info('Recipient Phone:', cleanPhone);
+      logger.info('Parameters:', params);
 
       // CRITICAL: Fetch template metadata to validate variables
       const template = await Template.findOne({ 
@@ -447,28 +449,28 @@ class WhatsAppService {
       }
 
       const templateVariableCount = template.variables?.length || 0;
-      console.log('Template Variables Required:', templateVariableCount);
+      logger.info('Template Variables Required:', templateVariableCount);
 
       // MANDATORY VALIDATION: Prevent silent failure
       if (templateVariableCount > 0 && (!params || params.length === 0)) {
         const errorMsg = `Template "${templateName}" requires ${templateVariableCount} parameter(s) but none were provided`;
-        console.error('❌', errorMsg);
+        logger.error('❌', errorMsg);
         throw new Error(errorMsg);
       }
 
       // VALIDATION: Parameter count must match
       if (templateVariableCount > 0 && params.length !== templateVariableCount) {
         const errorMsg = `Template "${templateName}" has ${templateVariableCount} variable(s) but ${params.length} parameter(s) provided`;
-        console.error('❌', errorMsg);
+        logger.error('❌', errorMsg);
         throw new Error(errorMsg);
       }
 
-      console.log('✅ Validation passed');
+      logger.info('✅ Validation passed');
 
       // ✅ CRITICAL: Find or create conversation FIRST (use helper function)
       const conversation = await this.getOrCreateConversation(accountId, phoneNumberId, cleanPhone);
       
-      console.log('✅ Conversation ready for template:', conversation._id);
+      logger.info('✅ Conversation ready for template:', conversation._id);
 
       // Create message record WITH conversationId
       message = new Message({
@@ -496,9 +498,9 @@ class WhatsAppService {
           type: 'body',
           parameters: params.map(p => ({ type: 'text', text: String(p) }))
         }];
-        console.log('✅ Building components with', params.length, 'parameters');
+        logger.info('✅ Building components with', params.length, 'parameters');
       } else {
-        console.log('📝 Template has no variables - sending without components');
+        logger.info('📝 Template has no variables - sending without components');
       }
 
       // Build template payload
@@ -512,7 +514,7 @@ class WhatsAppService {
         templatePayload.components = components;
       }
 
-      console.log('📤 Sending to Meta API...');
+      logger.info('📤 Sending to Meta API...');
 
       const response = await axios.post(
         `${GRAPH_API_URL}/${phoneNumberId}/messages`,
@@ -530,7 +532,7 @@ class WhatsAppService {
         }
       );
 
-      console.log('✅ Meta API Response:', response.data);
+      logger.info('✅ Meta API Response:', response.data);
 
       // Update message
       message.waMessageId = response.data.messages[0].id;
@@ -569,9 +571,9 @@ class WhatsAppService {
           },
           { upsert: true, new: true }
         );
-        console.log('✅ Conversation created/updated for live chat display');
+        logger.info('✅ Conversation created/updated for live chat display');
       } catch (convError) {
-        console.error('⚠️ Conversation update warning (non-critical):', convError.message);
+        logger.error('⚠️ Conversation update warning (non-critical):', convError.message);
         // Don't throw - message was already sent successfully
       }
 
@@ -602,7 +604,7 @@ class WhatsAppService {
       };
 
     } catch (error) {
-      console.error('🚨 Template send error:', error.response?.data || error.message);
+      logger.error('🚨 Template send error:', error.response?.data || error.message);
       
       if (message) {
         message.status = 'failed';
@@ -630,7 +632,7 @@ class WhatsAppService {
    */
   async testConnection(accountId, phoneNumberId, testPhone) {
     try {
-      console.log('🧪 Testing WhatsApp connection...');
+      logger.info('🧪 Testing WhatsApp connection...');
       
       const result = await this.sendTextMessage(
         accountId,
@@ -651,7 +653,7 @@ class WhatsAppService {
 
       return result;
     } catch (error) {
-      console.error('❌ Connection test failed:', error.message);
+      logger.error('❌ Connection test failed:', error.message);
       throw error;
     }
   }
@@ -665,12 +667,12 @@ class WhatsAppService {
    */
   async handleStatusUpdate(waMessageId, status, timestamp, errorInfo = {}, io = null) {
     try {
-      console.log('📊 Status update:', waMessageId, status);
+      logger.info('📊 Status update:', waMessageId, status);
       
       const message = await Message.findOne({ waMessageId });
       
       if (!message) {
-        console.log('⚠️  Message not found for status update:', waMessageId);
+        logger.info('⚠️  Message not found for status update:', waMessageId);
         return;
       }
 
@@ -713,19 +715,19 @@ class WhatsAppService {
       });
 
       await message.save();
-      console.log('✅ Status updated in database');
+      logger.info('✅ Status updated in database');
       
       // 🔴 BROADCAST STATUS UPDATE VIA SOCKET.IO
       // This notifies all connected clients about the status change
       if (io && message.conversationId) {
         broadcastMessageStatus(io, message.conversationId, message._id, status);
-        console.log('📡 Status broadcast sent for message:', message._id);
+        logger.info('📡 Status broadcast sent for message:', message._id);
       } else {
-        console.log('⚠️  Socket.io not available or conversationId missing - status broadcast skipped');
+        logger.info('⚠️  Socket.io not available or conversationId missing - status broadcast skipped');
       }
       
     } catch (error) {
-      console.error('❌ Error updating status:', error.message);
+      logger.error('❌ Error updating status:', error.message);
     }
   }
 
@@ -739,12 +741,12 @@ class WhatsAppService {
    */
   async processIncomingMessage(accountId, phoneNumberId, senderPhone, messageText, metadata = {}) {
     try {
-      console.log('📥 Processing incoming message from:', senderPhone);
-      console.log('📝 Message text:', messageText);
-      console.log('🏢 Account ID:', accountId);
-      console.log('📞 Phone Number ID:', phoneNumberId);
+      logger.info('📥 Processing incoming message from:', senderPhone);
+      logger.info('📝 Message text:', messageText);
+      logger.info('🏢 Account ID:', accountId);
+      logger.info('📞 Phone Number ID:', phoneNumberId);
       if (metadata.buttonId) {
-        console.log('🔘 Button ID:', metadata.buttonId);
+        logger.info('🔘 Button ID:', metadata.buttonId);
       }
       
       // FIRST: Check if user has an active workflow session
@@ -755,7 +757,7 @@ class WhatsAppService {
       });
 
       if (activeSession) {
-        console.log('🔄 User has active workflow session, processing response...');
+        logger.info('🔄 User has active workflow session, processing response...');
         await this.handleWorkflowResponse(activeSession, messageText, metadata);
         return; // Don't check keyword rules when in a workflow
       }
@@ -770,13 +772,13 @@ class WhatsAppService {
         isActive: true 
       });
 
-      console.log(`🔍 Found ${rules.length} active rules to check`);
+      logger.info(`🔍 Found ${rules.length} active rules to check`);
 
       for (const rule of rules) {
-        console.log(`🔎 Checking rule: ${rule.name} (Keywords: ${rule.keywords.join(', ')})`);
+        logger.info(`🔎 Checking rule: ${rule.name} (Keywords: ${rule.keywords.join(', ')})`);
         
         if (rule.matches(messageText)) {
-          console.log('✅ Matched keyword rule:', rule.name);
+          logger.info('✅ Matched keyword rule:', rule.name);
           
           // Check if we already triggered this rule for this contact recently (cooldown)
           const cooldownMinutes = 60; // Don't trigger same rule within 60 minutes
@@ -793,11 +795,11 @@ class WhatsAppService {
 
           if (recentMessage) {
             const minutesAgo = Math.floor((Date.now() - recentMessage.createdAt.getTime()) / 60000);
-            console.log(`⏱️ Cooldown active - already triggered ${minutesAgo} minutes ago. Skipping.`);
+            logger.info(`⏱️ Cooldown active - already triggered ${minutesAgo} minutes ago. Skipping.`);
             continue; // Skip this rule, check next one
           }
 
-          console.log('🎯 Reply type:', rule.replyType);
+          logger.info('🎯 Reply type:', rule.replyType);
           
           // Update rule stats
           await KeywordRule.updateOne(
@@ -810,7 +812,7 @@ class WhatsAppService {
 
           // Send auto-reply
           if (rule.replyType === 'text' && rule.replyContent.text) {
-            console.log('💬 Sending text reply:', rule.replyContent.text);
+            logger.info('💬 Sending text reply:', rule.replyContent.text);
             await this.sendTextMessage(
               accountId,
               phoneNumberId,
@@ -819,7 +821,7 @@ class WhatsAppService {
               { campaign: 'keyword_auto_reply', ruleId: rule._id.toString() }
             );
           } else if (rule.replyType === 'template' && rule.replyContent.templateName) {
-            console.log('📋 Sending template reply:', rule.replyContent.templateName);
+            logger.info('📋 Sending template reply:', rule.replyContent.templateName);
             await this.sendTemplateMessage(
               accountId,
               phoneNumberId,
@@ -829,7 +831,7 @@ class WhatsAppService {
               { campaign: 'keyword_auto_reply', ruleId: rule._id.toString() }
             );
           } else if (rule.replyType === 'workflow' && rule.replyContent.workflow) {
-            console.log('🔄 Starting conversational workflow with', rule.replyContent.workflow.length, 'steps');
+            logger.info('🔄 Starting conversational workflow with', rule.replyContent.workflow.length, 'steps');
             // Start a new workflow session
             await this.startWorkflowSession(
               accountId,
@@ -844,15 +846,15 @@ class WhatsAppService {
           // Only trigger first matching rule
           break;
         } else {
-          console.log('❌ Rule did not match');
+          logger.info('❌ Rule did not match');
         }
       }
       
       if (rules.length === 0) {
-        console.log('⚠️ No active rules found for this account');
+        logger.info('⚠️ No active rules found for this account');
       }
     } catch (error) {
-      console.error('❌ Error in processIncomingMessage:', error);
+      logger.error('❌ Error in processIncomingMessage:', error);
     }
   }
 
@@ -896,7 +898,7 @@ class WhatsAppService {
           : '0%'
       };
     } catch (error) {
-      console.error('❌ Error getting stats:', error.message);
+      logger.error('❌ Error getting stats:', error.message);
       throw error;
     }
   }
@@ -921,10 +923,10 @@ class WhatsAppService {
       formData.append('messaging_product', 'whatsapp');
       formData.append('type', mimeType);
       
-      console.log('⬆️ Uploading to WhatsApp Media API...');
-      console.log('  Phone Number ID:', phoneNumberId);
-      console.log('  Filename:', filename);
-      console.log('  Type:', mimeType);
+      logger.info('⬆️ Uploading to WhatsApp Media API...');
+      logger.info('  Phone Number ID:', phoneNumberId);
+      logger.info('  Filename:', filename);
+      logger.info('  Type:', mimeType);
       
       const response = await axios.post(
         `${GRAPH_API_URL}/${phoneNumberId}/media`,
@@ -937,11 +939,11 @@ class WhatsAppService {
         }
       );
       
-      console.log('✅ Media uploaded to WhatsApp:', response.data);
+      logger.info('✅ Media uploaded to WhatsApp:', response.data);
       return response.data.id; // Returns media ID
       
     } catch (error) {
-      console.error('❌ WhatsApp media upload error:', error.response?.data || error.message);
+      logger.error('❌ WhatsApp media upload error:', error.response?.data || error.message);
       throw new Error(error.response?.data?.error?.message || 'Failed to upload media to WhatsApp');
     }
   }
@@ -968,12 +970,12 @@ class WhatsAppService {
       const config = await this.getPhoneConfig(accountId, phoneNumberId);
       const cleanPhone = recipientPhone.replace(/[\s+()-]/g, '');
       
-      console.log('📤 Sending media message:');
-      console.log('  Account ID:', accountId);
-      console.log('  Phone Number ID:', phoneNumberId);
-      console.log('  Recipient:', cleanPhone);
-      console.log('  Media Type:', mediaType);
-      console.log('  Caption:', caption);
+      logger.info('📤 Sending media message:');
+      logger.info('  Account ID:', accountId);
+      logger.info('  Phone Number ID:', phoneNumberId);
+      logger.info('  Recipient:', cleanPhone);
+      logger.info('  Media Type:', mediaType);
+      logger.info('  Caption:', caption);
       
       // ✅ CRITICAL FIX: Use helper function for conversation management
       const conversation = await this.getOrCreateConversation(accountId, phoneNumberId, cleanPhone);
@@ -995,7 +997,7 @@ class WhatsAppService {
       });
       
       await message.save();
-      console.log('✅ Message saved to DB');
+      logger.info('✅ Message saved to DB');
 
       // Upload media to WhatsApp and get media ID
       const mediaId = await this.uploadMediaToWhatsApp(
@@ -1027,7 +1029,7 @@ class WhatsAppService {
         mediaPayload[mediaType].filename = metadata.filename;
       }
 
-      console.log('🚀 Sending media message to Meta API...');
+      logger.info('🚀 Sending media message to Meta API...');
       const response = await axios.post(
         `${GRAPH_API_URL}/${phoneNumberId}/messages`,
         mediaPayload,
@@ -1039,7 +1041,7 @@ class WhatsAppService {
         }
       );
 
-      console.log('✅ Meta API Response:', response.data);
+      logger.info('✅ Meta API Response:', response.data);
 
       // Update message with WhatsApp message ID
       message.waMessageId = response.data.messages[0].id;
@@ -1083,9 +1085,9 @@ class WhatsAppService {
           },
           { upsert: true, new: true }
         );
-        console.log('✅ Conversation created/updated for live chat display');
+        logger.info('✅ Conversation created/updated for live chat display');
       } catch (convError) {
-        console.error('⚠️ Conversation update warning (non-critical):', convError.message);
+        logger.error('⚠️ Conversation update warning (non-critical):', convError.message);
         // Don't throw - message was already sent successfully
       }
 
@@ -1107,7 +1109,7 @@ class WhatsAppService {
       };
 
     } catch (error) {
-      console.error('❌ Send media error:', error.response?.data || error.message);
+      logger.error('❌ Send media error:', error.response?.data || error.message);
       
       if (message) {
         message.status = 'failed';
@@ -1137,12 +1139,12 @@ class WhatsAppService {
    */
   async processWorkflow(accountId, phoneNumberId, recipientPhone, workflowSteps, ruleId = null) {
     try {
-      console.log('🔄 Processing workflow with', workflowSteps.length, 'steps');
+      logger.info('🔄 Processing workflow with', workflowSteps.length, 'steps');
       
       for (const step of workflowSteps) {
         // Apply delay if specified
         if (step.delay && step.delay > 0) {
-          console.log(`⏱️ Waiting ${step.delay} seconds...`);
+          logger.info(`⏱️ Waiting ${step.delay} seconds...`);
           await new Promise(resolve => setTimeout(resolve, step.delay * 1000));
         }
 
@@ -1156,7 +1158,7 @@ class WhatsAppService {
             { campaign: 'workflow_auto_reply', ruleId }
           );
         } else if (step.type === 'buttons' && step.buttons && step.buttons.length > 0) {
-          console.log('🔘 Sending button step:', {
+          logger.info('🔘 Sending button step:', {
             text: step.text,
             buttonsCount: step.buttons.length,
             buttons: step.buttons.map(b => ({ id: b.id, title: b.title, url: b.url }))
@@ -1179,9 +1181,9 @@ class WhatsAppService {
         }
       }
       
-      console.log('✅ Workflow completed successfully');
+      logger.info('✅ Workflow completed successfully');
     } catch (error) {
-      console.error('❌ Error processing workflow:', error.message);
+      logger.error('❌ Error processing workflow:', error.message);
       throw error;
     }
   }
@@ -1199,7 +1201,7 @@ class WhatsAppService {
     try {
       const config = await this.getPhoneConfig(accountId, phoneNumberId);
       
-      console.log('🔘 sendButtonMessage called with:', {
+      logger.info('🔘 sendButtonMessage called with:', {
         recipientPhone,
         bodyText: bodyText.substring(0, 50),
         buttonsCount: buttons.length,
@@ -1217,7 +1219,7 @@ class WhatsAppService {
         }
       }));
 
-      console.log(`✅ Sending ${formattedButtons.length} reply buttons (URLs stored for click response)`);
+      logger.info(`✅ Sending ${formattedButtons.length} reply buttons (URLs stored for click response)`);
 
       const payload = {
         messaging_product: 'whatsapp',
@@ -1246,7 +1248,7 @@ class WhatsAppService {
         }
       );
 
-      console.log('✅ Button message sent:', response.data.messages[0].id);
+      logger.info('✅ Button message sent:', response.data.messages[0].id);
       
       // ✅ CRITICAL: Find or create conversation FIRST
       const conversation = await this.getOrCreateConversation(accountId, phoneNumberId, recipientPhone);
@@ -1272,7 +1274,7 @@ class WhatsAppService {
 
       return response.data;
     } catch (error) {
-      console.error('❌ Error sending button message:', error.response?.data || error.message);
+      logger.error('❌ Error sending button message:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -1327,7 +1329,7 @@ class WhatsAppService {
         }
       );
 
-      console.log('✅ List message sent:', response.data.messages[0].id);
+      logger.info('✅ List message sent:', response.data.messages[0].id);
       
       // ✅ CRITICAL: Find or create conversation FIRST
       const conversation = await this.getOrCreateConversation(accountId, phoneNumberId, recipientPhone);
@@ -1353,7 +1355,7 @@ class WhatsAppService {
 
       return response.data;
     } catch (error) {
-      console.error('❌ Error sending list message:', error.response?.data || error.message);
+      logger.error('❌ Error sending list message:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -1369,8 +1371,8 @@ class WhatsAppService {
    */
   async startWorkflowSession(accountId, phoneNumberId, contactPhone, ruleId, workflowSteps, timeoutMinutes = 1) {
     try {
-      console.log('🆕 Starting new workflow session for:', contactPhone);
-      console.log('⏰ Timeout set to:', timeoutMinutes, 'minutes');
+      logger.info('🆕 Starting new workflow session for:', contactPhone);
+      logger.info('⏰ Timeout set to:', timeoutMinutes, 'minutes');
       
       // Cancel any existing active sessions for this contact
       await WorkflowSession.updateMany(
@@ -1390,13 +1392,13 @@ class WhatsAppService {
         timeoutMinutes
       });
 
-      console.log('✅ Workflow session created:', session._id);
+      logger.info('✅ Workflow session created:', session._id);
 
       // Send the first step
       await this.sendWorkflowStep(session);
       
     } catch (error) {
-      console.error('❌ Error starting workflow session:', error);
+      logger.error('❌ Error starting workflow session:', error);
       throw error;
     }
   }
@@ -1410,7 +1412,7 @@ class WhatsAppService {
       const step = session.getCurrentStep();
       
       if (!step) {
-        console.log('✅ Workflow completed');
+        logger.info('✅ Workflow completed');
         session.status = 'completed';
         session.completedAt = new Date();
         await session.save();
@@ -1420,11 +1422,11 @@ class WhatsAppService {
         return;
       }
 
-      console.log(`📤 Sending step ${session.currentStepIndex + 1}/${session.workflowSteps.length}: ${step.type}`);
+      logger.info(`📤 Sending step ${session.currentStepIndex + 1}/${session.workflowSteps.length}: ${step.type}`);
 
       // Apply delay if specified
       if (step.delay && step.delay > 0) {
-        console.log(`⏱️ Waiting ${step.delay} seconds...`);
+        logger.info(`⏱️ Waiting ${step.delay} seconds...`);
         await new Promise(resolve => setTimeout(resolve, step.delay * 1000));
       }
 
@@ -1477,7 +1479,7 @@ class WhatsAppService {
         // Wait for user response - set timeout timer
         session.awaitingResponseSince = new Date();
         await session.save();
-        console.log('⏳ Waiting for user response...');
+        logger.info('⏳ Waiting for user response...');
         
         // Schedule timeout check after specified minutes
         setTimeout(async () => {
@@ -1486,7 +1488,7 @@ class WhatsAppService {
       }
       
     } catch (error) {
-      console.error('❌ Error sending workflow step:', error);
+      logger.error('❌ Error sending workflow step:', error);
       throw error;
     }
   }
@@ -1502,19 +1504,19 @@ class WhatsAppService {
       const step = session.getCurrentStep();
       
       if (!step) {
-        console.log('⚠️ No current step in session');
+        logger.info('⚠️ No current step in session');
         return;
       }
 
       // Check if session has already timed out
       if (session.hasTimedOut) {
-        console.log('⏰ Session has already timed out, ignoring response');
+        logger.info('⏰ Session has already timed out, ignoring response');
         return;
       }
 
-      console.log(`💾 Received response for step ${session.currentStepIndex + 1}: "${responseText}"`);
+      logger.info(`💾 Received response for step ${session.currentStepIndex + 1}: "${responseText}"`);
       if (metadata.buttonId) {
-        console.log(`🔘 Button ID from webhook: ${metadata.buttonId}`);
+        logger.info(`🔘 Button ID from webhook: ${metadata.buttonId}`);
       }
 
       // Clear timeout timer
@@ -1523,7 +1525,7 @@ class WhatsAppService {
       // Save response if step has saveAs field
       if (step.saveAs) {
         session.saveResponse(step.saveAs, responseText);
-        console.log(`✅ Saved response as: ${step.saveAs} = "${responseText}"`);
+        logger.info(`✅ Saved response as: ${step.saveAs} = "${responseText}"`);
       }
 
       // Check if next step should be determined by conditional branching
@@ -1531,7 +1533,7 @@ class WhatsAppService {
       
       // Check if current step has buttons/list items with nextStepId (conditional branching)
       if (step.buttons && step.buttons.length > 0) {
-        console.log(`🔍 Checking buttons:`, step.buttons.map(b => ({ 
+        logger.info(`🔍 Checking buttons:`, step.buttons.map(b => ({ 
           id: b.id, 
           title: b.title, 
           url: b.url,
@@ -1541,12 +1543,12 @@ class WhatsAppService {
         // Match by buttonId first (if provided), otherwise by text
         let selectedButton;
         if (metadata.buttonId) {
-          console.log(`🔍 Matching by button ID: ${metadata.buttonId}`);
+          logger.info(`🔍 Matching by button ID: ${metadata.buttonId}`);
           selectedButton = step.buttons.find(btn => btn.id === metadata.buttonId);
         }
         
         if (!selectedButton) {
-          console.log(`🔍 Matching by button text: ${responseText}`);
+          logger.info(`🔍 Matching by button text: ${responseText}`);
           selectedButton = step.buttons.find(btn => 
             responseText.toLowerCase().includes(btn.title.toLowerCase()) ||
             responseText === btn.id
@@ -1554,7 +1556,7 @@ class WhatsAppService {
         }
         
         if (selectedButton) {
-          console.log(`🔘 User clicked button:`, { 
+          logger.info(`🔘 User clicked button:`, { 
             title: selectedButton.title, 
             url: selectedButton.url,
             hasUrl: !!selectedButton.url
@@ -1562,7 +1564,7 @@ class WhatsAppService {
           
           // If button has URL, send it as clickable link
           if (selectedButton.url) {
-            console.log(`🔗 Sending clickable link: ${selectedButton.url}`);
+            logger.info(`🔗 Sending clickable link: ${selectedButton.url}`);
             await this.sendTextMessage(
               session.accountId,
               session.phoneNumberId,
@@ -1571,14 +1573,14 @@ class WhatsAppService {
               { campaign: 'workflow_button_url' }
             );
           } else {
-            console.log(`⚠️ Button has no URL to send`);
+            logger.info(`⚠️ Button has no URL to send`);
           }
           
           // Check for conditional branching
           if (selectedButton.nextStepId) {
             // Find the step index with this ID
             nextStepIndex = session.workflowSteps.findIndex(s => s.id === selectedButton.nextStepId);
-            console.log(`🔀 Conditional branch: Going to step "${selectedButton.nextStepId}" (index: ${nextStepIndex})`);
+            logger.info(`🔀 Conditional branch: Going to step "${selectedButton.nextStepId}" (index: ${nextStepIndex})`);
           }
         }
       }
@@ -1590,7 +1592,7 @@ class WhatsAppService {
         );
         if (selectedItem && selectedItem.nextStepId) {
           nextStepIndex = session.workflowSteps.findIndex(s => s.id === selectedItem.nextStepId);
-          console.log(`🔀 Conditional branch: Going to step "${selectedItem.nextStepId}" (index: ${nextStepIndex})`);
+          logger.info(`🔀 Conditional branch: Going to step "${selectedItem.nextStepId}" (index: ${nextStepIndex})`);
         }
       }
 
@@ -1602,10 +1604,10 @@ class WhatsAppService {
         const branch = step.condition.branches.find(b => b.value === value);
         if (branch && branch.nextStepId) {
           nextStepIndex = session.workflowSteps.findIndex(s => s.id === branch.nextStepId);
-          console.log(`🔀 Condition: ${variable}=${value}, Going to step "${branch.nextStepId}"`);
+          logger.info(`🔀 Condition: ${variable}=${value}, Going to step "${branch.nextStepId}"`);
         } else if (step.condition.defaultNextStepId) {
           nextStepIndex = session.workflowSteps.findIndex(s => s.id === step.condition.defaultNextStepId);
-          console.log(`🔀 Condition: Using default branch to step "${step.condition.defaultNextStepId}"`);
+          logger.info(`🔀 Condition: Using default branch to step "${step.condition.defaultNextStepId}"`);
         }
       }
 
@@ -1625,7 +1627,7 @@ class WhatsAppService {
         await this.sendWorkflowStep(session);
       } else {
         // Workflow complete
-        console.log('🎉 Workflow completed! All responses collected.');
+        logger.info('🎉 Workflow completed! All responses collected.');
         session.status = 'completed';
         session.completedAt = new Date();
         await session.save();
@@ -1634,7 +1636,7 @@ class WhatsAppService {
       }
       
     } catch (error) {
-      console.error('❌ Error handling workflow response:', error);
+      logger.error('❌ Error handling workflow response:', error);
       throw error;
     }
   }
@@ -1648,19 +1650,19 @@ class WhatsAppService {
       const session = await WorkflowSession.findById(sessionId);
       
       if (!session || session.status !== 'active') {
-        console.log('⚠️ Session not found or not active, skipping timeout check');
+        logger.info('⚠️ Session not found or not active, skipping timeout check');
         return;
       }
 
       // Check if user has responded (awaitingResponseSince should be null if they replied)
       if (!session.awaitingResponseSince) {
-        console.log('✅ User responded in time, no timeout needed');
+        logger.info('✅ User responded in time, no timeout needed');
         return;
       }
 
       // Check if timeout has occurred
       if (session.checkTimeout()) {
-        console.log('⏰ User did not respond within timeout period, ending workflow');
+        logger.info('⏰ User did not respond within timeout period, ending workflow');
         
         session.hasTimedOut = true;
         session.status = 'expired';
@@ -1671,11 +1673,11 @@ class WhatsAppService {
         await this.sendTimeoutMessage(session);
         
         // Save partial lead data (whatever was collected so far)
-        console.log('💾 Saved partial lead data:', Object.fromEntries(session.responses));
+        logger.info('💾 Saved partial lead data:', Object.fromEntries(session.responses));
       }
       
     } catch (error) {
-      console.error('❌ Error checking workflow timeout:', error);
+      logger.error('❌ Error checking workflow timeout:', error);
     }
   }
 
@@ -1699,10 +1701,10 @@ class WhatsAppService {
         }
       );
       
-      console.log('✅ Timeout message sent');
+      logger.info('✅ Timeout message sent');
       
     } catch (error) {
-      console.error('❌ Error sending timeout message:', error);
+      logger.error('❌ Error sending timeout message:', error);
     }
   }
 
@@ -1712,7 +1714,7 @@ class WhatsAppService {
    */
   async sendWorkflowCompletionMessage(session) {
     try {
-      console.log('📊 Workflow completed. Collected data:', Object.fromEntries(session.responses));
+      logger.info('📊 Workflow completed. Collected data:', Object.fromEntries(session.responses));
       
       // Import ChatbotLead model
       const ChatbotLead = (await import('../models/ChatbotLead.js')).default;
@@ -1728,7 +1730,7 @@ class WhatsAppService {
         status: 'new'
       });
       
-      console.log('💾 Lead saved:', lead._id);
+      logger.info('💾 Lead saved:', lead._id);
       
       // Build summary message
       let summaryText = '✅ *Thank you for completing the form!*\n\n';
@@ -1754,10 +1756,10 @@ class WhatsAppService {
         }
       );
       
-      console.log('✅ Completion message sent');
+      logger.info('✅ Completion message sent');
       
     } catch (error) {
-      console.error('❌ Error sending completion message:', error);
+      logger.error('❌ Error sending completion message:', error);
     }
   }
 }

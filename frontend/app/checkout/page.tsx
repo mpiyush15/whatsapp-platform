@@ -24,6 +24,7 @@ function CheckoutContent() {
   const [selectedTenure, setSelectedTenure] = useState<'monthly' | 'quarterly' | 'annual'>('monthly')
   const [allPlans, setAllPlans] = useState<any[]>([])
   const [isLoadingPlans, setIsLoadingPlans] = useState(true)
+  const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
 
   // Form states
   const [loginEmail, setLoginEmail] = useState('')
@@ -114,6 +115,17 @@ function CheckoutContent() {
   // Get selected plan details (select by name)
   const selectedPlan = allPlans.find((p) => p.name === selectedPlanId || p.name.toLowerCase() === selectedPlanId?.toLowerCase())
 
+  // Add-ons configuration
+  const ADD_ONS = [
+    { id: 'api-access', name: 'API Access', price: 1499, description: 'Full API access for integrations' }
+  ]
+
+  // Calculate add-on total
+  const addOnTotal = selectedAddOns.reduce((sum, addOnId) => {
+    const addOn = ADD_ONS.find(a => a.id === addOnId)
+    return sum + (addOn?.price || 0)
+  }, 0)
+
   // Calculate price based on tenure
   const calculatePrice = () => {
     if (!selectedPlan) return 0
@@ -139,7 +151,7 @@ function CheckoutContent() {
 
     const basePrice = monthlyPrice * multiplier
     const finalPrice = Math.round(basePrice * (1 - discount))
-    return finalPrice
+    return finalPrice + addOnTotal
   }
 
   const finalAmount = calculatePrice()
@@ -389,10 +401,44 @@ function CheckoutContent() {
               )}
             </div>
 
-            {/* Step 2: Select Tenure */}
+            {/* Step 2: Optional Add-ons */}
             {selectedPlan && (
               <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-300 p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 shadow-sm hover:shadow-md transition">
-                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-black mb-3 sm:mb-4 lg:mb-6">2. Choose Billing Period</h2>
+                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-black mb-3 sm:mb-4 lg:mb-6">2. Optional Add-ons</h2>
+
+                <div className="space-y-3">
+                  {ADD_ONS.map((addOn) => (
+                    <label
+                      key={addOn.id}
+                      className="flex items-center p-4 border-2 border-gray-300 rounded-lg hover:border-black transition cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedAddOns.includes(addOn.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedAddOns([...selectedAddOns, addOn.id])
+                          } else {
+                            setSelectedAddOns(selectedAddOns.filter(id => id !== addOn.id))
+                          }
+                        }}
+                        className="w-5 h-5 accent-black rounded"
+                      />
+                      <div className="ml-4 flex-1">
+                        <p className="font-semibold text-black">{addOn.name}</p>
+                        <p className="text-sm text-gray-600">{addOn.description}</p>
+                      </div>
+                      <p className="font-bold text-black ml-2">+₹{addOn.price.toLocaleString()}</p>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Select Tenure */}
+            {selectedPlan && (
+              <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-300 p-4 sm:p-6 lg:p-8 mb-4 sm:mb-6 lg:mb-8 shadow-sm hover:shadow-md transition">
+                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-black mb-3 sm:mb-4 lg:mb-6">3. Choose Billing Period</h2>
 
                 <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
                   {[
@@ -631,8 +677,25 @@ function CheckoutContent() {
 
                   {finalAmount > 0 && (
                     <div>
-                      <p className="text-sm text-gray-700">Subtotal</p>
+                      <p className="text-sm text-gray-700">Plan Subtotal</p>
                       <p className="font-semibold text-black">₹{(selectedPlan.monthlyPrice * (selectedTenure === 'monthly' ? 1 : selectedTenure === 'quarterly' ? 3 : 12)).toLocaleString()}</p>
+                    </div>
+                  )}
+
+                  {selectedAddOns.length > 0 && (
+                    <div>
+                      <p className="text-sm text-gray-700">Add-ons</p>
+                      <div className="space-y-1">
+                        {selectedAddOns.map(addOnId => {
+                          const addOn = ADD_ONS.find(a => a.id === addOnId)
+                          return (
+                            <div key={addOnId} className="flex justify-between">
+                              <p className="text-sm text-gray-600">• {addOn?.name}</p>
+                              <p className="text-sm font-semibold text-black">+₹{addOn?.price.toLocaleString()}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
 

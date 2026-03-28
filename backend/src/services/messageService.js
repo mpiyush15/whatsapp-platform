@@ -2,7 +2,9 @@ import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import ActivityTimeline from '../models/ActivityTimeline.js';
 import whatsappService from './whatsappService.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * MessageService
  * Business logic for message operations
@@ -13,7 +15,7 @@ import whatsappService from './whatsappService.js';
  * Send text message to customer via WhatsApp
  */
 export const sendMessage = async (conversationId, content, messageType = 'text', accountId, phoneNumberId, agentId) => {
-  console.log('📤 sendMessage called with:', {
+  logger.info('📤 sendMessage called with:', {
     conversationId,
     contentLength: content?.length,
     messageType,
@@ -28,11 +30,11 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   });
 
   if (!conversation) {
-    console.error('❌ Conversation not found:', conversationId);
-    throw new Error('Conversation not found');
+    logger.error('❌ Conversation not found:', conversationId);
+    throw new NotFoundError('Conversation not found');
   }
 
-  console.log('✅ Conversation found:', conversation._id);
+  logger.info('✅ Conversation found:', conversation._id);
 
   // If phoneNumberId is not provided, get it from conversation
   if (!phoneNumberId) {
@@ -40,11 +42,11 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   }
 
   if (!phoneNumberId) {
-    console.error('❌ No phoneNumberId found');
-    throw new Error('Phone number ID not found in conversation or request');
+    logger.error('❌ No phoneNumberId found');
+    throw createAppError('Phone number ID not found in conversation or request');
   }
 
-  console.log('✅ PhoneNumberId:', phoneNumberId);
+  logger.info('✅ PhoneNumberId:', phoneNumberId);
 
   // Prepare message payload
   const messagePayload = {
@@ -56,21 +58,21 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   // ✅ Try to send via WhatsApp, but don't fail if WhatsApp API fails
   let whatsappResponse = { waMessageId: `temp_${Date.now()}` };
   try {
-    console.log('📤 Calling WhatsApp API...');
+    logger.info('📤 Calling WhatsApp API...');
     whatsappResponse = await whatsappService.sendTextMessage(
       accountId,
       phoneNumberId,
       messagePayload.recipientPhone,
       messagePayload.message
     );
-    console.log('✅ WhatsApp response:', whatsappResponse.waMessageId);
+    logger.info('✅ WhatsApp response:', whatsappResponse.waMessageId);
   } catch (whatsappError) {
     console.warn('⚠️ WhatsApp API error (message will be saved locally):', whatsappError.message);
     // Don't throw - message should still be saved locally
   }
 
   // Store message in database
-  console.log('📝 Creating message in DB...');
+  logger.info('📝 Creating message in DB...');
   
   // Check if similar message was just created (prevent duplicates from race conditions)
   const recentDuplicate = await Message.findOne({
@@ -103,10 +105,10 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
     source: 'agent_sent'
   });
 
-  console.log('✅ Message created:', message._id);
+  logger.info('✅ Message created:', message._id);
 
   // Update conversation
-  console.log('📝 Updating conversation...');
+  logger.info('📝 Updating conversation...');
   const conv = await Conversation.findById(conversationId);
   
   await Conversation.updateOne(
@@ -125,7 +127,7 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
     }
   );
 
-  console.log('✅ Conversation updated');
+  logger.info('✅ Conversation updated');
 
   // Log in activity timeline
   await ActivityTimeline.create({
@@ -143,7 +145,7 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
     ])
   });
 
-  console.log('✅ Activity logged');
+  logger.info('✅ Activity logged');
 
   return message;
 };
@@ -179,7 +181,7 @@ export const updateMessageStatus = async (messageId, accountId, status, extraDat
   const message = await Message.findOne({ _id: messageId, accountId });
 
   if (!message) {
-    throw new Error('Message not found');
+    throw new NotFoundError('Message not found');
   }
 
   const update = {
@@ -227,7 +229,7 @@ export const markMessageAsRead = async (messageId, accountId, agentId) => {
   const message = await Message.findOne({ _id: messageId, accountId });
 
   if (!message) {
-    throw new Error('Message not found');
+    throw new NotFoundError('Message not found');
   }
 
   // Check if already read by this agent
@@ -252,7 +254,7 @@ export const addReaction = async (messageId, accountId, emoji, agentId) => {
   const message = await Message.findOne({ _id: messageId, accountId });
 
   if (!message) {
-    throw new Error('Message not found');
+    throw new NotFoundError('Message not found');
   }
 
   // Check if agent already has this reaction
@@ -280,7 +282,7 @@ export const removeReaction = async (messageId, accountId, emoji, agentId) => {
   const message = await Message.findOne({ _id: messageId, accountId });
 
   if (!message) {
-    throw new Error('Message not found');
+    throw new NotFoundError('Message not found');
   }
 
   message.reactions = message.reactions.filter(
@@ -299,7 +301,7 @@ export const forwardMessage = async (messageId, accountId, targetConversationId,
   const sourceMessage = await Message.findOne({ _id: messageId, accountId });
 
   if (!sourceMessage) {
-    throw new Error('Source message not found');
+    throw new NotFoundError('Source message not found');
   }
 
   // Create copy of message in target conversation

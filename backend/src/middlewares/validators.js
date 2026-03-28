@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Input Validation Middleware
  * Validates request data BEFORE it touches the database

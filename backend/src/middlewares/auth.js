@@ -1,5 +1,7 @@
 import Account from '../models/Account.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * API Key Authentication Middleware (External Integrations)
  * ✅ AUTH TYPE: API Key (wpk_live_xxx)
@@ -14,12 +16,12 @@ export const authenticate = async (req, res, next) => {
     // Extract API key from Authorization header
     const authHeader = req.headers.authorization;
     
-    console.log('🔑 API Key Check:');
-    console.log('  Path:', req.path);
-    console.log('  Auth Header:', !!authHeader ? '✅ Present' : '❌ Missing');
+    logger.info('🔑 API Key Check:');
+    logger.info('  Path:', req.path);
+    logger.info('  Auth Header:', !!authHeader ? '✅ Present' : '❌ Missing');
     
     if (!authHeader) {
-      console.log('  → Rejecting: No auth header');
+      logger.info('  → Rejecting: No auth header');
       return res.status(401).json({
         success: false,
         message: 'Authentication required. Please provide API key in Authorization header.',
@@ -29,7 +31,7 @@ export const authenticate = async (req, res, next) => {
     
     // Check Bearer token format
     if (!authHeader.startsWith('Bearer ')) {
-      console.log('  → Rejecting: Invalid format (missing "Bearer ")');
+      logger.info('  → Rejecting: Invalid format (missing "Bearer ")');
       return res.status(401).json({
         success: false,
         message: 'Invalid authorization format. Use: Authorization: Bearer <api_key>'
@@ -39,10 +41,10 @@ export const authenticate = async (req, res, next) => {
     // Extract API key
     const apiKey = authHeader.substring(7); // Remove "Bearer "
     
-    console.log('  Token prefix:', apiKey.substring(0, 15) + '...');
+    logger.info('  Token prefix:', apiKey.substring(0, 15) + '...');
     
     if (!apiKey || apiKey.trim() === '') {
-      console.log('  → Rejecting: Empty token');
+      logger.info('  → Rejecting: Empty token');
       return res.status(401).json({
         success: false,
         message: 'API key is empty'
@@ -51,7 +53,7 @@ export const authenticate = async (req, res, next) => {
     
     // Validate API key format (wpk_live_<64 hex chars>)
     if (!apiKey.startsWith('wpk_live_')) {
-      console.log('  → Rejecting: Invalid API key format (does not start with wpk_live_)');
+      logger.info('  → Rejecting: Invalid API key format (does not start with wpk_live_)');
       return res.status(401).json({
         success: false,
         message: 'Invalid API key format'
@@ -72,7 +74,7 @@ export const authenticate = async (req, res, next) => {
     Account.updateOne(
       { _id: account._id },
       { apiKeyLastUsedAt: new Date() }
-    ).catch(err => console.error('Error updating apiKeyLastUsedAt:', err));
+    ).catch(err => logger.error('Error updating apiKeyLastUsedAt:', err));
     
     // Inject account info into request
     req.accountId = account.accountId;
@@ -90,7 +92,7 @@ export const authenticate = async (req, res, next) => {
     next();
     
   } catch (error) {
-    console.error('❌ Authentication error:', error);
+    logger.error('❌ Authentication error:', error);
     res.status(500).json({
       success: false,
       message: 'Authentication failed',

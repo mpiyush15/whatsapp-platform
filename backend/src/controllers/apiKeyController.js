@@ -1,30 +1,19 @@
 import ApiKey from '../models/ApiKey.js';
+import { sendSuccess, sendValidationError, sendNotFound } from '../utils/responseHandler.js';
+import logger from '../utils/logger.js';
+import { handleControllerError } from '../utils/errorHandler.js';
 
-/**
- * API Key Management Controller
- * Handles generation, listing, and deletion of API keys for client integrations
- */
-
-/**
- * Generate a new API key for the account
- * POST /api/integrations/api-keys/generate
- */
 export const generateApiKey = async (req, res) => {
   try {
     const accountId = req.account.accountId;
     const { name } = req.body;
 
     if (!name) {
-      return res.status(400).json({
-        success: false,
-        message: 'API key name is required'
-      });
+      return sendValidationError(res, 'API key name is required');
     }
 
-    // Generate new API key
     const { apiKey, keyHash, keyPrefix } = ApiKey.generateApiKey();
 
-    // Save to database
     const newKey = await ApiKey.create({
       accountId,
       name,
@@ -32,16 +21,14 @@ export const generateApiKey = async (req, res) => {
       keyPrefix
     });
 
-    console.log(`✅ API Key generated for account ${accountId}:`, keyPrefix);
+    logger.info(`✅ API Key generated for account ${accountId}:`, keyPrefix);
 
-    // Return the key only once (never store it in plain text again)
     return res.status(201).json({
       success: true,
-      message: 'API key generated successfully',
       data: {
         id: newKey._id,
         name: newKey.name,
-        apiKey: apiKey, // Only return full key once
+        apiKey: apiKey,
         keyPrefix: newKey.keyPrefix,
         createdAt: newKey.createdAt,
         expiresAt: newKey.expiresAt,
@@ -49,29 +36,19 @@ export const generateApiKey = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error generating API key:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate API key',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'generateApiKey');
   }
 };
 
-/**
- * List all API keys for the account
- * GET /api/integrations/api-keys
- */
 export const listApiKeys = async (req, res) => {
   try {
     const accountId = req.account.accountId;
 
     const keys = await ApiKey.find({ accountId })
-      .select('-keyHash') // Don't return the hash
+      .select('-keyHash')
       .sort({ createdAt: -1 });
 
-    return res.json({
-      success: true,
+    return sendSuccess(res, {
       data: keys.map(key => ({
         id: key._id,
         name: key.name,
@@ -81,21 +58,12 @@ export const listApiKeys = async (req, res) => {
         expiresAt: key.expiresAt,
         isActive: !key.expiresAt || new Date(key.expiresAt) > new Date()
       }))
-    });
+    }, 'API keys retrieved');
   } catch (error) {
-    console.error('Error listing API keys:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to list API keys',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'listApiKeys');
   }
 };
 
-/**
- * Delete an API key
- * DELETE /api/integrations/api-keys/:keyId
- */
 export const deleteApiKey = async (req, res) => {
   try {
     const accountId = req.account.accountId;
@@ -107,34 +75,19 @@ export const deleteApiKey = async (req, res) => {
     });
 
     if (!key) {
-      return res.status(404).json({
-        success: false,
-        message: 'API key not found'
-      });
+      return sendNotFound(res, 'API key not found');
     }
 
     await ApiKey.deleteOne({ _id: keyId });
 
-    console.log(`✅ API Key deleted for account ${accountId}:`, key.keyPrefix);
+    logger.info(`✅ API Key deleted for account ${accountId}:`, key.keyPrefix);
 
-    return res.json({
-      success: true,
-      message: 'API key deleted successfully'
-    });
+    return sendSuccess(res, { id: keyId }, 'API key deleted');
   } catch (error) {
-    console.error('Error deleting API key:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete API key',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'deleteApiKey');
   }
 };
 
-/**
- * Revoke an API key (set expiration to now)
- * POST /api/integrations/api-keys/:keyId/revoke
- */
 export const revokeApiKey = async (req, res) => {
   try {
     const accountId = req.account.accountId;
@@ -146,36 +99,20 @@ export const revokeApiKey = async (req, res) => {
     });
 
     if (!key) {
-      return res.status(404).json({
-        success: false,
-        message: 'API key not found'
-      });
+      return sendNotFound(res, 'API key not found');
     }
 
-    // Set expiration to now
     key.expiresAt = new Date();
     await key.save();
 
-    console.log(`✅ API Key revoked for account ${accountId}:`, key.keyPrefix);
+    logger.info(`✅ API Key revoked for account ${accountId}:`, key.keyPrefix);
 
-    return res.json({
-      success: true,
-      message: 'API key revoked successfully'
-    });
+    return sendSuccess(res, { id: keyId, revokedAt: key.expiresAt }, 'API key revoked');
   } catch (error) {
-    console.error('Error revoking API key:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to revoke API key',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'revokeApiKey');
   }
 };
 
-/**
- * Update API key name
- * PATCH /api/integrations/api-keys/:keyId
- */
 export const updateApiKey = async (req, res) => {
   try {
     const accountId = req.account.accountId;
@@ -183,10 +120,7 @@ export const updateApiKey = async (req, res) => {
     const { name } = req.body;
 
     if (!name) {
-      return res.status(400).json({
-        success: false,
-        message: 'API key name is required'
-      });
+      return sendValidationError(res, 'API key name is required');
     }
 
     const key = await ApiKey.findOne({
@@ -195,30 +129,28 @@ export const updateApiKey = async (req, res) => {
     });
 
     if (!key) {
-      return res.status(404).json({
-        success: false,
-        message: 'API key not found'
-      });
+      return sendNotFound(res, 'API key not found');
     }
 
     key.name = name;
     await key.save();
 
-    return res.json({
-      success: true,
-      message: 'API key updated successfully',
+    return sendSuccess(res, {
       data: {
         id: key._id,
         name: key.name,
         keyPrefix: key.keyPrefix
       }
-    });
+    }, 'API key updated');
   } catch (error) {
-    console.error('Error updating API key:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update API key',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'updateApiKey');
   }
+};
+
+export default {
+  generateApiKey,
+  listApiKeys,
+  deleteApiKey,
+  revokeApiKey,
+  updateApiKey
 };

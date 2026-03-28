@@ -14,6 +14,10 @@ const accountSchema = new mongoose.Schema({
   },
   
   // Account Type (CRITICAL for multi-use case)
+  // Values match frontend AccountType enum: 'internal', 'client', 'agency'
+  // - 'internal': ReplySystem internal account (superadmin accounts)
+  // - 'client': Customer account (end users)
+  // - 'agency': Agency/partner account (resellers)
   type: {
     type: String,
     enum: ['internal', 'client', 'agency'],
@@ -77,6 +81,76 @@ const accountSchema = new mongoose.Schema({
     type: String,
     index: true,
     sparse: true  // Optional - only for accounts with Business ID
+  },
+  
+  // Business Advanced Permissions Management (for app review & feature access)
+  businessPermissions: {
+    // Permission level granted by Meta (tracked for compliance & feature access)
+    permissionLevel: {
+      type: String,
+      enum: ['basic', 'advanced', 'full'],
+      default: 'basic',
+      index: true
+    },
+    
+    // Is advanced management currently enabled for this account
+    advancedManagementEnabled: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    
+    // Approved scopes/features from Meta
+    // Examples: 'templates', 'campaigns', 'contacts', 'broadcasts'
+    approvedScopes: {
+      type: [String],
+      default: [],
+      enum: ['templates', 'campaigns', 'contacts', 'broadcasts', 'analytics', 'team_management', 'integrations'],
+      index: true
+    },
+    
+    // Permission request tracking
+    requestedAt: {
+      type: Date,
+      sparse: true,
+      index: true
+    },
+    requestedBy: {
+      type: String,  // Email or userId of who requested
+      sparse: true
+    },
+    
+    // Permission approval tracking (from Meta)
+    approvedAt: {
+      type: Date,
+      sparse: true,
+      index: true
+    },
+    approvedBy: {
+      type: String,  // Meta team/system
+      sparse: true
+    },
+    
+    // Permission rejection tracking (if rejected by Meta)
+    rejectedAt: {
+      type: Date,
+      sparse: true,
+      index: true
+    },
+    rejectionReason: {
+      type: String,
+      sparse: true
+    },
+    
+    // Permission expiration (for time-limited grants)
+    expiresAt: {
+      type: Date,
+      sparse: true,
+      index: true
+    },
+    
+    // Raw approval metadata from Meta
+    metaApprovalData: mongoose.Schema.Types.Mixed
   },
   
   // Meta Sync Details (from webhook account_update and OAuth flow)

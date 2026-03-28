@@ -16,9 +16,9 @@ const messageSchema = new mongoose.Schema({
   },
 
   // CRITICAL: Reference to Conversation (for real-time sync)
+  // Use String type to match Conversation.conversationId (multi-tenant ID)
   conversationId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Conversation',
+    type: String,
     required: true,
     index: true
   },
@@ -39,7 +39,7 @@ const messageSchema = new mongoose.Schema({
   // Message content
   messageType: {
     type: String,
-    enum: ['text', 'template', 'media', 'interactive', 'image', 'video', 'audio', 'document'],
+    enum: ['text', 'template', 'media', 'interactive', 'image', 'video', 'audio', 'document', 'location', 'sticker', 'button', 'reaction', 'voice'],
     default: 'text'
   },
   content: {
@@ -153,5 +153,7 @@ messageSchema.index({ accountId: 1, conversationId: 1 });
 messageSchema.index({ accountId: 1, phoneNumberId: 1 });
 messageSchema.index({ accountId: 1, createdAt: -1 });
 messageSchema.index({ conversationId: 1, createdAt: -1 });
+messageSchema.index({ accountId: 1, status: 1 });
+messageSchema.index({ accountId: 1, direction: 1 });
 
 export default mongoose.model('Message', messageSchema);

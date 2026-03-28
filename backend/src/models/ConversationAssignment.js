@@ -14,9 +14,9 @@ const conversationAssignmentSchema = new mongoose.Schema({
   },
 
   // Which conversation
+  // Use String type to match Conversation.conversationId (multi-tenant ID)
   conversationId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Conversation',
+    type: String,
     required: true,
     index: true
   },

@@ -7,7 +7,9 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 /**
@@ -17,6 +19,22 @@ const router = express.Router();
 const transformMessage = (msg) => {
   if (!msg) return null;
   
+  // Extract text content from various formats
+  let textContent = '';
+  if (typeof msg.content === 'string') {
+    textContent = msg.content;
+  } else if (typeof msg.content === 'object' && msg.content?.text) {
+    textContent = msg.content.text;
+  } else if (typeof msg.content === 'object') {
+    // For other object types, try to extract meaningful content
+    textContent = msg.content?.caption || msg.content?.templateName || JSON.stringify(msg.content);
+  }
+  
+  // Filter out placeholder/error messages and show descriptive text
+  if (textContent.includes('{"type"') || textContent.includes('"unknown"')) {
+    textContent = '[📨 System Message - Webhook Test Data]'; 
+  }
+  
   return {
     _id: msg._id?.toString(),
     conversationId: msg.conversationId?.toString(),
@@ -24,7 +42,7 @@ const transformMessage = (msg) => {
     phoneNumberId: msg.phoneNumberId,
     
     // Content handling - flatten structure
-    content: msg.content?.text || msg.content || '',
+    content: textContent || '',
     messageType: msg.messageType || 'text',
     
     // Media fields
@@ -169,7 +187,7 @@ router.post('/', async (req, res) => {
       data: transformMessage(message)
     });
   } catch (error) {
-    console.error('❌ Error sending message:', {
+    logger.error('❌ Error sending message:', {
       message: error.message,
       stack: error.stack,
       code: error.code
@@ -223,7 +241,7 @@ router.get('/:messageId', async (req, res) => {
       data: message
     });
   } catch (error) {
-    console.error('❌ Error getting message:', error);
+    logger.error('❌ Error getting message:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to get message',
@@ -258,45 +276,7 @@ router.get('/', async (req, res) => {
     );
 
     // Transform messages to match frontend interface
-    const transformedMessages = result.messages.map(msg => ({
-      _id: msg._id?.toString(),
-      conversationId: msg.conversationId?.toString(),
-      accountId: msg.accountId,
-      phoneNumberId: msg.phoneNumberId,
-      
-      // Content handling - flatten structure
-      content: msg.content?.text || msg.content || '',
-      messageType: msg.messageType || 'text',
-      
-      // Media fields
-      mediaUrl: msg.content?.mediaUrl,
-      mediaType: msg.content?.mediaType,
-      fileName: msg.content?.filename,
-      fileSize: msg.content?.fileSize,
-      mimeType: msg.content?.mimeType,
-      
-      // Direction and sender type
-      direction: msg.direction,
-      senderType: msg.direction === 'inbound' ? 'customer' : 'agent',
-      
-      // Status (map 'queued' to 'sent' for frontend compatibility)
-      status: msg.status === 'queued' ? 'sent' : msg.status,
-      
-      // Recipient info
-      recipientPhone: msg.recipientPhone,
-      recipientName: msg.recipientName,
-      
-      // Metadata
-      isInternalNote: msg.isInternalNote || false,
-      createdAt: msg.createdAt?.toISOString(),
-      updatedAt: msg.updatedAt?.toISOString(),
-      
-      // Additional fields
-      waMessageId: msg.waMessageId,
-      readBy: msg.readBy || [],
-      replyTo: msg.replyTo,
-      source: msg.source
-    }));
+    const transformedMessages = result.messages.map(msg => transformMessage(msg));
 
     return res.status(200).json({
       success: true,
@@ -309,7 +289,7 @@ router.get('/', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error getting messages:', error);
+    logger.error('❌ Error getting messages:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to get messages',
@@ -366,7 +346,7 @@ router.patch('/:messageId/status', async (req, res) => {
       data: message
     });
   } catch (error) {
-    console.error('❌ Error updating message status:', error);
+    logger.error('❌ Error updating message status:', error);
     if (error.message === 'Message not found') {
       return res.status(404).json({
         success: false,
@@ -412,7 +392,7 @@ router.post('/:messageId/mark-read', async (req, res) => {
       data: message
     });
   } catch (error) {
-    console.error('❌ Error marking message as read:', error);
+    logger.error('❌ Error marking message as read:', error);
     if (error.message === 'Message not found') {
       return res.status(404).json({
         success: false,
@@ -469,7 +449,7 @@ router.post('/:messageId/reaction', async (req, res) => {
       data: message
     });
   } catch (error) {
-    console.error('❌ Error adding reaction:', error);
+    logger.error('❌ Error adding reaction:', error);
     if (error.message === 'Message not found') {
       return res.status(404).json({
         success: false,
@@ -509,7 +489,7 @@ router.delete('/:messageId/reaction/:emoji', async (req, res) => {
       data: message
     });
   } catch (error) {
-    console.error('❌ Error removing reaction:', error);
+    logger.error('❌ Error removing reaction:', error);
     if (error.message === 'Message not found') {
       return res.status(404).json({
         success: false,
@@ -558,7 +538,7 @@ router.post('/:messageId/forward', async (req, res) => {
       data: message
     });
   } catch (error) {
-    console.error('❌ Error forwarding message:', error);
+    logger.error('❌ Error forwarding message:', error);
     if (error.message === 'Source message not found') {
       return res.status(404).json({
         success: false,
@@ -605,7 +585,7 @@ router.get('/search', async (req, res) => {
       query: q
     });
   } catch (error) {
-    console.error('❌ Error searching messages:', error);
+    logger.error('❌ Error searching messages:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to search messages',
@@ -656,12 +636,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       ...fileMetadata
     });
   } catch (error) {
-    console.error('❌ Error uploading file:', error);
+    logger.error('❌ Error uploading file:', error);
     
     // Clean up uploaded file on error
     if (req.file) {
       fs.unlink(req.file.path, (err) => {
-        if (err) console.error('Failed to delete file:', err);
+        if (err) logger.error('Failed to delete file:', err);
       });
     }
 

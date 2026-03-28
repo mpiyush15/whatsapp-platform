@@ -9,9 +9,9 @@ const leadSchema = new mongoose.Schema({
   },
 
   // Links to existing records
+  // Use String type to match Conversation.conversationId (multi-tenant ID)
   conversationId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Conversation',
+    type: String,
     required: true,
     index: true
   },

@@ -2,7 +2,9 @@ import Campaign from '../models/Campaign.js';
 import Contact from '../models/Contact.js';
 import whatsappService from './whatsappService.js';
 import broadcastExecutionService from './broadcastExecutionService.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 export class CampaignService {
   /**
    * Create a new campaign
@@ -11,7 +13,7 @@ export class CampaignService {
     try {
       // Validate required fields
       if (!data.name) {
-        throw new Error('Campaign name is required');
+        throw new ValidationError('Campaign name is required');
       }
 
       // Estimate audience reach
@@ -102,7 +104,7 @@ export class CampaignService {
       });
 
       if (!campaign) {
-        throw new Error('Campaign not found');
+        throw new NotFoundError('Campaign not found');
       }
 
       return campaign;
@@ -120,7 +122,7 @@ export class CampaignService {
 
       // Only allow editing draft campaigns
       if (campaign.status !== 'draft') {
-        throw new Error('Can only edit draft campaigns');
+        throw createAppError('Can only edit draft campaigns');
       }
 
       // Update fields
@@ -156,7 +158,7 @@ export class CampaignService {
 
       // Only allow deleting draft campaigns
       if (campaign.status !== 'draft' && campaign.status !== 'failed') {
-        throw new Error('Can only delete draft or failed campaigns');
+        throw createAppError('Can only delete draft or failed campaigns');
       }
 
       await Campaign.deleteOne({ _id: campaignId });
@@ -237,7 +239,7 @@ export class CampaignService {
 
       return 0;
     } catch (error) {
-      console.error('Error estimating audience:', error);
+      logger.error('Error estimating audience:', error);
       return 0;
     }
   }
@@ -304,7 +306,7 @@ export class CampaignService {
 
       // Queue for execution
       // TODO: Add to job queue for actual sending
-      console.log(`Campaign ${campaignId} queued for execution with ${recipients.length} recipients`);
+      logger.info(`Campaign ${campaignId} queued for execution with ${recipients.length} recipients`);
 
       return campaign;
     } catch (error) {
@@ -320,7 +322,7 @@ export class CampaignService {
       const campaign = await this.getCampaignById(accountId, campaignId);
 
       if (campaign.status !== 'running' && campaign.status !== 'scheduled') {
-        throw new Error('Can only pause running or scheduled campaigns');
+        throw createAppError('Can only pause running or scheduled campaigns');
       }
 
       campaign.status = 'paused';
@@ -341,7 +343,7 @@ export class CampaignService {
       const campaign = await this.getCampaignById(accountId, campaignId);
 
       if (campaign.status !== 'paused') {
-        throw new Error('Can only resume paused campaigns');
+        throw createAppError('Can only resume paused campaigns');
       }
 
       campaign.status = 'running';
@@ -362,7 +364,7 @@ export class CampaignService {
       const campaign = await this.getCampaignById(accountId, campaignId);
 
       if (campaign.status === 'completed' || campaign.status === 'failed') {
-        throw new Error('Cannot cancel completed or failed campaigns');
+        throw createAppError('Cannot cancel completed or failed campaigns');
       }
 
       campaign.status = 'failed';
@@ -443,7 +445,7 @@ export class CampaignService {
 
       return segmentsWithCount.filter(s => s.count > 0).sort((a, b) => b.count - a.count);
     } catch (error) {
-      console.error('Error getting available segments:', error);
+      logger.error('Error getting available segments:', error);
       return [];
     }
   }
@@ -552,7 +554,7 @@ export class CampaignService {
 
       return campaign;
     } catch (error) {
-      console.error('Failed to log campaign error:', error);
+      logger.error('Failed to log campaign error:', error);
     }
   }
 }

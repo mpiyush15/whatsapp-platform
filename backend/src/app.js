@@ -32,6 +32,7 @@ import campaignRoutes from './routes/campaignRoutes.js';
 import pricingRoutes from './routes/pricingRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 import billingRoutes from './routes/billingRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 import paymentWebhookRoutes from './routes/paymentWebhookRoutes.js';
 import organizationsRoutes from './routes/organizationsRoutes.js';
 import leadRoutes from './routes/leadRoutes.js';
@@ -46,6 +47,8 @@ import discountRoutes from './routes/discountRoutes.js';
 import externalApiRoutes from './routes/externalApiRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
 import apiKeyRoutes from './routes/apiKeyRoutes.js';
+import businessPermissionsRoutes from './routes/businessPermissionsRoutes.js';
+import enumsRoutes from './routes/enumsRoutes.js';
 
 // Import live chat routes
 import liveChatConversationRoutes from './routes/liveChat-conversationRoutes.js';
@@ -245,8 +248,58 @@ app.use('/api/webhooks', validateWebhookSignature, webhookRoutes);
 // Mount auth routes (NO AUTH - public login/logout)
 app.use('/api/auth', authRoutes);
 
+// ============================================
+// NEW: TENANT-ISOLATED AUTH ROUTES (PHASE 1)
+// ============================================
+// Import new tenant auth
+import { tenantAuth, superadminOnly, clientOnly } from './middleware/tenantAuth.js';
+import { superadminLogin, clientLogin, refreshToken } from './routes/auth/auth.js';
+
+// Superadmin login endpoint
+app.post('/api/auth/superadmin/login', superadminLogin);
+
+// Client login endpoint
+app.post('/api/auth/client/login', clientLogin);
+
+// Refresh token endpoint
+app.post('/api/auth/refresh-token', refreshToken);
+
+// ============================================
+// PHASE 2: WHATSAPP MESSAGE ROUTES (Legacy)
+// ============================================
+import clientMessagesRoutes from './routes/clientMessagesRoutes.js';
+import phase2WebhookRoutes from './routes/phase2WebhookRoutes.js';
+
+// Client message routes (require JWT + tenant isolation)
+app.use('/api/client/messages', tenantAuth, clientOnly, clientMessagesRoutes);
+app.use('/api/client/conversations', tenantAuth, clientOnly, clientMessagesRoutes);
+
+// WhatsApp webhook (NO AUTH - verified by signature)
+app.use('/api/webhooks', phase2WebhookRoutes);
+
+// ============================================
+// PHASE 3: REFACTORED ROUTE ARCHITECTURE
+// ============================================
+// Import refactored routes
+import superadminRoutes from './routes/superadmin/index.js';
+import clientRoutes from './routes/client/index.js';
+import companyRoutes from './routes/company/index.js';
+
+// Mount refactored routes with proper auth
+// SUPERADMIN routes: /api/superadmin/* (superadmin only)
+app.use('/api/superadmin', tenantAuth, superadminOnly, superadminRoutes);
+
+// CLIENT routes: /api/client/* (regular clients only)
+app.use('/api/client', tenantAuth, clientOnly, clientRoutes);
+
+// COMPANY routes: /api/company/* (ReplySQL account only)
+app.use('/api/company', tenantAuth, companyRoutes);
+
 // Mount demo routes (PUBLIC - anyone can book a demo)
 app.use('/api/demo', demoRoutes);
+
+// Mount enums routes (PUBLIC - anyone can fetch enum definitions)
+app.use('/api/enums', enumsRoutes);
 
 // Mount external API routes (API KEY AUTH only - for third-party integrations)
 app.use('/api/external', externalApiRoutes);
@@ -273,6 +326,9 @@ app.use('/api/pricing', pricingRoutes);
 
 // Mount subscription routes (JWT AUTH for user subscriptions)
 app.use('/api/subscriptions', requireJWT, subscriptionRoutes);
+
+// Mount payment routes (JWT AUTH - for payment history and admin stats)
+app.use('/api/payment', requireJWT, paymentRoutes);
 
 // Mount payment webhook routes (PUBLIC for Cashfree webhooks, JWT AUTH for status checks)
 app.use('/api/payments', paymentWebhookRoutes);
@@ -321,6 +377,9 @@ app.use('/api/jobs', requireJWT, jobRoutes);
 
 // Mount integration routes (JWT AUTH for OAuth integrations, INTEGRATION TOKEN AUTH for third-party apps)
 app.use('/api/integrations', requireJWT, oauthRoutes);
+
+// Mount business permissions routes (JWT AUTH - for managing business advanced permissions)
+app.use('/api/business/permissions', requireJWT, businessPermissionsRoutes);
 
 // Mount API key management routes (JWT AUTH)
 app.use('/api/integrations/api-keys', apiKeyRoutes);

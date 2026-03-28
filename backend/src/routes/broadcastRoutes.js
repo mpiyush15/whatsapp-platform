@@ -11,7 +11,9 @@ import {
 } from '../controllers/broadcastController.js';
 import { broadcastLimiter } from '../middlewares/rateLimiter.js';
 import validators from '../middlewares/validators.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 // Broadcast routes

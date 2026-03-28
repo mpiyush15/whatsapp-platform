@@ -3,31 +3,24 @@ import Subscription from '../models/Subscription.js';
 import PricingPlan from '../models/PricingPlan.js';
 import { generateId } from '../utils/idGenerator.js';
 import { emailService } from '../services/emailService.js';
+import { sendSuccess, sendValidationError, sendNotFound, sendForbidden } from '../utils/responseHandler.js';
+import logger from '../utils/logger.js';
+import { handleControllerError } from '../utils/errorHandler.js';
 
-/**
- * GET /api/admin/pending-users
- * List all accounts with pending payment status (superadmin only)
- */
 export const getPendingUsers = async (req, res) => {
   try {
-    // Check if superadmin
     if (req.account.type !== 'internal') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only superadmins can view pending users'
-      });
+      return sendForbidden(res, 'Only superadmins can view pending users');
     }
 
-    const { limit = 50, skip = 0 } = req.query;
+    const { limit = 50, offset = 0 } = req.query;
 
-    // Find all accounts with status 'pending'
     const pendingUsers = await Account.find({ status: 'pending' })
       .select('_id accountId name email company phone plan billingCycle createdAt')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
-      .skip(parseInt(skip));
+      .skip(parseInt(offset));
 
-    // Calculate amount due for each user based on plan and billing cycle
     const planPrices = {
       starter: { monthly: 999, quarterly: 2847, annual: 9590 },
       pro: { monthly: 2999, quarterly: 8547, annual: 28790 },
@@ -38,7 +31,6 @@ export const getPendingUsers = async (req, res) => {
     const usersWithAmounts = pendingUsers.map((user) => {
       const planKey = (user.plan || 'starter').toLowerCase();
       const cycleKey = (user.billingCycle || 'monthly').toLowerCase();
-      
       const prices = planPrices[planKey] || planPrices.starter;
       const amount = prices[cycleKey] || prices.monthly;
 
@@ -59,56 +51,33 @@ export const getPendingUsers = async (req, res) => {
 
     const total = await Account.countDocuments({ status: 'pending' });
 
-    console.log('✅ Fetched pending users:', {
-      count: usersWithAmounts.length,
-      total,
-      skip,
-      limit
-    });
+    logger.info('✅ Fetched pending users:', { count: usersWithAmounts.length, total });
 
-    res.status(200).json({
-      success: true,
+    return sendSuccess(res, {
       data: usersWithAmounts,
       pagination: {
         total,
         limit: parseInt(limit),
-        skip: parseInt(skip)
+        offset: parseInt(offset)
       }
-    });
+    }, 'Pending users retrieved');
   } catch (error) {
-    console.error('❌ Error fetching pending users:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch pending users',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'getPendingUsers');
   }
 };
 
-/**
- * POST /api/admin/send-payment-reminder
- * Send payment reminder email to a pending user (superadmin only)
- */
 export const sendPaymentReminder = async (req, res) => {
   try {
-    // Check if superadmin
     if (req.account.type !== 'internal') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only superadmins can send payment reminders'
-      });
+      return sendForbidden(res, 'Only superadmins can send payment reminders');
     }
 
     const { accountId, userId } = req.body;
 
     if (!accountId && !userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide accountId or userId'
-      });
+      return sendValidationError(res, 'accountId or userId is required');
     }
 
-    // Find the account
     const account = await Account.findOne({
       $or: [
         { _id: userId || accountId },
@@ -117,21 +86,15 @@ export const sendPaymentReminder = async (req, res) => {
     });
 
     if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found'
-      });
+      return sendNotFound(res, 'Account not found');
     }
 
     if (account.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: 'This account is not pending payment',
+      return sendValidationError(res, 'Account is not in pending status', {
         currentStatus: account.status
       });
     }
 
-    // Calculate amount due
     const planPrices = {
       starter: { monthly: 999, quarterly: 2847, annual: 9590 },
       pro: { monthly: 2999, quarterly: 8547, annual: 28790 },
@@ -144,10 +107,8 @@ export const sendPaymentReminder = async (req, res) => {
     const prices = planPrices[planKey] || planPrices.starter;
     const amountDue = prices[cycleKey] || prices.monthly;
 
-    // Generate payment link
     const paymentLink = `${(process.env.FRONTEND_URL || 'https://replysys.com').replace(/\/$/, '')}/checkout?plan=${account.plan.toLowerCase()}&billingCycle=${account.billingCycle.toLowerCase()}`;
 
-    // Send reminder email
     await emailService.sendPaymentReminderEmail(
       account.email,
       account.name,
@@ -157,57 +118,38 @@ export const sendPaymentReminder = async (req, res) => {
       paymentLink
     );
 
-    console.log('✅ Payment reminder sent to:', {
+    logger.info('✅ Payment reminder sent to:', {
       email: account.email,
       name: account.name,
       amount: amountDue
     });
 
-    res.status(200).json({
-      success: true,
-      message: 'Payment reminder email sent successfully',
-      data: {
-        email: account.email,
-        name: account.name,
-        plan: account.plan,
-        amountDue
-      }
-    });
+    return sendSuccess(res, {
+      email: account.email,
+      name: account.name,
+      plan: account.plan,
+      amountDue
+    }, 'Payment reminder sent');
   } catch (error) {
-    console.error('❌ Error sending payment reminder:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send payment reminder',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'sendPaymentReminder');
   }
 };
 
-/**
- * POST /api/admin/send-reminder-all-pending
- * Send payment reminders to all pending users (superadmin only)
- * Optional: filter by hours (e.g., only users pending for more than 24 hours)
- */
 export const sendReminderAllPending = async (req, res) => {
   try {
-    // Check if superadmin
     if (req.account.type !== 'internal') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only superadmins can send bulk reminders'
-      });
+      return sendForbidden(res, 'Only superadmins can send bulk reminders');
     }
 
     const { hoursAfterSignup = 24 } = req.body;
 
-    // Find pending users who registered more than X hours ago
     const cutoffTime = new Date(Date.now() - hoursAfterSignup * 60 * 60 * 1000);
     const pendingUsers = await Account.find({
       status: 'pending',
       createdAt: { $lt: cutoffTime }
     }).select('_id name email plan billingCycle createdAt');
 
-    console.log(`📧 Found ${pendingUsers.length} pending users to remind (registered before ${hoursAfterSignup}h ago)`);
+    logger.info(`📧 Found ${pendingUsers.length} pending users to remind`);
 
     const planPrices = {
       starter: { monthly: 999, quarterly: 2847, annual: 9590 },
@@ -222,7 +164,6 @@ export const sendReminderAllPending = async (req, res) => {
       errors: []
     };
 
-    // Send emails
     for (const user of pendingUsers) {
       try {
         const planKey = (user.plan || 'starter').toLowerCase();
@@ -242,66 +183,40 @@ export const sendReminderAllPending = async (req, res) => {
         );
 
         results.sent++;
-        console.log(`✅ Reminder sent to: ${user.email}`);
+        logger.info(`✅ Reminder sent to: ${user.email}`);
       } catch (err) {
         results.failed++;
         results.errors.push({
           email: user.email,
           error: err.message
         });
-        console.error(`❌ Failed to send reminder to ${user.email}:`, err.message);
+        logger.error(`❌ Failed to send reminder to ${user.email}:`, err.message);
       }
     }
 
-    res.status(200).json({
-      success: true,
-      message: `Payment reminders sent to ${results.sent} users`,
-      results
-    });
+    return sendSuccess(res, results, 'Bulk reminders processed');
   } catch (error) {
-    console.error('❌ Error sending bulk reminders:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send bulk reminders',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'sendReminderAllPending');
   }
 };
 
-/**
- * POST /api/admin/change-user-status
- * Change user status from pending to active (superadmin only)
- * Also creates an active subscription to unlock platform access
- */
 export const changeUserStatus = async (req, res) => {
   try {
-    // Check if superadmin
     if (req.account.type !== 'internal') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only superadmins can change user status'
-      });
+      return sendForbidden(res, 'Only superadmins can change user status');
     }
 
     const { email, status, planName = 'Starter' } = req.body;
 
     if (!email || !status) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and status are required'
-      });
+      return sendValidationError(res, 'email and status are required');
     }
 
-    // Validate status
     const validStatuses = ['pending', 'active', 'suspended', 'cancelled'];
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
-      });
+      return sendValidationError(res, `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     }
 
-    // Find and update account
     const account = await Account.findOneAndUpdate(
       { email },
       { 
@@ -312,25 +227,20 @@ export const changeUserStatus = async (req, res) => {
     );
 
     if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: `Account not found for email: ${email}`
-      });
+      return sendNotFound(res, 'Account not found');
     }
 
     let subscriptionCreated = false;
     let subscriptionId = null;
 
-    // If changing to 'active', also create an active subscription to unlock platform
     if (status === 'active') {
       try {
-        // Get the pricing plan
         const plan = await PricingPlan.findOne({ name: planName, isActive: true });
         
         if (plan) {
           const startDate = new Date();
           const endDate = new Date();
-          endDate.setFullYear(endDate.getFullYear() + 1); // 1 year subscription
+          endDate.setFullYear(endDate.getFullYear() + 1);
 
           const subscription = new Subscription({
             subscriptionId: `sub_${generateId()}`,
@@ -357,7 +267,7 @@ export const changeUserStatus = async (req, res) => {
           subscriptionCreated = true;
           subscriptionId = subscription._id;
 
-          console.log(`✅ Subscription created for admin activation:`, {
+          logger.info(`✅ Subscription created:`, {
             email,
             planName,
             subscriptionId: subscription._id,
@@ -365,36 +275,33 @@ export const changeUserStatus = async (req, res) => {
           });
         }
       } catch (subError) {
-        console.warn(`⚠️ Subscription creation failed (but account activated):`, subError.message);
+        logger.warn(`⚠️ Subscription creation failed:`, subError.message);
       }
     }
 
-    console.log(`✅ User status changed:`, {
+    logger.info(`✅ User status changed:`, {
       email,
       newStatus: status,
       accountId: account.accountId,
-      subscriptionCreated,
-      timestamp: new Date().toISOString()
+      subscriptionCreated
     });
 
-    res.status(200).json({
-      success: true,
-      message: `User status changed to ${status}${subscriptionCreated ? ' and subscription activated' : ''}`,
-      data: {
-        email: account.email,
-        accountId: account.accountId,
-        status: account.status,
-        subscriptionCreated,
-        subscriptionId,
-        updatedAt: account.updatedAt
-      }
-    });
+    return sendSuccess(res, {
+      email: account.email,
+      accountId: account.accountId,
+      status: account.status,
+      subscriptionCreated,
+      subscriptionId,
+      updatedAt: account.updatedAt
+    }, 'User status updated');
   } catch (error) {
-    console.error('❌ Error changing user status:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to change user status',
-      error: error.message
-    });
+    return handleControllerError(res, error, 'changeUserStatus');
   }
+};
+
+export default {
+  getPendingUsers,
+  sendPaymentReminder,
+  sendReminderAllPending,
+  changeUserStatus
 };

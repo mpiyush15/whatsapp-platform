@@ -7,7 +7,9 @@ import {
   getInvoice 
 } from '../controllers/cashfreePaymentController.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
 
 /**
@@ -39,5 +41,7 @@ router.post('/:paymentId/refund', paymentController.refundPayment);
 // Superadmin routes
 router.get('/', paymentController.getAllPayments);
 router.get('/stats/overview', paymentController.getPaymentStats);
+router.post('/sync/cashfree', paymentController.syncCashfreePayments);
+router.post('/sync/real-transactions', paymentController.syncRealTransactions);
 
 export default router;

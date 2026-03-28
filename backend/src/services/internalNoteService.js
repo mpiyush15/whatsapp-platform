@@ -1,6 +1,8 @@
 import InternalNote from '../models/InternalNote.js';
 import ActivityTimeline from '../models/ActivityTimeline.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * InternalNoteService
  * Business logic for internal notes
@@ -71,7 +73,7 @@ export const getNote = async (noteId, accountId) => {
     .populate('editHistory.editedBy', 'name email');
 
   if (!note) {
-    throw new Error('Note not found');
+    throw new NotFoundError('Note not found');
   }
 
   return note;
@@ -84,7 +86,7 @@ export const updateNote = async (noteId, accountId, content, updatedByAgentId) =
   const note = await InternalNote.findOne({ _id: noteId, accountId });
 
   if (!note) {
-    throw new Error('Note not found');
+    throw new NotFoundError('Note not found');
   }
 
   // Save to edit history
@@ -126,7 +128,7 @@ export const deleteNote = async (noteId, accountId, deletedByAgentId) => {
   });
 
   if (!note) {
-    throw new Error('Note not found');
+    throw new NotFoundError('Note not found');
   }
 
   // Log deletion in activity timeline
@@ -159,7 +161,7 @@ export const markAsResolution = async (noteId, accountId, markedByAgentId) => {
   );
 
   if (!note) {
-    throw new Error('Note not found');
+    throw new NotFoundError('Note not found');
   }
 
   return note;
@@ -172,7 +174,7 @@ export const addMention = async (noteId, accountId, agentIdToMention) => {
   const note = await InternalNote.findOne({ _id: noteId, accountId });
 
   if (!note) {
-    throw new Error('Note not found');
+    throw new NotFoundError('Note not found');
   }
 
   // Check if already mentioned
@@ -193,7 +195,7 @@ export const removeMention = async (noteId, accountId, agentIdToRemove) => {
   const note = await InternalNote.findOne({ _id: noteId, accountId });
 
   if (!note) {
-    throw new Error('Note not found');
+    throw new NotFoundError('Note not found');
   }
 
   note.mentions = note.mentions.filter(

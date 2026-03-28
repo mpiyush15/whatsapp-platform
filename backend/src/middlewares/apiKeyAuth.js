@@ -9,7 +9,9 @@
 
 import Account from '../models/Account.js';
 import ApiKey from '../models/ApiKey.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 export const requireApiKey = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -29,14 +31,14 @@ export const requireApiKey = async (req, res, next) => {
       apiKey = req.headers['x-api-key'];
     }
 
-    console.log('🔑 API Key Check:');
-    console.log('  Path:', req.path);
-    console.log('  Method:', req.method);
-    console.log('  Auth Header:', !!authHeader ? '✅ Present' : '❌ Missing');
-    console.log('  API Key:', !!apiKey ? '✅ Present' : '❌ Missing');
+    logger.info('🔑 API Key Check:');
+    logger.info('  Path:', req.path);
+    logger.info('  Method:', req.method);
+    logger.info('  Auth Header:', !!authHeader ? '✅ Present' : '❌ Missing');
+    logger.info('  API Key:', !!apiKey ? '✅ Present' : '❌ Missing');
 
     if (!apiKey) {
-      console.log('  → Rejecting: No API key provided');
+      logger.info('  → Rejecting: No API key provided');
       return res.status(401).json({
         success: false,
         code: 'NO_API_KEY',
@@ -46,7 +48,7 @@ export const requireApiKey = async (req, res, next) => {
 
     // Validate API key format (wpk_live_<key>)
     if (!apiKey.startsWith('wpk_live_')) {
-      console.log('  → Rejecting: Invalid API key format');
+      logger.info('  → Rejecting: Invalid API key format');
       return res.status(401).json({
         success: false,
         code: 'INVALID_API_KEY_FORMAT',
@@ -58,7 +60,7 @@ export const requireApiKey = async (req, res, next) => {
     const apiKeyRecord = await ApiKey.findByApiKey(apiKey);
 
     if (!apiKeyRecord) {
-      console.log('  → Rejecting: API key not found or inactive');
+      logger.info('  → Rejecting: API key not found or inactive');
       return res.status(401).json({
         success: false,
         code: 'INVALID_API_KEY',
@@ -70,7 +72,7 @@ export const requireApiKey = async (req, res, next) => {
     const account = await Account.findById(apiKeyRecord.accountId);
 
     if (!account || account.status !== 'active') {
-      console.log('  → Rejecting: Account not found or inactive');
+      logger.info('  → Rejecting: Account not found or inactive');
       return res.status(401).json({
         success: false,
         code: 'ACCOUNT_INACTIVE',
@@ -78,15 +80,15 @@ export const requireApiKey = async (req, res, next) => {
       });
     }
 
-    console.log('  → ✅ API key verified for account:', account.accountId);
+    logger.info('  → ✅ API key verified for account:', account.accountId);
 
     // Update last used timestamp (async, don't wait)
     ApiKey.updateOne(
       { _id: apiKeyRecord._id },
       { lastUsedAt: new Date() }
-    ).catch(err => console.error('Error updating API key lastUsedAt:', err));
+    ).catch(err => logger.error('Error updating API key lastUsedAt:', err));
 
-    // Inject account info into request
+    // Inject account info into request (STANDARDIZED FORMAT)
     req.accountId = account.accountId;
     req.account = {
       id: account._id,
@@ -95,14 +97,15 @@ export const requireApiKey = async (req, res, next) => {
       email: account.email,
       type: account.type,
       plan: account.plan,
-      status: account.status
+      status: account.status,
+      _id: account._id
     };
-    req.authType = 'apiKey'; // Mark as API key auth
+    req.authType = 'apiKey';
     req.apiKeyId = apiKeyRecord._id; // Track which API key was used
 
     next();
   } catch (error) {
-    console.error('❌ API key authentication error:', error);
+    logger.error('❌ API key authentication error:', error);
     res.status(500).json({
       success: false,
       code: 'API_KEY_AUTH_ERROR',

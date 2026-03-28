@@ -170,30 +170,59 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const navigation = [
-    { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-    
-    // SuperAdmin exclusive pages
-    { name: "Organizations", icon: Building2, href: "/dashboard/organizations", roles: [UserRole.SUPERADMIN], superAdminOnly: true },
-    { name: "Demo Requests", icon: BookOpen, href: "/dashboard/admin/demo-requests", roles: [UserRole.SUPERADMIN], superAdminOnly: true },
-    { name: "System Health", icon: Activity, href: "/dashboard/system-health", roles: [UserRole.SUPERADMIN], superAdminOnly: true },
-    { name: "Platform Billing", icon: DollarSign, href: "/dashboard/platform-billing", roles: [UserRole.SUPERADMIN], superAdminOnly: true },
-    { name: "Transactions", icon: CreditCard, href: "/dashboard/transactions", roles: [UserRole.SUPERADMIN], superAdminOnly: true },
-    { name: "Invoices", icon: Receipt, href: "/dashboard/invoices", roles: [UserRole.SUPERADMIN], superAdminOnly: true },
-    { name: "Website Settings", icon: Sliders, href: "/dashboard/website-settings", roles: [UserRole.SUPERADMIN], superAdminOnly: true },
-    
-    // Regular pages - Available to clients (USER role) too
-    { name: "Broadcasts", icon: Megaphone, href: "/dashboard/broadcasts", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-    { name: "Contacts", icon: Users, href: "/dashboard/contacts", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-    { name: "Templates", icon: FileText, href: "/dashboard/templates", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER] },
-    { name: "Live Chat", icon: MessageSquare, href: "/dashboard/live-chat", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-    { name: "Campaigns", icon: Calendar, href: "/dashboard/campaigns", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER] },
-    
-    // Admin-only pages
-    { name: "Chatbot", icon: Bot, href: "/dashboard/chatbot", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-    { name: "Analytics", icon: BarChart3, href: "/dashboard/analytics", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER] },
-    { name: "Agents", icon: Users, href: "/dashboard/agents", roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER] },
-  ]
+  // Determine which tier folder they're in
+  const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin')
+  const isCompanyTier = pathname.startsWith('/dashboard/company')
+  const isClientTier = pathname.startsWith('/dashboard/client')
+
+  // Get dashboard href based on tier
+  let dashboardHref = '/dashboard'
+  if (isSuperAdminTier) dashboardHref = '/dashboard/superadmin'
+  if (isCompanyTier) dashboardHref = '/dashboard/company'
+  if (isClientTier) dashboardHref = '/dashboard/client'
+
+  // Create tier-specific navigation
+  let navigation = []
+
+  if (isSuperAdminTier) {
+    // Superadmin navigation - ONLY superadmin pages
+    navigation = [
+      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/superadmin", roles: [UserRole.SUPERADMIN] },
+      { name: "Organizations", icon: Building2, href: "/dashboard/superadmin/organizations", roles: [UserRole.SUPERADMIN] },
+      { name: "Demo Requests", icon: BookOpen, href: "/dashboard/superadmin/admin/demo-requests", roles: [UserRole.SUPERADMIN] },
+      { name: "System Health", icon: Activity, href: "/dashboard/superadmin/system-health", roles: [UserRole.SUPERADMIN] },
+      { name: "Platform Billing", icon: DollarSign, href: "/dashboard/superadmin/platform-billing", roles: [UserRole.SUPERADMIN] },
+      { name: "Transactions", icon: CreditCard, href: "/dashboard/superadmin/transactions", roles: [UserRole.SUPERADMIN] },
+      { name: "Invoices", icon: Receipt, href: "/dashboard/superadmin/invoices", roles: [UserRole.SUPERADMIN] },
+      { name: "Website Settings", icon: Sliders, href: "/dashboard/superadmin/website-settings", roles: [UserRole.SUPERADMIN] },
+      { name: "🧪 Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
+    ]
+  } else if (isCompanyTier) {
+    // Company navigation
+    navigation = [
+      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/company", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/company/broadcasts", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Contacts", icon: Users, href: "/dashboard/company/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Templates", icon: FileText, href: "/dashboard/company/templates", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/company/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Campaigns", icon: Calendar, href: "/dashboard/company/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Analytics", icon: BarChart3, href: "/dashboard/company/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Agents", icon: Users, href: "/dashboard/company/agents", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+    ]
+  } else if (isClientTier) {
+    // Client navigation
+    navigation = [
+      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/client", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/client/broadcasts", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Contacts", icon: Users, href: "/dashboard/client/contacts", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Templates", icon: FileText, href: "/dashboard/client/templates", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/client/live-chat", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Campaigns", icon: Calendar, href: "/dashboard/client/campaigns", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Chatbot", icon: Bot, href: "/dashboard/client/chatbot", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Analytics", icon: BarChart3, href: "/dashboard/client/analytics", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Billing", icon: CreditCard, href: "/dashboard/client/billing", roles: [UserRole.USER, UserRole.AGENT] },
+    ]
+  }
 
   // Filter navigation based on user role
   const filteredNavigation = user 
@@ -242,7 +271,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             {/* Bottom Actions */}
             <div className="p-4 border-t border-gray-800 space-y-2 flex-shrink-0">
               <Link
-                href="/dashboard/settings"
+                href={`${dashboardHref}/settings`}
                 className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-100 hover:bg-gray-800 transition"
                 onClick={() => setSidebarOpen(false)}
               >
@@ -285,6 +314,17 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
                 </div>
               </Link>
             )}
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="text-gray-400 hover:text-white transition"
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? (
+                <ChevronRight className="h-5 w-5" />
+              ) : (
+                <ChevronLeft className="h-5 w-5" />
+              )}
+            </button>
           </div>
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {filteredNavigation.map((item) => (
@@ -309,22 +349,18 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="p-4 border-t border-gray-800">
-            {user && !sidebarCollapsed && (
-              <div className="mb-3 px-3 py-2 bg-gray-800 rounded-lg">
-                <p className="text-sm font-medium text-white truncate">{user.name}</p>
-                <p className="text-xs text-gray-400 capitalize">{user.role}</p>
-              </div>
+            {!isSuperAdminTier && (
+              <Link
+                href={`${dashboardHref}/settings`}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-100 hover:bg-gray-800 transition mb-1 ${
+                  sidebarCollapsed ? "justify-center" : ""
+                }`}
+                title={sidebarCollapsed ? "Settings" : ""}
+              >
+                <Settings className="h-5 w-5 flex-shrink-0" />
+                {!sidebarCollapsed && <span>Settings</span>}
+              </Link>
             )}
-            <Link
-              href="/dashboard/settings"
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-100 hover:bg-gray-800 transition mb-1 ${
-                sidebarCollapsed ? "justify-center" : ""
-              }`}
-              title={sidebarCollapsed ? "Settings" : ""}
-            >
-              <Settings className="h-5 w-5 flex-shrink-0" />
-              {!sidebarCollapsed && <span>Settings</span>}
-            </Link>
             <button
               onClick={handleLogout}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-100 hover:bg-gray-800 transition mb-1 ${
@@ -334,23 +370,6 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             >
               <LogOut className="h-5 w-5 flex-shrink-0" />
               {!sidebarCollapsed && <span>Logout</span>}
-            </button>
-            {/* Toggle Button */}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition ${
-                sidebarCollapsed ? "justify-center" : ""
-              }`}
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {sidebarCollapsed ? (
-                <ChevronRight className="h-5 w-5" />
-              ) : (
-                <>
-                  <ChevronLeft className="h-5 w-5 flex-shrink-0" />
-                  <span>Collapse</span>
-                </>
-              )}
             </button>
           </div>
         </div>
@@ -363,13 +382,19 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         {/* Top Header */}
         <header className="sticky top-0 z-40 bg-white border-b border-gray-200">
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6">
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="lg:hidden text-gray-600"
               >
                 <Menu className="h-6 w-6" />
               </button>
+              {user && (
+                <div className="hidden sm:block">
+                  <p className="text-sm font-semibold text-gray-900">Welcome, {user.name}</p>
+                  <p className="text-xs text-gray-500 capitalize">{user.role}</p>
+                </div>
+              )}
               <div className="relative hidden sm:block">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
@@ -459,7 +484,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* ✅ Subscription Status Banner */}
-        {subscriptionStatus && subscriptionStatus !== 'active' && (
+        {subscriptionStatus && subscriptionStatus !== 'active' && user?.role !== UserRole.SUPERADMIN && (
           <div className={`px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4 ${
             subscriptionStatus === 'inactive' ? 'bg-yellow-50 border-b border-yellow-200' :
             subscriptionStatus === 'expired' ? 'bg-red-50 border-b border-red-200' :
@@ -493,7 +518,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <Link 
-              href="/dashboard/account/billing"
+              href={`${dashboardHref}/account/billing`}
               className={`px-4 py-2 rounded-lg font-medium text-sm flex-shrink-0 ${
                 subscriptionStatus === 'inactive' ? 'bg-yellow-600 hover:bg-yellow-700 text-white' :
                 subscriptionStatus === 'expired' ? 'bg-red-600 hover:bg-red-700 text-white' :

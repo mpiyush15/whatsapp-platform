@@ -4,7 +4,9 @@
  */
 
 import Account from '../models/Account.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Integration Token Authentication Middleware
  * Validates wpk_live_ prefixed tokens (external integrations via settings page)
@@ -56,7 +58,7 @@ export const authenticateIntegration = async (req, res, next) => {
     Account.updateOne(
       { _id: account._id },
       { integrationTokenLastUsedAt: new Date() }
-    ).catch(err => console.error('Error updating integrationTokenLastUsedAt:', err));
+    ).catch(err => logger.error('Error updating integrationTokenLastUsedAt:', err));
     
     // Inject account info into request
     req.accountId = account.accountId;
@@ -75,7 +77,7 @@ export const authenticateIntegration = async (req, res, next) => {
     next();
     
   } catch (error) {
-    console.error('❌ Integration token authentication error:', error);
+    logger.error('❌ Integration token authentication error:', error);
     res.status(500).json({
       success: false,
       message: 'Authentication failed',
@@ -103,7 +105,7 @@ export const authenticateDual = async (req, res, next) => {
     return authenticate(req, res, next);
     
   } catch (error) {
-    console.error('❌ Dual authentication error:', error);
+    logger.error('❌ Dual authentication error:', error);
     res.status(500).json({
       success: false,
       message: 'Authentication failed',

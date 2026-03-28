@@ -2,14 +2,15 @@
 
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { TemplateStatus } from '@/lib/enums';
 
 interface Template {
   _id: string;
   name: string;
   language: string;
-  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  category: 'marketing' | 'utility' | 'authentication';
   content: string;
-  status: 'draft' | 'pending' | 'approved' | 'rejected';
+  status: TemplateStatus;
   usageCount: number;
   lastUsedAt?: string;
   createdAt: string;
@@ -36,8 +37,8 @@ export function TemplatesTable({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'draft' | 'pending' | 'approved' | 'rejected'>('all');
-  const [filterCategory, setFilterCategory] = useState<'all' | 'MARKETING' | 'UTILITY' | 'AUTHENTICATION'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | TemplateStatus>('all');
+  const [filterCategory, setFilterCategory] = useState<'all' | 'marketing' | 'utility' | 'authentication'>('all');
 
   const filteredAndSorted = useMemo(() => {
     let filtered = templates.filter((template) => {
@@ -88,11 +89,11 @@ export function TemplatesTable({
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'approved':
+      case TemplateStatus.APPROVED:
         return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'pending':
+      case TemplateStatus.PENDING:
         return <Clock className="w-4 h-4 text-yellow-500" />;
-      case 'rejected':
+      case TemplateStatus.REJECTED:
         return <AlertCircle className="w-4 h-4 text-red-500" />;
       default:
         return <AlertCircle className="w-4 h-4 text-gray-400" />;
@@ -101,11 +102,11 @@ export function TemplatesTable({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'approved':
+      case TemplateStatus.APPROVED:
         return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200';
-      case 'pending':
+      case TemplateStatus.PENDING:
         return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200';
-      case 'rejected':
+      case TemplateStatus.REJECTED:
         return 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200';
       default:
         return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
@@ -114,11 +115,11 @@ export function TemplatesTable({
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'MARKETING':
+      case 'marketing':
         return 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200';
-      case 'UTILITY':
+      case 'utility':
         return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200';
-      case 'AUTHENTICATION':
+      case 'authentication':
         return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200';
       default:
         return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
@@ -156,9 +157,9 @@ export function TemplatesTable({
           className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700 dark:text-white"
         >
           <option value="all">All Categories</option>
-          <option value="MARKETING">Marketing</option>
-          <option value="UTILITY">Utility</option>
-          <option value="AUTHENTICATION">Authentication</option>
+          <option value="marketing">Marketing</option>
+          <option value="utility">Utility</option>
+          <option value="authentication">Authentication</option>
         </select>
       </div>
 

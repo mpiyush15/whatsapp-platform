@@ -90,6 +90,38 @@ const phoneNumberSchema = new mongoose.Schema({
     type: String,
     enum: ['green', 'yellow', 'red', 'unknown'],
     default: 'unknown'
+  },
+  
+  // Phone-level Permission Restrictions (enforced per phone)
+  phonePermissions: {
+    // Maps to account's permission level (inherits if not overridden)
+    permissionLevel: {
+      type: String,
+      enum: ['basic', 'advanced', 'full'],
+      default: null,  // null = inherit from account level
+      sparse: true
+    },
+    
+    // Are advanced features enabled for this specific phone number
+    advancedFeaturesEnabled: {
+      type: Boolean,
+      default: false
+    },
+    
+    // Enabled features at phone level
+    // Can be more restrictive than account level
+    enabledFeatures: {
+      type: [String],
+      default: [],
+      enum: ['templates', 'campaigns', 'contacts', 'broadcasts', 'analytics', 'team_management', 'integrations'],
+      index: true
+    },
+    
+    // When phone permissions were last updated
+    updatedAt: {
+      type: Date,
+      default: Date.now
+    }
   }
 }, {
   timestamps: true,

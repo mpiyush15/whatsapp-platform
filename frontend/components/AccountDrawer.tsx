@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { authService } from '@/lib/auth';
+import { AccountType } from '@/lib/enums';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -28,6 +29,17 @@ interface AccountDrawerProps {
 export default function AccountDrawer({ isOpen, onClose }: AccountDrawerProps) {
   const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
   const [userInfo, setUserInfo] = useState<any>(null);
+
+  // Helper function to format account type for display
+  const formatAccountType = (type?: string): string => {
+    if (!type) return 'Client';
+    const typeMap: Record<string, string> = {
+      [AccountType.INTERNAL]: 'Internal',
+      [AccountType.CLIENT]: 'Client',
+      [AccountType.AGENCY]: 'Agency',
+    };
+    return typeMap[type] || type.charAt(0).toUpperCase() + type.slice(1);
+  };
   const [isLoading, setIsLoading] = useState(true);
   const [accountAge, setAccountAge] = useState<string>('');
 
@@ -195,7 +207,7 @@ export default function AccountDrawer({ isOpen, onClose }: AccountDrawerProps) {
                     <div>
                       <p className="text-xs text-gray-600 uppercase font-semibold mb-1">Account Type</p>
                       <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 capitalize">
-                        {accountInfo.type || 'Client'}
+                        {formatAccountType(accountInfo.type)}
                       </span>
                     </div>
 

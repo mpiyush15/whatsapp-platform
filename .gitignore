@@ -83,3 +83,38 @@ debug-*.js
 # MJS Scripts & Diagnostic Files
 *.mjs
 backend/*.mjs
+
+# Shell scripts & diagnostic docs (local development only)
+*.sh
+*-CHECKLIST.txt
+*-SUMMARY.txt
+*-DIAGNOSTIC.js
+*-READY-*.js
+*-STATUS.txt
+*-COMPLETE.sh
+DEMO-*.txt
+WEBHOOK-*.js
+WEBHOOK-*.txt
+CACHE-*.js
+CHATBOT-*.js
+LIVE-*.js
+VERIFY-*.js
+REALTIME-*.js
+BUSINESS-*.txt
+ENROMATICS-*.txt
+DEPLOYMENT.md
+PERFORMANCE-*.sh
+_archived_docs/
+
+# Local development scripts
+backend/check-*.js
+backend/clean-*.js
+backend/find-*.js
+backend/get-*.js
+backend/migrate-*.js
+backend/setup-*.js
+*.py
+CLIENT-LOGIN-*.txt
+EVERYTHING-YOU-NEED.txt
+PHASE2-*.txt
+WHAT-WE-DID.txt

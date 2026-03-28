@@ -1,5 +1,7 @@
 import PhoneNumber from '../models/PhoneNumber.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Phone Number Helper Middleware
  * Auto-detects phone number if not provided (simple mode)
@@ -45,7 +47,7 @@ export const resolvePhoneNumber = async (req, res, next) => {
       req.phoneNumber = phoneNumber;
       req.phoneNumberMode = 'auto'; // Track which mode was used
       
-      console.log(`📞 [AUTO] Detected phone: ${phoneNumber.displayPhone} (${phoneNumber.phoneNumberId})`);
+      logger.info(`📞 [AUTO] Detected phone: ${phoneNumber.displayPhone} (${phoneNumber.phoneNumberId})`);
     } 
     // ADVANCED MODE: Validate provided phoneNumberId
     else {
@@ -70,15 +72,15 @@ export const resolvePhoneNumber = async (req, res, next) => {
       req.phoneNumber = phoneNumber;
       req.phoneNumberMode = 'explicit'; // Track which mode was used
       
-      console.log(`📞 [EXPLICIT] Using phone: ${phoneNumber.displayPhone} (${phoneNumber.phoneNumberId})`);
+      logger.info(`📞 [EXPLICIT] Using phone: ${phoneNumber.displayPhone} (${phoneNumber.phoneNumberId})`);
     }
     
     next();
     
   } catch (error) {
-    console.error('❌ Phone number resolution error:', error);
-    console.error('Error stack:', error.stack);
-    console.error('Error details:', {
+    logger.error('❌ Phone number resolution error:', error);
+    logger.error('Error stack:', error.stack);
+    logger.error('Error details:', {
       name: error.name,
       message: error.message,
       code: error.code
@@ -125,7 +127,7 @@ export const optionalPhoneNumber = async (req, res, next) => {
     next();
     
   } catch (error) {
-    console.error('❌ Optional phone number error:', error);
+    logger.error('❌ Optional phone number error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to resolve phone number',

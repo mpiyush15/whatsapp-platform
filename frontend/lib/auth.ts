@@ -13,7 +13,7 @@ export interface User {
   email: string
   name: string
   role: UserRole
-  type?: string // 'internal' for superadmin, 'client' for users
+  type?: string // Account type: 'internal', 'client', 'agency' (see AccountType enum in enums.ts)
   phoneNumber?: string
   company?: string
   accountId?: string
@@ -55,35 +55,36 @@ export const authService = {
       })
 
       const data = await response.json()
-      console.log('🔐 Login response:', { status: response.status, success: data.success, hasToken: !!data.token });
+      const token = data.data?.token || data.token
+      console.log('🔐 Login response:', { status: response.status, success: data.success, hasToken: !!token });
 
-      if (response.ok && data.success && data.token) {
+      if (response.ok && data.success && token) {
         const user: User = {
-          id: data.user.accountId || '1',
-          email: data.user.email,
-          name: data.user.name,
-          role: data.user.role === 'superadmin' ? UserRole.SUPERADMIN : 
-                data.user.role === 'admin' ? UserRole.ADMIN : 
-                data.user.role === 'manager' ? UserRole.MANAGER : 
-                data.user.role === 'agent' ? UserRole.AGENT : UserRole.USER,
-          accountId: data.user.accountId,
-          status: data.user.status,
-          plan: data.user.plan,
-          billingCycle: data.user.billingCycle,
-          isDemoAccount: data.user.isDemoAccount || false,
-          demoLabel: data.user.demoLabel || null,
-          demoNote: data.user.demoNote || null
+          id: data.data.user.accountId || '1',
+          email: data.data.user.email,
+          name: data.data.user.name,
+          role: data.data.user.role === 'superadmin' ? UserRole.SUPERADMIN : 
+                data.data.user.role === 'admin' ? UserRole.ADMIN : 
+                data.data.user.role === 'manager' ? UserRole.MANAGER : 
+                data.data.user.role === 'agent' ? UserRole.AGENT : UserRole.USER,
+          accountId: data.data.user.accountId,
+          status: data.data.user.status,
+          plan: data.data.user.plan,
+          billingCycle: data.data.user.billingCycle,
+          isDemoAccount: data.data.user.isDemoAccount || false,
+          demoLabel: data.data.user.demoLabel || null,
+          demoNote: data.data.user.demoNote || null
         }
 
         // Store JWT token instead of session
         localStorage.setItem("isAuthenticated", "true")
         localStorage.setItem("user", JSON.stringify(user))
-        localStorage.setItem("token", data.token)
+        localStorage.setItem("token", token)
         
         console.log('✅ Token stored:', {
           isAuthenticated: localStorage.getItem("isAuthenticated"),
           hasToken: !!localStorage.getItem("token"),
-          tokenLength: data.token.length,
+          tokenLength: token.length,
           isDemoAccount: user.isDemoAccount
         });
 
@@ -214,6 +215,12 @@ export const authService = {
     if (!user) return false
     return allowedRoles.includes(user.role)
   },
+}
+
+// Get JWT token from localStorage
+export const getJWT = (): string | null => {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem("token")
 }
 
 // Standalone login function for easy import

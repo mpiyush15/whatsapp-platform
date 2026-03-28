@@ -2,7 +2,9 @@ import Lead from '../models/Lead.js';
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import Contact from '../models/Contact.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Lead Service - Handle lead capture, scoring, and management
  */
@@ -126,7 +128,7 @@ export const captureLeadFromConversation = async (accountId, conversationId) => 
       .lean();
 
     if (!conversation) {
-      throw new Error('Conversation not found');
+      throw new NotFoundError('Conversation not found');
     }
 
     // Fetch contact
@@ -134,7 +136,7 @@ export const captureLeadFromConversation = async (accountId, conversationId) => 
       .lean();
 
     if (!contact) {
-      throw new Error('Contact not found');
+      throw new NotFoundError('Contact not found');
     }
 
     // Get most recent message from contact
@@ -211,7 +213,7 @@ export const captureLeadFromConversation = async (accountId, conversationId) => 
       return lead;
     }
   } catch (error) {
-    console.error('❌ Lead capture error:', error.message);
+    logger.error('❌ Lead capture error:', error.message);
     throw error;
   }
 };
@@ -248,7 +250,7 @@ export const getLeads = async (accountId, filters = {}) => {
 
     return leads;
   } catch (error) {
-    console.error('❌ Get leads error:', error.message);
+    logger.error('❌ Get leads error:', error.message);
     throw error;
   }
 };
@@ -277,7 +279,7 @@ export const getLeadStats = async (accountId) => {
 
     return stats;
   } catch (error) {
-    console.error('❌ Get lead stats error:', error.message);
+    logger.error('❌ Get lead stats error:', error.message);
     throw error;
   }
 };
@@ -302,7 +304,7 @@ export const markStaleLeads = async (accountId) => {
 
     return result.modifiedCount;
   } catch (error) {
-    console.error('❌ Mark stale leads error:', error.message);
+    logger.error('❌ Mark stale leads error:', error.message);
     throw error;
   }
 };

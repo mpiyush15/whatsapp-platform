@@ -1,6 +1,8 @@
 import messageService from '../services/messageService.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
+import logger from '../utils/logger.js';
 
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * Handle WhatsApp incoming messages with real-time Socket.IO updates
  * Integrates with liveChat feature for real-time agent updates
@@ -54,7 +56,7 @@ export const handleIncomingMessageWithRealtime = async (
 
     return processedMessage;
   } catch (error) {
-    console.error('❌ Error handling incoming message with realtime:', error);
+    logger.error('❌ Error handling incoming message with realtime:', error);
     throw error;
   }
 };
@@ -96,7 +98,7 @@ export const handleMessageDeliveryStatusWithRealtime = async (
 
     return message;
   } catch (error) {
-    console.error('❌ Error handling delivery status with realtime:', error);
+    logger.error('❌ Error handling delivery status with realtime:', error);
     throw error;
   }
 };
@@ -136,7 +138,7 @@ export const handleMessageReadStatusWithRealtime = async (
 
     return message;
   } catch (error) {
-    console.error('❌ Error handling read status with realtime:', error);
+    logger.error('❌ Error handling read status with realtime:', error);
     throw error;
   }
 };
@@ -153,7 +155,7 @@ export const sendNotificationToAgent = (agentId, title, message, data = {}) => {
       timestamp: new Date()
     });
   } catch (error) {
-    console.error('❌ Error sending notification to agent:', error);
+    logger.error('❌ Error sending notification to agent:', error);
   }
 };
 
@@ -169,7 +171,7 @@ export const sendNotificationToAccount = (accountId, title, message, data = {}) 
       timestamp: new Date()
     });
   } catch (error) {
-    console.error('❌ Error sending notification to account:', error);
+    logger.error('❌ Error sending notification to account:', error);
   }
 };
 
@@ -198,7 +200,7 @@ export const handleContactTypingIndicator = (
       });
     }
   } catch (error) {
-    console.error('❌ Error handling typing indicator:', error);
+    logger.error('❌ Error handling typing indicator:', error);
   }
 };
 
