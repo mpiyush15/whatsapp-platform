@@ -393,6 +393,7 @@ export const insertOldCashfreeOrders = async (req, res) => {
   } catch (error) {
     return handleControllerError(res, error, 'insertOldCashfreeOrders');
   }
+};
 
 export default {
   getPendingUsers,
