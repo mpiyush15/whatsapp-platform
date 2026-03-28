@@ -10,6 +10,8 @@ export default function TestDataPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [syncLoading, setSyncLoading] = useState(false)
+  const [syncResult, setSyncResult] = useState<any>(null)
   const [debugInfo, setDebugInfo] = useState<any>({})
 
   useEffect(() => {
@@ -198,6 +200,58 @@ export default function TestDataPage() {
     fetchData()
   }, [])
 
+  const handleCashfreeSync = async () => {
+    try {
+      setSyncLoading(true)
+      setSyncResult(null)
+      const token = localStorage.getItem("token")
+      
+      if (!token) {
+        setSyncResult({ error: "❌ No token found!" })
+        return
+      }
+
+      console.log("🔄 Syncing Cashfree payments...")
+      const syncResponse = await fetch(`${API_URL}/payment/sync/cashfree`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      const syncData = await syncResponse.json()
+      console.log("✅ Sync response:", syncData)
+      setSyncResult(syncData)
+
+      // Refresh payments after sync
+      if (syncResponse.ok) {
+        const paymentsResponse = await fetch(`${API_URL}/payment`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        })
+        const paymentsData = await paymentsResponse.json()
+        
+        let paymentsArray = []
+        if (paymentsData.data && Array.isArray(paymentsData.data.payments)) {
+          paymentsArray = paymentsData.data.payments
+        } else if (Array.isArray(paymentsData.data)) {
+          paymentsArray = paymentsData.data
+        }
+        
+        setPayments(paymentsArray)
+        console.log("✅ Payments refreshed:", paymentsArray.length)
+      }
+    } catch (err: any) {
+      console.error("Sync error:", err)
+      setSyncResult({ error: `Error: ${err.message}` })
+    } finally {
+      setSyncLoading(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -206,6 +260,13 @@ export default function TestDataPage() {
           <h1 className="text-3xl font-bold text-gray-900">🧪 Test Data Page</h1>
           <p className="text-gray-600 mt-1">Debug organizations and users data fetch</p>
         </div>
+        <button
+          onClick={handleCashfreeSync}
+          disabled={syncLoading}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium transition"
+        >
+          {syncLoading ? "🔄 Syncing..." : "🔄 Sync Cashfree"}
+        </button>
       </div>
 
       {/* Debug Info */}
@@ -215,6 +276,43 @@ export default function TestDataPage() {
           {JSON.stringify(debugInfo, null, 2)}
         </pre>
       </div>
+
+      {/* Sync Result */}
+      {syncResult && (
+        <div className={`border rounded-lg p-4 ${
+          syncResult.success 
+            ? 'bg-green-50 border-green-200' 
+            : 'bg-red-50 border-red-200'
+        }`}>
+          <h3 className={`font-bold mb-2 ${
+            syncResult.success 
+              ? 'text-green-900' 
+              : 'text-red-900'
+          }`}>
+            {syncResult.success ? '✅ Cashfree Sync Result' : '❌ Sync Error'}
+          </h3>
+          <div className={`text-sm ${syncResult.success ? 'text-green-800' : 'text-red-800'}`}>
+            <p><strong>Status:</strong> {syncResult.success ? 'SUCCESS' : 'FAILED'}</p>
+            <p><strong>Synced Payments:</strong> {syncResult.data?.count || 0}</p>
+            {syncResult.data?.total && <p><strong>Total Transactions:</strong> {syncResult.data.total}</p>}
+            {syncResult.data?.errors && syncResult.data.errors.length > 0 && (
+              <div className="mt-2">
+                <p><strong>Errors:</strong></p>
+                <ul className="list-disc list-inside text-xs">
+                  {syncResult.data.errors.map((err: any, idx: number) => (
+                    <li key={idx}>{err.orderId}: {err.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {syncResult.message && <p className="mt-2"><strong>Message:</strong> {syncResult.message}</p>}
+            {syncResult.error && <p className="mt-2"><strong>Error:</strong> {syncResult.error}</p>}
+          </div>
+          <pre className="bg-white p-2 rounded text-xs overflow-auto max-h-40 mt-2 text-gray-800">
+            {JSON.stringify(syncResult, null, 2)}
+          </pre>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
