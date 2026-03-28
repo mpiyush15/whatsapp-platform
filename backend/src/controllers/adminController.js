@@ -1,6 +1,7 @@
 import Account from '../models/Account.js';
 import Subscription from '../models/Subscription.js';
 import PricingPlan from '../models/PricingPlan.js';
+import Payment from '../models/Payment.js';
 import { generateId } from '../utils/idGenerator.js';
 import { emailService } from '../services/emailService.js';
 import { sendSuccess, sendValidationError, sendNotFound, sendForbidden } from '../utils/responseHandler.js';
@@ -299,9 +300,104 @@ export const changeUserStatus = async (req, res) => {
   }
 };
 
+export const insertOldCashfreeOrders = async (req, res) => {
+  try {
+    if (req.user?.role !== 'superadmin') {
+      return sendForbidden(res, 'Only superadmin can insert test orders');
+    }
+
+    logger.info('📝 Inserting old Cashfree orders...');
+
+    // Old orders from Cashfree dashboard
+    const oldOrders = [
+      {
+        orderId: 'ORDER_STARTER_1769848473',
+        amount: 712.15,
+        accountId: '2600001',
+        description: 'Pixels WhatsApp Starter Subscription'
+      },
+      {
+        orderId: 'ORDER_STARTER_1769848484',
+        amount: 712.15,
+        accountId: '2600001',
+        description: 'Pixels WhatsApp Starter Subscription'
+      },
+      {
+        orderId: 'ORDER_PRO_1769447135',
+        amount: 100.00,
+        accountId: '2600001',
+        description: 'Pixels WhatsApp Pro Subscription'
+      },
+      {
+        orderId: 'ORDER_ENTERPRISE_1769230634',
+        amount: 3010.00,
+        accountId: '2600001',
+        description: 'Pixels WhatsApp Enterprise Subscription'
+      }
+    ];
+
+    const insertedOrders = [];
+    const errors = [];
+
+    for (const order of oldOrders) {
+      try {
+        const paymentId = `CF-${order.orderId}`;
+
+        const paymentDoc = {
+          paymentId: paymentId,
+          orderId: order.orderId,
+          amount: order.amount,
+          currency: 'INR',
+          status: 'pending',
+          paymentGateway: 'cashfree',
+          accountId: String(order.accountId),
+          initiatedAt: new Date(),
+          createdAt: new Date()
+        };
+
+        const result = await Payment.findOneAndUpdate(
+          { orderId: order.orderId },
+          paymentDoc,
+          { upsert: true, new: true }
+        );
+
+        logger.info(`✅ Inserted: ${order.orderId} | ₹${order.amount}`);
+        insertedOrders.push({
+          orderId: order.orderId,
+          paymentId: paymentId,
+          amount: order.amount,
+          status: 'success'
+        });
+      } catch (err) {
+        logger.error(`❌ Error inserting ${order.orderId}:`, err.message);
+        errors.push({
+          orderId: order.orderId,
+          error: err.message
+        });
+      }
+    }
+
+    // Verify
+    const count = await Payment.countDocuments({ paymentGateway: 'cashfree' });
+
+    logger.info(`✅ Total Cashfree orders in DB: ${count}`);
+
+    return sendSuccess(res, {
+      inserted: insertedOrders.length,
+      total: oldOrders.length,
+      orders: insertedOrders,
+      errors: errors.length > 0 ? errors : null,
+      dbTotal: count,
+      message: `✅ Inserted ${insertedOrders.length} old orders. Now go to test-data page and click "🔄 Sync Cashfree"`
+    }, 'Old orders inserted successfully');
+  } catch (error) {
+    return handleControllerError(res, error, 'insertOldCashfreeOrders');
+  }
+
 export default {
   getPendingUsers,
   sendPaymentReminder,
   sendReminderAllPending,
-  changeUserStatus
+  changeUserStatus,
+  insertOldCashfreeOrders
 };

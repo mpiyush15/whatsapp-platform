@@ -44,5 +44,6 @@ router.get('/stats/overview', paymentController.getPaymentStats);
 router.get('/test/cashfree-connection', paymentController.testCashfreeConnection);
 router.post('/sync/cashfree', paymentController.syncCashfreePayments);
 router.post('/sync/real-transactions', paymentController.syncRealTransactions);
+router.post('/insert/old-orders', paymentController.insertOldOrders);
 
 export default router;

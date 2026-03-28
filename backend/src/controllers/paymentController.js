@@ -202,6 +202,111 @@ export const testCashfreeConnection = async (req, res) => {
   }
 };
 
+export const insertOldOrders = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    // Only superadmin can insert test orders
+    if (user?.role !== 'superadmin') {
+      return sendValidationError(res, 'Only superadmin can insert orders', 403);
+    }
+
+    logger.info('📝 Inserting old Cashfree orders...');
+
+    // Get Payment model dynamically
+    const db = mongoose.connection;
+    const PaymentModel = mongoose.model('Payment');
+
+    // Old orders from Cashfree dashboard
+    const oldOrders = [
+      {
+        paymentId: 'CF-ORDER_STARTER_1769848473',
+        orderId: 'ORDER_STARTER_1769848473',
+        amount: 712.15,
+        currency: 'INR',
+        status: 'pending',
+        paymentGateway: 'cashfree',
+        accountId: '2600001',
+        description: 'Pixels WhatsApp Starter Subscription'
+      },
+      {
+        paymentId: 'CF-ORDER_STARTER_1769848484',
+        orderId: 'ORDER_STARTER_1769848484',
+        amount: 712.15,
+        currency: 'INR',
+        status: 'pending',
+        paymentGateway: 'cashfree',
+        accountId: '2600001',
+        description: 'Pixels WhatsApp Starter Subscription'
+      },
+      {
+        paymentId: 'CF-ORDER_PRO_1769447135',
+        orderId: 'ORDER_PRO_1769447135',
+        amount: 100.00,
+        currency: 'INR',
+        status: 'pending',
+        paymentGateway: 'cashfree',
+        accountId: '2600001',
+        description: 'Pixels WhatsApp Pro Subscription'
+      },
+      {
+        paymentId: 'CF-ORDER_ENTERPRISE_1769230634',
+        orderId: 'ORDER_ENTERPRISE_1769230634',
+        amount: 3010.00,
+        currency: 'INR',
+        status: 'pending',
+        paymentGateway: 'cashfree',
+        accountId: '2600001',
+        description: 'Pixels WhatsApp Enterprise Subscription'
+      }
+    ];
+
+    let insertedCount = 0;
+    const insertedOrders = [];
+    const errors = [];
+
+    for (const order of oldOrders) {
+      try {
+        const result = await PaymentModel.findOneAndUpdate(
+          { orderId: order.orderId },
+          {
+            ...order,
+            initiatedAt: new Date(),
+            createdAt: new Date()
+          },
+          { upsert: true, new: true }
+        );
+        
+        logger.info(`✅ Inserted: ${order.orderId} | ₹${order.amount}`);
+        insertedOrders.push({
+          orderId: order.orderId,
+          paymentId: order.paymentId,
+          amount: order.amount
+        });
+        insertedCount++;
+      } catch (err) {
+        logger.error(`❌ Error inserting ${order.orderId}:`, err.message);
+        errors.push({
+          orderId: order.orderId,
+          error: err.message
+        });
+      }
+    }
+
+    logger.info(`✅ Inserted ${insertedCount}/${oldOrders.length} old orders`);
+
+    return sendSuccess(res, {
+      inserted: insertedCount,
+      total: oldOrders.length,
+      orders: insertedOrders,
+      errors: errors.length > 0 ? errors : null
+    }, `✅ Inserted ${insertedCount} old orders. Now click "Sync Cashfree" to fetch live data!`);
+
+  } catch (error) {
+    return handleControllerError(res, error, 'insertOldOrders');
+  }
+};
+
 export default { 
   initiatePayment, 
   getPaymentStatus,
@@ -213,5 +318,6 @@ export default {
   getPaymentStats,
   syncCashfreePayments,
   testCashfreeConnection,
-  syncRealTransactions
+  syncRealTransactions,
+  insertOldOrders
 };

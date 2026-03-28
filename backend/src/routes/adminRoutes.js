@@ -6,7 +6,8 @@ import {
   getPendingUsers,
   sendPaymentReminder,
   sendReminderAllPending,
-  changeUserStatus
+  changeUserStatus,
+  insertOldCashfreeOrders
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -37,5 +38,11 @@ router.post('/send-reminder-all-pending', sendReminderAllPending);
  * Change user status from pending to active (superadmin only)
  */
 router.post('/change-user-status', changeUserStatus);
+
+/**
+ * POST /api/admin/insert-old-cashfree-orders
+ * Insert old Cashfree orders for testing sync (superadmin only)
+ */
+router.post('/insert-old-cashfree-orders', insertOldCashfreeOrders);
 
 export default router;

@@ -16,6 +16,8 @@ export default function TestDataPage() {
   const [testResult, setTestResult] = useState<any>(null)
   const [debugInfo, setDebugInfo] = useState<any>({})
   const [cashfreeTransactions, setCashfreeTransactions] = useState<any[]>([])
+  const [insertLoading, setInsertLoading] = useState(false)
+  const [insertResult, setInsertResult] = useState<any>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -294,6 +296,58 @@ export default function TestDataPage() {
     }
   }
 
+  const handleInsertOldOrders = async () => {
+    try {
+      setInsertLoading(true)
+      setInsertResult(null)
+      const token = localStorage.getItem("token")
+      
+      if (!token) {
+        setInsertResult({ error: "❌ No token found!" })
+        return
+      }
+
+      console.log("📝 Inserting old Cashfree orders...")
+      const insertResponse = await fetch(`${API_URL}/payment/insert/old-orders`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      const insertData = await insertResponse.json()
+      console.log("✅ Insert response:", insertData)
+      setInsertResult(insertData)
+
+      // Refresh payments after insert
+      if (insertResponse.ok) {
+        const paymentsResponse = await fetch(`${API_URL}/payment`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        })
+        const paymentsData = await paymentsResponse.json()
+        
+        let paymentsArray = []
+        if (paymentsData.data && Array.isArray(paymentsData.data.payments)) {
+          paymentsArray = paymentsData.data.payments
+        } else if (Array.isArray(paymentsData.data)) {
+          paymentsArray = paymentsData.data
+        }
+        
+        setPayments(paymentsArray)
+        console.log("✅ Payments refreshed:", paymentsArray.length)
+      }
+    } catch (err: any) {
+      console.error("Insert error:", err)
+      setInsertResult({ error: `Error: ${err.message}` })
+    } finally {
+      setInsertLoading(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -303,6 +357,13 @@ export default function TestDataPage() {
           <p className="text-gray-600 mt-1">Debug organizations and users data fetch</p>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={handleInsertOldOrders}
+            disabled={insertLoading}
+            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-400 font-medium transition text-sm"
+          >
+            {insertLoading ? "📝 Inserting..." : "📝 Insert Old Orders"}
+          </button>
           <button
             onClick={handleTestCashfreeConnection}
             disabled={testLoading}
@@ -327,6 +388,33 @@ export default function TestDataPage() {
           {JSON.stringify(debugInfo, null, 2)}
         </pre>
       </div>
+
+      {/* Insert Result */}
+      {insertResult && (
+        <div className={`border rounded-lg p-4 ${
+          insertResult.success 
+            ? 'bg-orange-50 border-orange-200' 
+            : 'bg-red-50 border-red-200'
+        }`}>
+          <h3 className={`font-bold mb-2 ${
+            insertResult.success 
+              ? 'text-orange-900' 
+              : 'text-red-900'
+          }`}>
+            {insertResult.success ? '✅ Old Orders Inserted' : '❌ Insert Error'}
+          </h3>
+          <div className={`text-sm ${insertResult.success ? 'text-orange-800' : 'text-red-800'}`}>
+            <p><strong>Status:</strong> {insertResult.success ? 'SUCCESS' : 'FAILED'}</p>
+            {insertResult.inserted && <p><strong>Inserted:</strong> {insertResult.inserted}/{insertResult.total}</p>}
+            {insertResult.dbTotal && <p><strong>Total in DB Now:</strong> {insertResult.dbTotal}</p>}
+            {insertResult.message && <p className="mt-2"><strong>Message:</strong> {insertResult.message}</p>}
+            {insertResult.error && <p className="mt-2"><strong>Error:</strong> {insertResult.error}</p>}
+          </div>
+          <pre className="bg-white p-2 rounded text-xs overflow-auto max-h-40 mt-2 text-gray-800">
+            {JSON.stringify(insertResult, null, 2)}
+          </pre>
+        </div>
+      )}
 
       {/* Test Result */}
       {testResult && (
