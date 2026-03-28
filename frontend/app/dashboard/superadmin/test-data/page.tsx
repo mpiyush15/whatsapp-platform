@@ -15,6 +15,7 @@ export default function TestDataPage() {
   const [testLoading, setTestLoading] = useState(false)
   const [testResult, setTestResult] = useState<any>(null)
   const [debugInfo, setDebugInfo] = useState<any>({})
+  const [cashfreeTransactions, setCashfreeTransactions] = useState<any[]>([])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -225,6 +226,15 @@ export default function TestDataPage() {
       const syncData = await syncResponse.json()
       console.log("✅ Sync response:", syncData)
       setSyncResult(syncData)
+
+      // Extract and set Cashfree transactions
+      if (syncData.data?.payments && Array.isArray(syncData.data.payments)) {
+        setCashfreeTransactions(syncData.data.payments)
+        console.log("✅ Extracted", syncData.data.payments.length, "Cashfree transactions")
+      } else if (syncData.payments && Array.isArray(syncData.payments)) {
+        setCashfreeTransactions(syncData.payments)
+        console.log("✅ Extracted", syncData.payments.length, "Cashfree transactions")
+      }
 
       // Refresh payments after sync
       if (syncResponse.ok) {
@@ -476,6 +486,93 @@ export default function TestDataPage() {
           </div>
         )}
       </div>
+
+      {/* Cashfree Transactions Detail */}
+      {cashfreeTransactions.length > 0 && (
+        <div className="bg-white rounded-lg border border-blue-200 p-6 bg-blue-50">
+          <h2 className="text-2xl font-bold text-blue-900 mb-4">
+            🔥 Cashfree Live Transactions ({cashfreeTransactions.length})
+          </h2>
+          <p className="text-blue-700 text-sm mb-4">Real data synced from Cashfree API</p>
+          
+          <div className="space-y-4">
+            {cashfreeTransactions.map((txn, idx) => (
+              <div key={idx} className="bg-white p-4 rounded-lg border-2 border-blue-300 shadow-sm">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Payment ID</p>
+                    <p className="font-bold text-lg text-blue-900">{txn.paymentId}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Order ID</p>
+                    <p className="font-bold text-lg text-gray-800">{txn.orderId}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Amount</p>
+                    <p className="font-bold text-lg text-green-600">₹{txn.amount} {txn.currency}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Status</p>
+                    <p className={`font-bold text-lg ${
+                      txn.status === 'completed' ? 'text-green-600' :
+                      txn.status === 'pending' ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {txn.status?.toUpperCase()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Payment Method</p>
+                    <p className="font-semibold text-gray-800">{txn.paymentMethod?.type || txn.paymentMethod || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Account ID</p>
+                    <p className="font-semibold text-gray-800">{txn.accountId}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Cashfree Txn ID</p>
+                    <p className="font-mono text-sm text-gray-700 break-all">{txn.gatewayTransactionId || txn.cfOrderId || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Payment Gateway</p>
+                    <p className="font-semibold text-blue-600">{txn.paymentGateway}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Initiated At</p>
+                    <p className="text-sm text-gray-800">{txn.initiatedAt ? new Date(txn.initiatedAt).toLocaleString() : 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 uppercase tracking-wide">Completed At</p>
+                    <p className="text-sm text-gray-800">{txn.completedAt ? new Date(txn.completedAt).toLocaleString() : 'N/A'}</p>
+                  </div>
+                  {txn.customerEmail && (
+                    <div>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide">Customer Email</p>
+                      <p className="text-sm text-gray-800">{txn.customerEmail}</p>
+                    </div>
+                  )}
+                  {txn.customerPhone && (
+                    <div>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide">Customer Phone</p>
+                      <p className="text-sm text-gray-800">{txn.customerPhone}</p>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Raw JSON for debugging */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <details className="cursor-pointer">
+                    <summary className="text-xs text-gray-600 hover:text-gray-800 font-semibold">📋 Show Full Details (JSON)</summary>
+                    <pre className="bg-gray-100 p-3 rounded mt-2 text-xs overflow-auto max-h-48 text-gray-800">
+                      {JSON.stringify(txn, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Invoices */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
