@@ -209,17 +209,15 @@ export const cashfreeService = {
       let orders = [];
       
       try {
-        // Try Settlements Recon API (designed for fetching settled transactions)
-        logger.info('📡 Fetching reconciliation data from Cashfree...');
-        const reconResponse = await axios.post(
-          `${CASHFREE_BASE_URL}/orders/settlements/recon`,
+        // Try direct Orders endpoint with filters to get transactions
+        logger.info('📡 Fetching orders from Cashfree /orders endpoint...');
+        const ordersResponse = await axios.get(
+          `${CASHFREE_BASE_URL}/orders`,
           {
-            filters: {
-              order_amount: { value: '0', operator: 'gt' } // Only > 0
+            params: {
+              count: 100,
+              skip: 0
             },
-            count: 100
-          },
-          {
             headers: {
               'X-Client-Id': CASHFREE_CLIENT_ID,
               'X-Client-Secret': CASHFREE_API_KEY,
@@ -228,19 +226,39 @@ export const cashfreeService = {
           }
         );
         
-        if (reconResponse.data && reconResponse.data.data) {
-          logger.info('✅ Recon data received');
-          orders = Array.isArray(reconResponse.data.data) ? reconResponse.data.data : [];
-        }
-      } catch (reconError) {
-        logger.warn('⚠️ Recon endpoint failed:', reconError.message);
+        logger.info(`✅ Orders endpoint response:`, ordersResponse.status);
+        logger.info(`📊 Response structure:`, Object.keys(ordersResponse.data));
         
-        // Fallback: Try to get orders from a different endpoint if available
+        if (ordersResponse.data && Array.isArray(ordersResponse.data)) {
+          logger.info(`✅ Got orders array directly`);
+          orders = ordersResponse.data;
+        } else if (ordersResponse.data?.data && Array.isArray(ordersResponse.data.data)) {
+          logger.info(`✅ Got orders from .data property`);
+          orders = ordersResponse.data.data;
+        } else if (ordersResponse.data?.orders && Array.isArray(ordersResponse.data.orders)) {
+          logger.info(`✅ Got orders from .orders property`);
+          orders = ordersResponse.data.orders;
+        } else {
+          logger.warn('⚠️ Orders response format unexpected:', typeof ordersResponse.data);
+          orders = [];
+        }
+      } catch (ordersError) {
+        logger.error('❌ Orders endpoint failed:', {
+          status: ordersError.response?.status,
+          message: ordersError.message,
+          data: ordersError.response?.data
+        });
+        
+        // Fallback: Try settlements endpoint if orders fails
         try {
-          logger.info('📡 Trying alternative endpoint...');
-          const altResponse = await axios.get(
-            `${CASHFREE_BASE_URL}/payouts`,
+          logger.info('📡 Trying settlements endpoint as fallback...');
+          const settleResponse = await axios.get(
+            `${CASHFREE_BASE_URL}/settlements`,
             {
+              params: {
+                count: 100,
+                skip: 0
+              },
               headers: {
                 'X-Client-Id': CASHFREE_CLIENT_ID,
                 'X-Client-Secret': CASHFREE_API_KEY,
@@ -248,10 +266,10 @@ export const cashfreeService = {
               }
             }
           );
-          orders = altResponse.data?.data || altResponse.data || [];
-        } catch (altError) {
-          logger.error('❌ All Cashfree APIs failed. Will sync from database only.');
-          // Just fetch from our own Payment collection that we know exists
+          orders = settleResponse.data?.data || settleResponse.data || [];
+          logger.info(`✅ Got settlements data`);
+        } catch (settleError) {
+          logger.error('❌ Settlements endpoint also failed:', settleError.message);
           orders = [];
         }
       }
