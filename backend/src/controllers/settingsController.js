@@ -79,7 +79,43 @@ export const testPhoneNumber = async (req, res) => {
 
 export const getProfile = async (req, res) => {
   try {
-    return sendSuccess(res, { profile: {} }, 'Profile retrieved');
+    const { accountId } = req.user; // Extract from JWT token
+    
+    // Fetch account data from database
+    const Account = (await import('../models/Account.js')).default;
+    const account = await Account.findOne({ accountId });
+    
+    if (!account) {
+      return sendError(res, 404, 'Account not found');
+    }
+    
+    // Get WhatsApp configuration from first phone number
+    const PhoneNumber = (await import('../models/PhoneNumber.js')).default;
+    const phoneNumber = await PhoneNumber.findOne({ accountId });
+    
+    // Return profile data with WhatsApp config
+    return sendSuccess(res, {
+      profile: {
+        _id: account._id,
+        accountId: account.accountId,
+        name: account.name,
+        email: account.email,
+        company: account.company,
+        phone: account.phone,
+        timezone: account.timezone,
+        subdomain: account.subdomain,
+        wabaId: account.wabaId,
+        businessId: account.businessId,
+        type: account.type,
+        role: account.role,
+        metaSyncStatus: account.metaSyncStatus
+      },
+      whatsappConfig: {
+        wabaId: account.wabaId || phoneNumber?.wabaId || '',
+        businessId: account.businessId || phoneNumber?.businessId || '',
+        isConnected: !!phoneNumber?.phoneNumberId
+      }
+    }, 'Profile retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getProfile');
   }

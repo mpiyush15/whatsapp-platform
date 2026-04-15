@@ -35,6 +35,36 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     setUser(currentUser)
   }, [])
 
+  // 🔐 ROUTE PROTECTION: Show error if accessing wrong tier
+  useEffect(() => {
+    if (!user || !pathname.startsWith('/dashboard')) return;
+
+    const userType = user.type;
+    const userRole = user.role;
+    
+    const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin');
+    const isCompanyTier = pathname.startsWith('/dashboard/company');
+    const isClientTier = pathname.startsWith('/dashboard/client');
+    
+    // Only check if on a tier-specific route
+    if (isSuperAdminTier || isCompanyTier || isClientTier) {
+      let hasAccess = false;
+      
+      if (userType === 'internal' && userRole === 'superadmin' && isSuperAdminTier) {
+        hasAccess = true;
+      } else if (userType === 'company' && (userRole === 'admin' || userRole === 'manager') && isCompanyTier) {
+        hasAccess = true;
+      } else if (userType === 'client' && (userRole === 'user' || userRole === 'agent') && isClientTier) {
+        hasAccess = true;
+      }
+      
+      // If no access, show error
+      if (!hasAccess) {
+        setError(`🚫 Access Denied: You don't have permission to access this dashboard tier. Expected: ${userType}/${userRole}`)
+      }
+    }
+  }, [user, pathname])
+
   // 🔐 Setup inactivity timeout and activity tracking
   useEffect(() => {
     // Check for inactivity on mount
@@ -198,28 +228,28 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       { name: "🧪 Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
     ]
   } else if (isCompanyTier) {
-    // Company navigation
+    // Company navigation - using shared feature routes
     navigation = [
       { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/company", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/company/broadcasts", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Contacts", icon: Users, href: "/dashboard/company/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Templates", icon: FileText, href: "/dashboard/company/templates", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/company/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Campaigns", icon: Calendar, href: "/dashboard/company/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Analytics", icon: BarChart3, href: "/dashboard/company/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/features/broadcasts", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Templates", icon: FileText, href: "/dashboard/features/templates", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER] },
       { name: "Agents", icon: Users, href: "/dashboard/company/agents", roles: [UserRole.ADMIN, UserRole.MANAGER] },
     ]
   } else if (isClientTier) {
-    // Client navigation
+    // Client navigation - using shared feature routes
     navigation = [
       { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/client", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/client/broadcasts", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Contacts", icon: Users, href: "/dashboard/client/contacts", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Templates", icon: FileText, href: "/dashboard/client/templates", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/client/live-chat", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Campaigns", icon: Calendar, href: "/dashboard/client/campaigns", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Chatbot", icon: Bot, href: "/dashboard/client/chatbot", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Analytics", icon: BarChart3, href: "/dashboard/client/analytics", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/features/broadcasts", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Templates", icon: FileText, href: "/dashboard/features/templates", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Chatbot", icon: Bot, href: "/dashboard/features/chatbot", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.USER, UserRole.AGENT] },
       { name: "Billing", icon: CreditCard, href: "/dashboard/client/billing", roles: [UserRole.USER, UserRole.AGENT] },
     ]
   }

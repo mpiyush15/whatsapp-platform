@@ -1,63 +1,72 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Define CSS variables for theme colors - LIGHT MODE ONLY */
-:root {
-  color-scheme: light;
-  --background: 0 0% 100%;
-  --foreground: 0 0% 10%;
-  --primary: 0 0% 0%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 96%;
-  --secondary-foreground: 0 0% 10%;
-  --muted: 0 0% 90%;
-  --muted-foreground: 0 0% 40%;
-  --accent: 59 89% 46%;
-  --accent-foreground: 0 0% 100%;
-  --border: 0 0% 90%;
-  --input: 0 0% 96%;
-  --ring: 59 89% 46%;
-}
-
-/* Dark mode completely disabled - light mode only */
-html, html.dark {
-  color-scheme: light;
-}
-
-/* All elements always use light mode colors */
-html.dark {
-  --background: 0 0% 100%;
-  --foreground: 0 0% 10%;
-  --primary: 0 0% 0%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 96%;
-  --secondary-foreground: 0 0% 10%;
-  --muted: 0 0% 90%;
-  --muted-foreground: 0 0% 40%;
-  --accent: 59 89% 46%;
-  --accent-foreground: 0 0% 100%;
-  --border: 0 0% 90%;
-  --input: 0 0% 96%;
-  --ring: 59 89% 46%;
-}
-
-/* Base styles - LIGHT MODE ONLY */
 @layer base {
+  :root {
+    color-scheme: light;
+    --background: 0 0% 100%;
+    --foreground: 0 0% 10%;
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 90%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 59 89% 46%;
+    --accent-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 96%;
+    --ring: 59 89% 46%;
+  }
+
+  /* Dark mode completely disabled - light mode only */
+  html,
+  html.dark {
+    color-scheme: light;
+  }
+
+  /* All elements always use light mode colors */
+  html.dark {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 10%;
+    --primary: 0 0% 0%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 90%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 59 89% 46%;
+    --accent-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 96%;
+    --ring: 59 89% 46%;
+  }
+
   * {
     @apply transition-colors duration-300;
   }
 
   body {
     @apply bg-white text-gray-900;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply text-gray-900;
   }
 
-  p, div, li {
+  p,
+  div,
+  li {
     @apply text-gray-900;
   }
 
@@ -66,17 +75,19 @@ html.dark {
   }
 
   /* Input colors - always light */
-  input, textarea, select {
+  input,
+  textarea,
+  select {
     color-scheme: light;
     @apply bg-white text-gray-900 border border-gray-300;
   }
 
-  input::placeholder, textarea::placeholder {
+  input::placeholder,
+  textarea::placeholder {
     @apply text-gray-400;
   }
 }
 
-/* Utility classes - LIGHT MODE ONLY */
 @layer utilities {
   .bg-base {
     @apply bg-white;
@@ -111,7 +122,6 @@ html.dark {
   }
 }
 
-/* Ensure smooth transitions */
 html {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
