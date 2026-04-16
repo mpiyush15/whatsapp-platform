@@ -39,7 +39,10 @@ const messageSchema = new mongoose.Schema({
   // Message content
   messageType: {
     type: String,
-    enum: ['text', 'template', 'media', 'interactive', 'image', 'video', 'audio', 'document', 'location', 'sticker', 'button', 'reaction', 'voice'],
+    enum: {
+      values: ['text', 'template', 'media', 'interactive', 'image', 'video', 'audio', 'document', 'location', 'sticker', 'button', 'reaction', 'voice'],
+      message: '{VALUE} is not a valid message type'
+    },
     default: 'text'
   },
   content: {
@@ -66,8 +69,12 @@ const messageSchema = new mongoose.Schema({
   // Status tracking (matches Meta lifecycle)
   status: {
     type: String,
-    enum: ['queued', 'sent', 'delivered', 'read', 'failed'],
-    default: 'queued'
+    enum: {
+      values: ['queued', 'sent', 'delivered', 'read', 'failed'],
+      message: '{VALUE} is not a valid message status'
+    },
+    default: 'queued',
+    index: true
   },
   statusUpdates: [{
     status: String,
@@ -79,8 +86,12 @@ const messageSchema = new mongoose.Schema({
   // Direction
   direction: {
     type: String,
-    enum: ['outbound', 'inbound'],
-    default: 'outbound'
+    enum: {
+      values: ['outbound', 'inbound'],
+      message: '{VALUE} is not a valid message direction'
+    },
+    default: 'outbound',
+    index: true
   },
   
   // Campaign tracking

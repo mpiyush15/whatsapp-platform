@@ -22,7 +22,10 @@ const templateSchema = new mongoose.Schema({
   // Meta template data
   category: {
     type: String,
-    enum: ['marketing', 'utility', 'authentication'],
+    enum: {
+      values: ['marketing', 'utility', 'authentication'],
+      message: '{VALUE} is not a valid template category'
+    },
     default: 'utility'
   },
   content: {
@@ -56,7 +59,10 @@ const templateSchema = new mongoose.Schema({
   },
   mediaType: {
     type: String,
-    enum: ['image', 'video', 'document'],
+    enum: {
+      values: ['image', 'video', 'document'],
+      message: '{VALUE} is not a valid media type'
+    },
     default: 'image'
   },
   mediaUrl: String,              // For URL-based media
@@ -68,8 +74,12 @@ const templateSchema = new mongoose.Schema({
   // Status
   status: {
     type: String,
-    enum: ['draft', 'pending', 'approved', 'rejected'],
-    default: 'draft'
+    enum: {
+      values: ['draft', 'pending', 'approved', 'rejected'],
+      message: '{VALUE} is not a valid template status'
+    },
+    default: 'draft',
+    index: true
   },
   metaTemplateId: String,
   

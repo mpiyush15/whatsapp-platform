@@ -37,9 +37,8 @@ export default function LoginPage() {
             // Redirect based on account type
             if (payload.type === 'internal' && payload.role === 'superadmin') {
               redirectPath = "/dashboard/superadmin"
-            } else if (payload.type === 'company') {
-              redirectPath = "/dashboard/company"
-            } else if (payload.type === 'client') {
+            } else if (payload.type === 'client' || payload.type === 'agency') {
+              // Both client and agency types use the same dashboard tier
               redirectPath = "/dashboard/client"
             }
           } catch (e) {

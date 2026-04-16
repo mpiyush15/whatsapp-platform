@@ -53,8 +53,13 @@ export const getAllOrganizations = async (req, res) => {
     }
     
     console.log('✅ [getAllOrganizations] User is superadmin, fetching organizations...');
-    const db = mongoose.connection.db;
-    const organizations = await db.collection('organizations').find().toArray();
+    
+    // Query accounts collection - this contains all organizations
+    const Account = mongoose.model('Account');
+    const organizations = await Account.find({})
+      .select('accountId name email company type role status createdAt')
+      .sort({ createdAt: -1 });
+    
     console.log('🔍 [getAllOrganizations] Found organizations:', organizations.length);
     console.log('🔍 [getAllOrganizations] Organizations:', organizations);
     return sendSuccess(res, { data: organizations }, 'All organizations retrieved');

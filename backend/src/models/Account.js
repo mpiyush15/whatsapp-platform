@@ -3,14 +3,25 @@ import crypto from 'crypto';
 
 const accountSchema = new mongoose.Schema({
   // Account Identity (Universal Identifier)
-  // Format: YYXXXXX (7 digits)
-  // YY = last 2 digits of year (26 for 2026, 27 for 2027)
-  // XXXXX = 5-digit sequential number (00001-99999)
+  // Format Rules:
+  // 1. SUPERADMIN ACCOUNTS: 2600001 to 2600099 (reserved range)
+  //    - 26 = 2026 (year)
+  //    - 00 = 00 (reserved)
+  //    - 001-099 = superadmin ID
+  //
+  // 2. PAYING CLIENT ACCOUNTS: YYMMDD + Sequential #
+  //    - YY = last 2 digits of year (26 for 2026)
+  //    - MM = month (01-12)
+  //    - DD = day (01-31)
+  //    - XX = client number (01-99)
+  //    Example: 26041601 = April 16, 2026, Client #1
+  //             26041602 = April 16, 2026, Client #2
   accountId: {
     type: String,
     required: true,
     unique: true,
-    index: true
+    index: true,
+    match: /^\d{7,8}$/  // 7-8 digits validation
   },
   
   // Account Type (CRITICAL for multi-use case)
@@ -20,14 +31,22 @@ const accountSchema = new mongoose.Schema({
   // - 'agency': Agency/partner account (resellers)
   type: {
     type: String,
-    enum: ['internal', 'client', 'agency'],
+    enum: {
+      values: ['internal', 'client', 'agency'],
+      message: '{VALUE} is not a valid account type. Use: internal, client, or agency'
+    },
+    required: true,
     default: 'client'
   },
   
   // Role (for permission management)
   role: {
     type: String,
-    enum: ['superadmin', 'admin', 'manager', 'agent', 'user'],
+    enum: {
+      values: ['superadmin', 'admin', 'manager', 'agent', 'user'],
+      message: '{VALUE} is not a valid role. Use: superadmin, admin, manager, agent, or user'
+    },
+    required: true,
     default: 'user'
   },
 
@@ -258,8 +277,12 @@ const accountSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'active', 'suspended', 'cancelled'],
-    default: 'active'
+    enum: {
+      values: ['pending', 'active', 'suspended', 'cancelled'],
+      message: '{VALUE} is not a valid account status. Use: pending, active, suspended, or cancelled'
+    },
+    default: 'active',
+    index: true
   },
   
   // Limits (based on plan)

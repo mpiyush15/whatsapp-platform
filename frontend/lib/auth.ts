@@ -67,6 +67,7 @@ export const authService = {
                 data.data.user.role === 'admin' ? UserRole.ADMIN : 
                 data.data.user.role === 'manager' ? UserRole.MANAGER : 
                 data.data.user.role === 'agent' ? UserRole.AGENT : UserRole.USER,
+          type: data.data.user.type,  // ✅ ADD TYPE FIELD
           accountId: data.data.user.accountId,
           status: data.data.user.status,
           plan: data.data.user.plan,
@@ -122,6 +123,7 @@ export const authService = {
                 data.user.role === 'admin' ? UserRole.ADMIN : 
                 data.user.role === 'manager' ? UserRole.MANAGER : 
                 data.user.role === 'agent' ? UserRole.AGENT : UserRole.USER,
+          type: data.user.type,  // ✅ ADD TYPE FIELD
           accountId: data.user.accountId,
           status: data.user.status,
           plan: data.user.plan,

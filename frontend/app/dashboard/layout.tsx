@@ -43,24 +43,29 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     const userRole = user.role;
     
     const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin');
-    const isCompanyTier = pathname.startsWith('/dashboard/company');
     const isClientTier = pathname.startsWith('/dashboard/client');
+    const isFeaturesTier = pathname.startsWith('/dashboard/features');
+    const isDashboardRoot = pathname === '/dashboard';
+    
+    // Skip validation for dashboard root (it's redirecting)
+    if (isDashboardRoot) return;
     
     // Only check if on a tier-specific route
-    if (isSuperAdminTier || isCompanyTier || isClientTier) {
+    if (isSuperAdminTier || isClientTier) {
       let hasAccess = false;
       
+      // Superadmin access
       if (userType === 'internal' && userRole === 'superadmin' && isSuperAdminTier) {
         hasAccess = true;
-      } else if (userType === 'company' && (userRole === 'admin' || userRole === 'manager') && isCompanyTier) {
-        hasAccess = true;
-      } else if (userType === 'client' && (userRole === 'user' || userRole === 'agent') && isClientTier) {
+      } 
+      // Client & Agency access (both use /dashboard/client tier)
+      else if ((userType === 'client' || userType === 'agency') && ['admin', 'manager', 'agent', 'user'].includes(userRole) && isClientTier) {
         hasAccess = true;
       }
       
       // If no access, show error
       if (!hasAccess) {
-        setError(`🚫 Access Denied: You don't have permission to access this dashboard tier. Expected: ${userType}/${userRole}`)
+        setError(`🚫 Access Denied: You don't have permission to access this dashboard tier. Your account: ${userType}/${userRole}`)
       }
     }
   }, [user, pathname])
@@ -202,13 +207,11 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   // Determine which tier folder they're in
   const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin')
-  const isCompanyTier = pathname.startsWith('/dashboard/company')
   const isClientTier = pathname.startsWith('/dashboard/client')
 
   // Get dashboard href based on tier
   let dashboardHref = '/dashboard'
   if (isSuperAdminTier) dashboardHref = '/dashboard/superadmin'
-  if (isCompanyTier) dashboardHref = '/dashboard/company'
   if (isClientTier) dashboardHref = '/dashboard/client'
 
   // Create tier-specific navigation
@@ -227,30 +230,19 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       { name: "Website Settings", icon: Sliders, href: "/dashboard/superadmin/website-settings", roles: [UserRole.SUPERADMIN] },
       { name: "🧪 Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
     ]
-  } else if (isCompanyTier) {
-    // Company navigation - using shared feature routes
-    navigation = [
-      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/company", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/features/broadcasts", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Templates", icon: FileText, href: "/dashboard/features/templates", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Agents", icon: Users, href: "/dashboard/company/agents", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-    ]
   } else if (isClientTier) {
-    // Client navigation - using shared feature routes
+    // Client tier navigation (for both client & agency account types)
+    // Shows all features based on user role
     navigation = [
-      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/client", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/features/broadcasts", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Templates", icon: FileText, href: "/dashboard/features/templates", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Chatbot", icon: Bot, href: "/dashboard/features/chatbot", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.USER, UserRole.AGENT] },
-      { name: "Billing", icon: CreditCard, href: "/dashboard/client/billing", roles: [UserRole.USER, UserRole.AGENT] },
+      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/client", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/features/broadcasts", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT] },
+      { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+      { name: "Templates", icon: FileText, href: "/dashboard/features/templates", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Chatbot", icon: Bot, href: "/dashboard/features/chatbot", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+      { name: "Billing", icon: CreditCard, href: "/dashboard/client/billing", roles: [UserRole.ADMIN, UserRole.MANAGER] },
     ]
   }
 

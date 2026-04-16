@@ -68,11 +68,23 @@ const phoneNumberSchema = new mongoose.Schema({
   displayName: String,
   displayPhone: String, // +1234567890
   
-  // Status
+  // Status (use enum instead of isActive boolean)
+  status: {
+    type: String,
+    enum: {
+      values: ['active', 'inactive', 'restricted', 'deleted'],
+      message: '{VALUE} is not a valid phone status. Use: active, inactive, restricted, or deleted'
+    },
+    default: 'active',
+    index: true
+  },
+  
+  // Deprecated: isActive (kept for backward compatibility, will be removed)
   isActive: {
     type: Boolean,
     default: true
   },
+  
   verifiedAt: Date,
   lastTestedAt: Date,
   
