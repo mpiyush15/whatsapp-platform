@@ -4,6 +4,12 @@ import { cashfreeService } from '../src/services/cashfreeService.js';
 
 dotenv.config();
 
+console.log('📋 Environment Check:');
+console.log('  CASHFREE_CLIENT_ID:', process.env.CASHFREE_CLIENT_ID?.substring(0, 10) + '...');
+console.log('  CASHFREE_CLIENT_SECRET:', process.env.CASHFREE_CLIENT_SECRET?.substring(0, 10) + '...');
+console.log('  CASHFREE_API_URL:', process.env.CASHFREE_API_URL);
+console.log('');
+
 try {
   console.log('🔄 Connecting to MongoDB...');
   await mongoose.connect(process.env.MONGODB_URI);

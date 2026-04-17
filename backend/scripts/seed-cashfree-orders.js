@@ -8,18 +8,18 @@ dotenv.config();
 await mongoose.connect(process.env.MONGODB_URI);
 console.log('✅ Connected to MongoDB');
 
-// Cashfree orders from screenshot
+// Cashfree orders from screenshot - using actual Order IDs (not CF Order IDs)
 const cashfreeOrders = [
-  { orderId: 'ORDER-1', cfOrderId: '5276841267', amount: 7122.15 },
-  { orderId: 'payl-1', cfOrderId: '5264461010', amount: 14999.00 },
-  { orderId: 'ORDER-2', cfOrderId: '5255616936', amount: 7122.15 },
-  { orderId: 'ORDER-3', cfOrderId: '5253228165', amount: 100 },
-  { orderId: 'ORDER-4', cfOrderId: '5253212309', amount: 100 },
-  { orderId: 'ORDER-5', cfOrderId: '5253193862', amount: 3001.00 },
-  { orderId: 'ORDER-6', cfOrderId: '5253187653', amount: 3001.00 },
-  { orderId: 'ORDER-7', cfOrderId: '5253179585', amount: 3001.00 },
-  { orderId: 'sub-1', cfOrderId: '5251133146', amount: 11099.00 },
-  { orderId: 'ORDER-8', cfOrderId: '5246646307', amount: 3010.00 }
+  { orderId: 'ORDER_STARTER_1769848491717', cfOrderId: '5276841267', amount: 7122.15 },
+  { orderId: 'paylink_dbaf864715ad_1769654499167', cfOrderId: '5264461010', amount: 14999.00 },
+  { orderId: 'ORDER_STARTER_1769495272225', cfOrderId: '5255616936', amount: 7122.15 },
+  { orderId: 'ORDER_PRO_1769448165155', cfOrderId: '5253228165', amount: 100 },
+  { orderId: 'ORDER_PRO_1769447807291', cfOrderId: '5253212309', amount: 100 },
+  { orderId: 'ORDER_PRO_1769447422744', cfOrderId: '5253193862', amount: 3001.00 },
+  { orderId: 'ORDER_PRO_1769447299430', cfOrderId: '5253187653', amount: 3001.00 },
+  { orderId: 'ORDER_PRO_1769447142959', cfOrderId: '5253179585', amount: 3001.00 },
+  { orderId: 'sub_abcinstyhos_1769412945782', cfOrderId: '5251133146', amount: 11099.00 },
+  { orderId: 'ORDER_STARTER_1769327119450', cfOrderId: '5246646307', amount: 3010.00 }
 ];
 
 try {

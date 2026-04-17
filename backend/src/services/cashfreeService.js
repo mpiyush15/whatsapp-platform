@@ -2,13 +2,26 @@ import axios from 'axios';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
 import Payment from '../models/Payment.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const CASHFREE_API_KEY = process.env.CASHFREE_CLIENT_SECRET;
 const CASHFREE_CLIENT_ID = process.env.CASHFREE_CLIENT_ID;
-const CASHFREE_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://api.cashfree.com/pg'
-  : 'https://sandbox.cashfree.com/pg';
+const CASHFREE_BASE_URL = process.env.CASHFREE_API_URL || (
+  process.env.NODE_ENV === 'production' 
+    ? 'https://api.cashfree.com/pg'
+    : 'https://sandbox.cashfree.com/pg'
+);
+
+// Helper to get common headers for Cashfree API
+const getCashfreeHeaders = () => ({
+  'X-Client-Id': CASHFREE_CLIENT_ID,
+  'X-Client-Secret': CASHFREE_API_KEY,
+  'Content-Type': 'application/json',
+  'x-api-version': '2023-08-01'  // Required by Cashfree API
+});
 
 export const cashfreeService = {
   // Create payment order
@@ -240,11 +253,7 @@ export const cashfreeService = {
           const paymentResponse = await axios.get(
             `${CASHFREE_BASE_URL}/orders/${orderId}/payments`,
             {
-              headers: {
-                'X-Client-Id': CASHFREE_CLIENT_ID,
-                'X-Client-Secret': CASHFREE_API_KEY,
-                'Content-Type': 'application/json'
-              }
+              headers: getCashfreeHeaders()
             }
           );
           
@@ -254,11 +263,7 @@ export const cashfreeService = {
             const orderResponse = await axios.get(
               `${CASHFREE_BASE_URL}/orders/${orderId}`,
               {
-                headers: {
-                  'X-Client-Id': CASHFREE_CLIENT_ID,
-                  'X-Client-Secret': CASHFREE_API_KEY,
-                  'Content-Type': 'application/json'
-                }
+                headers: getCashfreeHeaders()
               }
             );
             
@@ -339,7 +344,14 @@ export const cashfreeService = {
           if (order.payments && Array.isArray(order.payments) && order.payments.length > 0) {
             const transaction = order.payments[0];
             transactionId = transaction.cf_payment_id || order.order_id;
-            paymentMethod = (transaction.payment_method?.toLowerCase() || 'upi').trim();
+            // Handle both string and object payment methods
+            if (typeof transaction.payment_method === 'string') {
+              paymentMethod = transaction.payment_method.toLowerCase().trim();
+            } else if (transaction.payment_method?.type) {
+              paymentMethod = transaction.payment_method.type.toLowerCase().trim();
+            } else {
+              paymentMethod = 'upi';
+            }
           }
 
           // Prepare payment document to match our schema
