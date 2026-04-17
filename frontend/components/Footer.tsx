@@ -18,11 +18,11 @@ export default function Footer() {
                 <MessageSquare className="h-6 w-6 text-white" />
               </div>
               <span className="text-xl font-bold text-white">
-                Pixels<span className="text-green-400">WhatsApp</span>
+                <span className="text-green-400">Replysys</span>
               </span>
             </Link>
             <p className="text-sm text-gray-400 mb-4">
-              Transform your customer engagement with our powerful WhatsApp Business API platform.
+              A product of Pixels Digital Solutions. Transform your customer engagement with our powerful WhatsApp Business API platform.
             </p>
             {/* Social Links */}
             <div className="flex gap-4">

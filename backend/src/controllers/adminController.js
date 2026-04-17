@@ -2,6 +2,7 @@ import Account from '../models/Account.js';
 import Subscription from '../models/Subscription.js';
 import PricingPlan from '../models/PricingPlan.js';
 import Payment from '../models/Payment.js';
+import { cashfreeService } from '../services/cashfreeService.js';
 import { generateId } from '../utils/idGenerator.js';
 import { emailService } from '../services/emailService.js';
 import { sendSuccess, sendValidationError, sendNotFound, sendForbidden } from '../utils/responseHandler.js';
@@ -395,10 +396,88 @@ export const insertOldCashfreeOrders = async (req, res) => {
   }
 };
 
+export const getTransactions = async (req, res) => {
+  try {
+    if (req.account.type !== 'internal') {
+      return sendForbidden(res, 'Only superadmins can view transactions');
+    }
+
+    const { limit = 100, offset = 0, status, accountId } = req.query;
+
+    // Build filter
+    const filter = {};
+    if (status) {
+      filter.status = status;
+    }
+    if (accountId) {
+      filter.accountId = accountId;
+    }
+
+    const transactions = await Payment.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(offset))
+      .lean();
+
+    const total = await Payment.countDocuments(filter);
+
+    logger.info(`📊 Fetched ${transactions.length} transactions from ${total} total`);
+
+    return sendSuccess(res, {
+      transactions,
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      hasMore: parseInt(offset) + parseInt(limit) < total
+    }, 'Transactions fetched successfully');
+  } catch (error) {
+    logger.error('❌ Error fetching transactions:', error.message);
+    return handleControllerError(res, error, 'getTransactions');
+  }
+};
+
+export const syncCashfreeTransactions = async (req, res) => {
+  try {
+    if (req.account.type !== 'internal') {
+      return sendForbidden(res, 'Only superadmins can sync transactions');
+    }
+
+    logger.info('🔄 Starting Cashfree transaction sync...');
+
+    // Call the cashfree service to sync payments
+    const syncResult = await cashfreeService.syncPaymentsFromCashfree();
+
+    if (!syncResult.success) {
+      logger.error('❌ Cashfree sync failed:', syncResult.error);
+      return sendSuccess(res, syncResult, 'Sync completed with errors', 206);
+    }
+
+    logger.info(`✅ Synced ${syncResult.count} transactions from Cashfree`);
+
+    // After syncing, fetch all transactions
+    const transactions = await Payment.find({})
+      .sort({ createdAt: -1 })
+      .limit(1000)
+      .lean();
+
+    return sendSuccess(res, {
+      syncResult,
+      transactions,
+      total: transactions.length,
+      message: `Successfully synced ${syncResult.count} transactions from Cashfree`
+    }, 'Transactions synced from Cashfree');
+  } catch (error) {
+    logger.error('❌ Error syncing Cashfree transactions:', error.message);
+    return handleControllerError(res, error, 'syncCashfreeTransactions');
+  }
+};
+
 export default {
   getPendingUsers,
   sendPaymentReminder,
   sendReminderAllPending,
   changeUserStatus,
-  insertOldCashfreeOrders
+  insertOldCashfreeOrders,
+  getTransactions,
+  syncCashfreeTransactions
 };

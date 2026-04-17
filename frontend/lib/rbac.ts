@@ -89,6 +89,18 @@ export const routeAccess = {
   '/dashboard/system-health': [UserRole.SUPERADMIN],
   '/dashboard/platform-billing': [UserRole.SUPERADMIN],
   '/dashboard/website-settings': [UserRole.SUPERADMIN],
+  
+  // SuperAdmin tier routes (/dashboard/superadmin/*)
+  '/dashboard/superadmin': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/organizations': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/admin/demo-requests': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/admin/pending-payments': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/system-health': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/platform-billing': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/transactions': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/invoices': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/website-settings': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/test-data': [UserRole.SUPERADMIN],
 }
 
 /**

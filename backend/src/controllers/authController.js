@@ -17,8 +17,11 @@ export const login = async (req, res) => {
       return sendValidationError(res, 'Email and password required');
     }
     
-    const account = await Account.findOne({ email });
+    // IMPORTANT: Include password in select() even though it's sensitive
+    // We need it for bcrypt.compare()
+    const account = await Account.findOne({ email }).select('+password');
     logger.info('📊 Account found:', !!account);
+    console.log('🔐 Password in DB?:', !!account?.password);
     
     if (!account) {
       logger.info('❌ No account for email:', email);
@@ -27,6 +30,18 @@ export const login = async (req, res) => {
     
     if (account.status !== 'active') {
       return sendUnauthorized(res, 'Account is not active');
+    }
+    
+    // ✅ VERIFY PASSWORD WITH BCRYPT
+    if (!account.password) {
+      logger.error('❌ No password stored for account:', email);
+      return sendUnauthorized(res, 'Invalid email or password');
+    }
+    
+    const isPasswordValid = await bcrypt.compare(password, account.password);
+    if (!isPasswordValid) {
+      logger.info('❌ Invalid password for email:', email);
+      return sendUnauthorized(res, 'Invalid email or password');
     }
     
     const user = {

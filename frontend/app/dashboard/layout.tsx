@@ -224,7 +224,6 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       { name: "Organizations", icon: Building2, href: "/dashboard/superadmin/organizations", roles: [UserRole.SUPERADMIN] },
       { name: "Demo Requests", icon: BookOpen, href: "/dashboard/superadmin/admin/demo-requests", roles: [UserRole.SUPERADMIN] },
       { name: "System Health", icon: Activity, href: "/dashboard/superadmin/system-health", roles: [UserRole.SUPERADMIN] },
-      { name: "Platform Billing", icon: DollarSign, href: "/dashboard/superadmin/platform-billing", roles: [UserRole.SUPERADMIN] },
       { name: "Transactions", icon: CreditCard, href: "/dashboard/superadmin/transactions", roles: [UserRole.SUPERADMIN] },
       { name: "Invoices", icon: Receipt, href: "/dashboard/superadmin/invoices", roles: [UserRole.SUPERADMIN] },
       { name: "Website Settings", icon: Sliders, href: "/dashboard/superadmin/website-settings", roles: [UserRole.SUPERADMIN] },

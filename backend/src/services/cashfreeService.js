@@ -199,6 +199,16 @@ export const cashfreeService = {
     try {
       logger.info('🔄 Syncing REAL payments from Cashfree API...');
       
+      // Validate credentials are set
+      if (!CASHFREE_CLIENT_ID || !CASHFREE_API_KEY) {
+        logger.warn('⚠️ Cashfree credentials not configured');
+        return {
+          success: false,
+          error: 'Cashfree credentials not configured. Set CASHFREE_CLIENT_ID and CASHFREE_CLIENT_SECRET in environment.',
+          count: 0
+        };
+      }
+      
       // Step 1: Get all order IDs from our Payment DB (both old and new)
       logger.info('📚 Fetching order IDs from local database...');
       const existingPayments = await Payment.find(
@@ -410,7 +420,6 @@ export const cashfreeService = {
         count: syncedCount,
         total: orders.length,
         skipped: skipped.length,
-        deletedDemoCount: deletedDemo.deletedCount,
         syncedPayments: syncedPayments,
         skippedDetails: skipped.length > 0 ? skipped : null,
         errors: errors.length > 0 ? errors : null

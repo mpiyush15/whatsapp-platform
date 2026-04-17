@@ -1,17 +1,40 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
-import { AlertCircle, CheckCircle, Loader, Download, CreditCard, Calendar, Package, TrendingUp, ArrowUpRight, X, RefreshCw, Clock, ArrowDown, ArrowUp } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { ErrorToast } from '@/components/ErrorToast'
-import { PaymentStatus } from '@/lib/enums'
-import { API_URL } from '@/lib/config/api'
-import Link from 'next/link'
+import { useState, useEffect } from "react"
+import { API_URL } from "@/lib/config/api"
+import DataTable from "@/components/DataTable"
+import { CreditCard, RefreshCw } from "lucide-react"
+
+interface Transaction {
+  _id: string
+  paymentId: string
+  accountId: string
+  amount: number
+  currency: string
+  status: "pending" | "processing" | "completed" | "failed" | "refunded" | "cancelled"
+  paymentGateway: string
+  paymentMethod?: {
+    type: string
+    brand?: string
+  }
+  orderId?: string
+  createdAt: string
+  completedAt?: string
+}
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [lastSyncTime, setLastSyncTime] = useState<string>("")
+  const [stats, setStats] = useState({
+    total: 0,
+    completed: 0,
+    failed: 0,
+    pending: 0,
+    totalAmount: 0
+  })
 
   useEffect(() => {
     fetchTransactions()
@@ -19,18 +42,15 @@ export default function TransactionsPage() {
 
   const fetchTransactions = async () => {
     try {
-      setIsLoading(true)
+      setLoading(true)
       setError(null)
+      const token = localStorage.getItem("token")
 
-      const token = localStorage.getItem('token')
-      if (!token) {
-        setError('Authentication required')
-        return
-      }
-
-      // Fetch organizations data with invoices
-      const response = await fetch(`${API_URL}/admin/organizations`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await fetch(`${API_URL}/admin/transactions?limit=1000`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
       })
 
       if (!response.ok) {
@@ -38,283 +58,222 @@ export default function TransactionsPage() {
       }
 
       const data = await response.json()
-      const orgs = data.data || []
-      
-      // Convert organizations to transactions format
-      const transactionsList: any[] = []
-      
-      for (const org of orgs) {
-        // Fetch invoices for this org
-        let invoices: any[] = []
-        try {
-          const invoiceResponse = await fetch(`${API_URL}/billing/invoices?accountId=${org._id}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-          if (invoiceResponse.ok) {
-            const invoiceData = await invoiceResponse.json()
-            invoices = invoiceData.data || []
-          }
-        } catch (err) {
-          console.error('Failed to fetch invoices for', org.name)
+      const txns = data.transactions || []
+
+      setTransactions(txns)
+      setLastSyncTime(new Date().toLocaleTimeString("en-IN"))
+
+      // Calculate stats
+      const completed = txns.filter((t: Transaction) => t.status === "completed").length
+      const failed = txns.filter((t: Transaction) => t.status === "failed").length
+      const pending = txns.filter((t: Transaction) => t.status === "pending").length
+      const totalAmount = txns
+        .filter((t: Transaction) => t.status === "completed")
+        .reduce((sum: number, t: Transaction) => sum + (t.amount || 0), 0)
+
+      setStats({
+        total: txns.length,
+        completed,
+        failed,
+        pending,
+        totalAmount
+      })
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to fetch transactions"
+      setError(errorMsg)
+      console.error("Error fetching transactions:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const syncFromCashfree = async () => {
+    try {
+      setSyncing(true)
+      setError(null)
+      const token = localStorage.getItem("token")
+
+      const response = await fetch(`${API_URL}/admin/sync-cashfree`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
         }
+      })
 
-        // Add organization signup transaction
-        transactionsList.push({
-          id: `signup-${org._id}`,
-          date: org.createdAt,
-          organization: org.name,
-          email: org.email,
-          type: 'signup',
-          description: `Signup - ${org.plan} plan (${org.billingCycle})`,
-          plan: org.plan,
-          amount: 0,
-          status: 'completed',
-          billingCycle: org.billingCycle,
-          nextBillingDate: org.nextBillingDate
-        })
-
-        // Add invoice transactions with exact amounts in INR
-        invoices.forEach((invoice: any, idx: number) => {
-          transactionsList.push({
-            id: `invoice-${org._id}-${idx}-${invoice.invoiceNumber}`,
-            date: invoice.invoiceDate,
-            organization: org.name,
-            email: org.email,
-            type: 'invoice',
-            description: `Invoice #${invoice.invoiceNumber} - ${invoice.status}`,
-            plan: org.plan,
-            amount: invoice.totalAmount || 0,
-            paidAmount: invoice.paidAmount || 0,
-            status: invoice.status,
-            invoiceNumber: invoice.invoiceNumber,
-            billingCycle: org.billingCycle,
-            nextBillingDate: org.nextBillingDate
-          })
-        })
-
-        // Add payment transaction if totalPayments exist
-        if (org.totalPayments && org.totalPayments > 0) {
-          transactionsList.push({
-            id: `payment-${org._id}`,
-            date: org.lastPaymentDate || org.createdAt,
-            organization: org.name,
-            email: org.email,
-            type: 'payment',
-            description: `Payment received`,
-            plan: org.plan,
-            amount: org.totalPayments,
-            status: 'completed',
-            billingCycle: org.billingCycle,
-            nextBillingDate: org.nextBillingDate
-          })
-        }
+      if (!response.ok) {
+        throw new Error("Failed to sync from Cashfree")
       }
 
-      // Sort by date descending
-      transactionsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      
-      // Filter to only paid transactions
-      const completedTransactions = transactionsList.filter(t => t.status === PaymentStatus.PAID)
-      
-      setTransactions(completedTransactions)
+      const data = await response.json()
+      console.log("✅ Sync result:", data)
+
+      // Refresh transactions after sync
+      await fetchTransactions()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load transactions')
+      const errorMsg = err instanceof Error ? err.message : "Failed to sync transactions"
+      setError(errorMsg)
+      console.error("Error syncing from Cashfree:", err)
     } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const getTransactionIcon = (type: string) => {
-    switch(type) {
-      case 'payment':
-        return <ArrowDown className="h-4 w-4 text-green-600" />
-      case 'invoice':
-        return <CreditCard className="h-4 w-4 text-blue-600" />
-      case 'billing':
-        return <Calendar className="h-4 w-4 text-blue-600" />
-      case 'signup':
-        return <ArrowUp className="h-4 w-4 text-gray-600" />
-      default:
-        return <Package className="h-4 w-4 text-gray-600" />
-    }
-  }
-
-  const getTransactionTypeLabel = (type: string) => {
-    switch(type) {
-      case 'payment':
-        return 'Payment Received'
-      case 'invoice':
-        return 'Invoice'
-      case 'billing':
-        return 'Billing'
-      case 'signup':
-        return 'Signup'
-      default:
-        return 'Transaction'
-    }
-  }
-
-  const getTransactionColor = (type: string) => {
-    switch(type) {
-      case 'payment':
-        return 'bg-green-100 text-green-800'
-      case 'invoice':
-        return 'bg-blue-100 text-blue-800'
-      case 'billing':
-        return 'bg-blue-100 text-blue-800'
-      case 'signup':
-        return 'bg-gray-100 text-gray-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
+      setSyncing(false)
     }
   }
 
   const getStatusColor = (status: string) => {
-    switch(status) {
-      case PaymentStatus.PAID:
-        return 'bg-green-100 text-green-800'
-      case PaymentStatus.DRAFT:
-        return 'bg-gray-100 text-gray-800'
-      case PaymentStatus.SENT:
-        return 'bg-blue-100 text-blue-800'
-      case PaymentStatus.PARTIAL:
-        return 'bg-yellow-100 text-yellow-800'
-      case PaymentStatus.OVERDUE:
-        return 'bg-orange-100 text-orange-800'
-      case PaymentStatus.CANCELLED:
-        return 'bg-red-100 text-red-800'
+    switch (status) {
+      case "completed":
+        return "bg-green-100 text-green-700"
+      case "pending":
+        return "bg-yellow-100 text-yellow-700"
+      case "processing":
+        return "bg-blue-100 text-blue-700"
+      case "failed":
+        return "bg-red-100 text-red-700"
+      case "refunded":
+        return "bg-purple-100 text-purple-700"
+      case "cancelled":
+        return "bg-gray-100 text-gray-700"
       default:
-        return 'bg-gray-100 text-gray-800'
+        return "bg-gray-100 text-gray-700"
     }
   }
 
+  const columns = [
+    {
+      key: "paymentId",
+      label: "Payment ID",
+      render: (value: string) => (
+        <span className="font-mono text-sm font-semibold text-blue-600">{value.substring(0, 12)}...</span>
+      )
+    },
+    {
+      key: "accountId",
+      label: "Account ID",
+      render: (value: string) => (
+        <span className="font-mono text-sm">{value}</span>
+      )
+    },
+    {
+      key: "amount",
+      label: "Amount",
+      render: (value: number, row: Transaction) => (
+        <span className="font-semibold">₹{value.toFixed(2)} {row.currency}</span>
+      )
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (value: string) => (
+        <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(value)}`}>
+          {value.charAt(0).toUpperCase() + value.slice(1)}
+        </span>
+      )
+    },
+    {
+      key: "paymentGateway",
+      label: "Gateway",
+      render: (value: string) => (
+        <span className="px-2 py-1 rounded text-xs font-semibold bg-indigo-100 text-indigo-700">
+          {value.toUpperCase()}
+        </span>
+      )
+    },
+    {
+      key: "paymentMethod",
+      label: "Method",
+      render: (value: any) => (
+        <span className="text-sm">
+          {value?.type ? `${value.type}${value.brand ? ` (${value.brand})` : ""}` : "-"}
+        </span>
+      )
+    },
+    {
+      key: "createdAt",
+      label: "Date",
+      render: (value: string) => (
+        <span className="text-sm">
+          {new Date(value).toLocaleDateString("en-IN")} {new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      )
+    }
+  ]
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Transactions</h1>
-              <p className="text-gray-600 mt-1">Payment history and subscription activities</p>
-            </div>
-            <div className="flex gap-3">
-              <Button 
-                onClick={fetchTransactions}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Refresh
-              </Button>
-              <Button variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
-            </div>
-          </div>
+    <div className="p-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Platform Transactions</h1>
+        <p className="text-gray-600 mt-2">All Cashfree transactions processed through the platform</p>
+      </div>
+
+      {/* Sync Button */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          {lastSyncTime && (
+            <p className="text-sm text-gray-600">
+              Last synced: <span className="font-semibold text-gray-900">{lastSyncTime}</span>
+            </p>
+          )}
+        </div>
+        <button
+          onClick={syncFromCashfree}
+          disabled={syncing || loading}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-all"
+        >
+          <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+          {syncing ? "Syncing..." : "Sync from Cashfree"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800 font-medium">⚠️ Error: {error}</p>
+          <button
+            onClick={fetchTransactions}
+            className="mt-2 text-sm text-red-600 hover:text-red-700 font-semibold"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
+      {/* Stats Cards */}
+      <div className="mb-6 grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <p className="text-sm text-gray-600">Total Transactions</p>
+          <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</p>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <p className="text-sm text-gray-600">Completed</p>
+          <p className="text-3xl font-bold text-green-600 mt-2">{stats.completed}</p>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <p className="text-sm text-gray-600">Pending</p>
+          <p className="text-3xl font-bold text-yellow-600 mt-2">{stats.pending}</p>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <p className="text-sm text-gray-600">Failed</p>
+          <p className="text-3xl font-bold text-red-600 mt-2">{stats.failed}</p>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <p className="text-sm text-gray-600">Revenue</p>
+          <p className="text-2xl font-bold text-blue-600 mt-2">₹{stats.totalAmount.toFixed(0)}</p>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <p className="text-red-700">{error}</p>
-          </div>
-        )}
-
-        {/* Transactions Table */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          {isLoading ? (
-            <div className="text-center py-12">
-              <Loader className="h-8 w-8 animate-spin mx-auto text-blue-600 mb-2" />
-              <p className="text-gray-600">Loading transactions...</p>
-            </div>
-          ) : transactions.length === 0 ? (
-            <div className="text-center py-12">
-              <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-600">No transactions found</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Organization</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Description</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Plan</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Billing Cycle</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {transactions.map((txn) => (
-                    <tr key={txn.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {new Date(txn.date).toLocaleDateString('en-IN')}
-                        <br />
-                        <span className="text-xs text-gray-500">{new Date(txn.date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{txn.organization}</p>
-                          <p className="text-xs text-gray-500">{txn.email}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${getTransactionColor(txn.type)}`}>
-                          {getTransactionIcon(txn.type)}
-                          {getTransactionTypeLabel(txn.type)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{txn.description}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                          txn.plan === 'pro'
-                            ? 'bg-blue-100 text-blue-800'
-                            : txn.plan === 'enterprise'
-                            ? 'bg-purple-100 text-purple-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {txn.plan ? txn.plan.charAt(0).toUpperCase() + txn.plan.slice(1) : 'N/A'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 capitalize">{txn.billingCycle || 'N/A'}</td>
-                      <td className="px-6 py-4 text-sm font-semibold text-gray-900">₹{txn.amount.toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(txn.status)}`}>
-                          {txn.status.charAt(0).toUpperCase() + txn.status.slice(1)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {/* Transactions Table */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <CreditCard className="h-5 w-5 text-blue-600" />
+          <h2 className="text-lg font-semibold text-gray-900">All Transactions</h2>
         </div>
 
-        {/* Summary Stats */}
-        {transactions.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <p className="text-sm text-gray-600 mb-2">Total Transactions</p>
-              <p className="text-3xl font-bold text-gray-900">{transactions.length}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <p className="text-sm text-gray-600 mb-2">Total Payments</p>
-              <p className="text-3xl font-bold text-green-600">₹{transactions.filter(t => t.type === 'payment').reduce((sum, t) => sum + t.amount, 0).toLocaleString()}</p>
-            </div>
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <p className="text-sm text-gray-600 mb-2">Completed Transactions</p>
-              <p className="text-3xl font-bold text-blue-600">{transactions.filter(t => t.status === PaymentStatus.PAID).length}</p>
-            </div>
-          </div>
-        )}
+        <DataTable
+          columns={columns}
+          data={transactions}
+          loading={loading}
+          error={error}
+          emptyMessage="No transactions found"
+        />
       </div>
     </div>
   )

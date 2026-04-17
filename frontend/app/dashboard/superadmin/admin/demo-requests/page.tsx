@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Check, X, Clock, Mail, Phone, Building2 } from 'lucide-react'
 import { API_URL } from '@/lib/config/api'
+import DataTable from '@/components/DataTable'
 
 interface DemoRequest {
   _id: string
@@ -140,21 +141,69 @@ export default function DemoRequestsPage() {
     )
   }
 
-  if (loading) {
-    return (
-      <div className='flex items-center justify-center min-h-screen'>
-        <div className='text-center'>
-          <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4'></div>
-          <p className='text-gray-600'>Loading demo requests...</p>
-        </div>
-      </div>
-    )
-  }
+  const columns = [
+    {
+      key: 'name',
+      label: 'Name'
+    },
+    {
+      key: 'email',
+      label: 'Email',
+      render: (value: string) => (
+        <a href={`mailto:${value}`} className='text-blue-600 hover:text-blue-800'>
+          {value}
+        </a>
+      )
+    },
+    {
+      key: 'phone',
+      label: 'Phone',
+      render: (value: string) => 
+        value ? (
+          <a href={`tel:${value}`} className='text-blue-600 hover:text-blue-800'>
+            {value}
+          </a>
+        ) : (
+          <span className='text-gray-400'>-</span>
+        )
+    },
+    {
+      key: 'company',
+      label: 'Company',
+      render: (value: string) => value || <span className='text-gray-400'>-</span>
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (value: string) => getStatusBadge(value)
+    },
+    {
+      key: 'requestedAt',
+      label: 'Requested',
+      render: (value: string) => new Date(value).toLocaleDateString('en-IN')
+    }
+  ]
+
+  const actions = [
+    {
+      label: 'Confirm',
+      onClick: (request: DemoRequest) => {
+        setSelectedRequest(request)
+        setShowConfirmForm(true)
+      },
+      variant: 'primary' as const
+    },
+    {
+      label: 'Decline',
+      onClick: (request: DemoRequest) => handleCancelDemo(request._id),
+      variant: 'danger' as const
+    }
+  ]
 
   return (
     <div className='p-8 max-w-7xl mx-auto'>
       <div className='mb-8'>
-        <h1 className='text-4xl font-bold text-black mb-2'>Demo Requests</h1>
+        <h1 className='text-3xl font-bold text-gray-900 mb-2'>Demo Requests</h1>
         <p className='text-gray-600'>Manage and confirm demo bookings from potential customers</p>
       </div>
 
@@ -174,105 +223,41 @@ export default function DemoRequestsPage() {
         </motion.div>
       )}
 
-      {demoRequests.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className='text-center py-12'
-        >
-          <Clock className='h-16 w-16 text-gray-300 mx-auto mb-4' />
-          <p className='text-gray-600 text-lg'>No demo requests yet</p>
-        </motion.div>
-      ) : (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className='space-y-4'
-        >
-          {demoRequests.map((request) => (
-            <motion.div
-              key={request._id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className='bg-white rounded-lg border-2 border-gray-200 p-6 hover:shadow-lg transition-all'
-            >
-              <div className='flex items-start justify-between mb-4'>
-                <div>
-                  <h3 className='text-xl font-bold text-black'>{request.name}</h3>
-                  {request.company && (
-                    <p className='text-gray-600 flex items-center gap-2 mt-1'>
-                      <Building2 className='h-4 w-4' />
-                      {request.company}
-                    </p>
-                  )}
-                </div>
-                {getStatusBadge(request.status)}
-              </div>
+      <div className='mb-6 grid grid-cols-4 gap-4'>
+        <div className='bg-white rounded-lg border border-gray-200 p-4'>
+          <p className='text-sm text-gray-600'>Total Requests</p>
+          <p className='text-3xl font-bold text-gray-900 mt-2'>{demoRequests.length}</p>
+        </div>
+        <div className='bg-white rounded-lg border border-gray-200 p-4'>
+          <p className='text-sm text-gray-600'>Pending</p>
+          <p className='text-3xl font-bold text-yellow-600 mt-2'>
+            {demoRequests.filter(r => r.status === 'pending').length}
+          </p>
+        </div>
+        <div className='bg-white rounded-lg border border-gray-200 p-4'>
+          <p className='text-sm text-gray-600'>Scheduled</p>
+          <p className='text-3xl font-bold text-blue-600 mt-2'>
+            {demoRequests.filter(r => r.status === 'scheduled').length}
+          </p>
+        </div>
+        <div className='bg-white rounded-lg border border-gray-200 p-4'>
+          <p className='text-sm text-gray-600'>Completed</p>
+          <p className='text-3xl font-bold text-green-600 mt-2'>
+            {demoRequests.filter(r => r.status === 'completed').length}
+          </p>
+        </div>
+      </div>
 
-              <div className='grid md:grid-cols-2 gap-4 mb-6'>
-                <div className='flex items-center gap-2 text-gray-700'>
-                  <Mail className='h-5 w-5 text-green-600' />
-                  <a href={`mailto:${request.email}`} className='hover:text-green-600'>
-                    {request.email}
-                  </a>
-                </div>
-                {request.phone && (
-                  <div className='flex items-center gap-2 text-gray-700'>
-                    <Phone className='h-5 w-5 text-green-600' />
-                    <a href={`tel:${request.phone}`} className='hover:text-green-600'>
-                      {request.phone}
-                    </a>
-                  </div>
-                )}
-              </div>
-
-              {request.message && (
-                <div className='mb-4 p-4 bg-gray-50 rounded-lg'>
-                  <p className='text-sm font-medium text-gray-600 mb-2'>Message:</p>
-                  <p className='text-gray-700'>{request.message}</p>
-                </div>
-              )}
-
-              {request.status === 'scheduled' && (
-                <div className='mb-4 p-4 bg-blue-50 rounded-lg border-l-4 border-blue-600'>
-                  <p className='text-sm font-medium text-blue-900 mb-1'>Scheduled Demo</p>
-                  <p className='text-blue-800'>
-                    {new Date(request.scheduledDate || '').toLocaleDateString()} at{' '}
-                    {request.scheduledTime}
-                  </p>
-                  {request.notes && (
-                    <p className='text-blue-700 mt-2 text-sm'>{request.notes}</p>
-                  )}
-                </div>
-              )}
-
-              <div className='flex gap-2'>
-                {request.status === 'pending' && (
-                  <>
-                    <button
-                      onClick={() => {
-                        setSelectedRequest(request)
-                        setShowConfirmForm(true)
-                      }}
-                      className='flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-all'
-                    >
-                      <Check className='h-4 w-4' />
-                      Confirm Demo
-                    </button>
-                    <button
-                      onClick={() => handleCancelDemo(request._id)}
-                      className='flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg font-medium transition-all'
-                    >
-                      <X className='h-4 w-4' />
-                      Decline
-                    </button>
-                  </>
-                )}
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
-      )}
+      <div className='bg-white rounded-lg border border-gray-200 p-6'>
+        <DataTable
+          columns={columns}
+          data={demoRequests}
+          loading={loading}
+          error={error}
+          actions={actions.filter(a => true)}
+          emptyMessage='No demo requests found'
+        />
+      </div>
 
       {/* Confirm Demo Modal */}
       {showConfirmForm && selectedRequest && (

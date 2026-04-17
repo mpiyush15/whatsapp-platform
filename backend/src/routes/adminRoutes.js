@@ -7,7 +7,9 @@ import {
   sendPaymentReminder,
   sendReminderAllPending,
   changeUserStatus,
-  insertOldCashfreeOrders
+  insertOldCashfreeOrders,
+  getTransactions,
+  syncCashfreeTransactions
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -44,5 +46,17 @@ router.post('/change-user-status', changeUserStatus);
  * Insert old Cashfree orders for testing sync (superadmin only)
  */
 router.post('/insert-old-cashfree-orders', insertOldCashfreeOrders);
+
+/**
+ * GET /api/admin/transactions
+ * Get all platform transactions (superadmin only)
+ */
+router.get('/transactions', getTransactions);
+
+/**
+ * POST /api/admin/sync-cashfree
+ * Sync transactions from Cashfree API (superadmin only)
+ */
+router.post('/sync-cashfree', syncCashfreeTransactions);
 
 export default router;

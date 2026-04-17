@@ -58,11 +58,18 @@ export const getAllOrganizations = async (req, res) => {
     const Account = mongoose.model('Account');
     const organizations = await Account.find({})
       .select('accountId name email company type role status createdAt')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean(); // Convert to plain JavaScript objects, not Mongoose documents
     
     console.log('🔍 [getAllOrganizations] Found organizations:', organizations.length);
     console.log('🔍 [getAllOrganizations] Organizations:', organizations);
-    return sendSuccess(res, { data: organizations }, 'All organizations retrieved');
+    console.log('🔍 [getAllOrganizations] Is array?:', Array.isArray(organizations));
+    
+    // Ensure it's a plain array
+    const plainArray = Array.isArray(organizations) ? organizations : [];
+    console.log('🔍 [getAllOrganizations] Plain array length:', plainArray.length);
+    
+    return sendSuccess(res, { data: plainArray }, 'All organizations retrieved');
   } catch (error) {
     console.error('❌ [getAllOrganizations] Error:', error);
     return handleControllerError(res, error, 'getAllOrganizations');
