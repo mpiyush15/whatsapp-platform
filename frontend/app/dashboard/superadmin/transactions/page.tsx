@@ -58,7 +58,7 @@ export default function TransactionsPage() {
       }
 
       const data = await response.json()
-      const txns = data.transactions || []
+      const txns = data.data?.transactions || data.transactions || []
 
       setTransactions(txns)
       setLastSyncTime(new Date().toLocaleTimeString("en-IN"))
