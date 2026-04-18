@@ -3,6 +3,10 @@ import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import mongoose from 'mongoose';
 import { cashfreeService } from '../services/cashfreeService.js';
+import Payment from '../models/Payment.js';
+import Account from '../models/Account.js';
+import Subscription from '../models/Subscription.js';
+import { emailService } from '../services/emailService.js';
 
 export const initiatePayment = async (req, res) => {
   try {
@@ -36,10 +40,98 @@ export const getPaymentStatus = async (req, res) => {
 
 export const confirmPayment = async (req, res) => {
   try {
-    const { orderId } = req.body;
-    logger.info('✅ Payment confirmed:', orderId);
-    return sendSuccess(res, { orderId, status: 'confirmed' }, 'Payment confirmed');
+    const { orderId, orderStatus, txStatus, txMsg, orderAmount, referenceId } = req.body;
+    
+    logger.info('📝 Payment webhook received:', {
+      orderId,
+      orderStatus,
+      txStatus,
+      txMsg,
+      orderAmount,
+      referenceId
+    });
+
+    // Find payment by orderId
+    const payment = await Payment.findOne({ orderId });
+    if (!payment) {
+      logger.warn('⚠️ Payment not found for orderId:', orderId);
+      return sendSuccess(res, { orderId, status: 'notfound' }, 'Payment record not found');
+    }
+
+    // Update payment with webhook data
+    payment.gatewayOrderId = orderId;
+    payment.gatewayPaymentId = referenceId;
+    payment.status = orderStatus === 'PAID' ? 'paid' : 'failed';
+    payment.completedAt = new Date();
+    payment.webhookData = req.body;
+    
+    await payment.save();
+    logger.info('✅ Payment updated:', payment._id);
+
+    // If payment successful, activate the account
+    if (orderStatus === 'PAID') {
+      const account = await Account.findOne({ accountId: payment.accountId });
+      if (account) {
+        account.status = 'active';
+        account.billingStatus = 'active';
+        await account.save();
+        logger.info('✅ Account activated:', {
+          accountId: payment.accountId,
+          status: account.status
+        });
+
+        // Create or update subscription
+        try {
+          const subscription = await Subscription.findOne({ accountId: payment.accountId });
+          if (!subscription) {
+            // Create new subscription
+            const newSubscription = new Subscription({
+              accountId: payment.accountId,
+              paymentId: payment._id,
+              planId: payment.planId,
+              status: 'active',
+              billingCycle: payment.billingCycle,
+              amount: payment.amount,
+              currency: 'INR',
+              startDate: new Date(),
+              endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days default
+              renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              createdAt: new Date()
+            });
+            await newSubscription.save();
+            logger.info('✅ Subscription created:', newSubscription._id);
+          } else {
+            subscription.status = 'active';
+            subscription.paymentId = payment._id;
+            await subscription.save();
+            logger.info('✅ Subscription updated:', subscription._id);
+          }
+        } catch (subErr) {
+          logger.error('⚠️ Error updating subscription:', subErr.message);
+        }
+
+        // Send confirmation email
+        try {
+          await emailService.sendPaymentConfirmationEmail(
+            account.email,
+            payment._id,
+            payment.amount,
+            'success',
+            payment.pricingSnapshot?.planName || 'Plan'
+          ).catch(err => logger.error('⚠️ Email error:', err.message));
+        } catch (emailErr) {
+          logger.error('⚠️ Email service error:', emailErr.message);
+        }
+      }
+    }
+
+    return sendSuccess(res, { 
+      orderId, 
+      status: payment.status,
+      accountId: payment.accountId 
+    }, 'Payment processed successfully');
   } catch (error) {
+    logger.error('❌ confirmPayment error:', error);
     return handleControllerError(res, error, 'confirmPayment');
   }
 };

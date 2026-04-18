@@ -164,6 +164,20 @@ function CheckoutPage() {
         redirectTarget: '_modal'
       })
       console.log('✅ Cashfree checkout result:', result)
+      
+      // Payment completed - redirect to dashboard
+      if (result?.paymentDetails) {
+        console.log('💳 Payment successful:', result.paymentDetails)
+        setError('')
+        setProcessing(false)
+        // Wait 2 seconds then redirect to dashboard
+        setTimeout(() => {
+          router.push('/dashboard/client/subscriptions')
+        }, 2000)
+      } else {
+        // Modal closed without payment
+        console.log('⚠️ Checkout modal closed')
+      }
     } catch (err) {
       console.error('❌ Payment error:', err)
       setError(err instanceof Error ? err.message : 'Payment failed')
