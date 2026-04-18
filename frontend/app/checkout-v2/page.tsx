@@ -96,6 +96,8 @@ function CheckoutPage() {
 
     try {
       const token = localStorage.getItem('token')
+      console.log('📝 Creating order with plan:', selectedPlan.name, 'cycle:', billingCycle)
+      
       const res = await fetch(`${API_URL}/subscriptions/create-order`, {
         method: 'POST',
         headers: {
@@ -109,23 +111,50 @@ function CheckoutPage() {
       })
 
       const orderData = await res.json()
+      console.log('📦 Order response:', orderData)
+      
       if (!res.ok) throw new Error(orderData.message || 'Order failed')
 
+      if (!orderData.data?.paymentSessionId) {
+        throw new Error('No payment session ID in response: ' + JSON.stringify(orderData))
+      }
+
       // Load Cashfree SDK
+      console.log('⏳ Loading Cashfree SDK...')
       if (!(window as any).Cashfree) {
         const script = document.createElement('script')
         script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js'
-        script.async = true
+        script.onerror = () => {
+          throw new Error('Failed to load Cashfree SDK')
+        }
         document.body.appendChild(script)
-        await new Promise(resolve => { script.onload = resolve })
+        
+        // Wait for SDK to load
+        await new Promise((resolve, reject) => {
+          const checkCashfree = () => {
+            if ((window as any).Cashfree) {
+              console.log('✅ Cashfree SDK loaded')
+              resolve(true)
+            } else {
+              setTimeout(checkCashfree, 100)
+            }
+          }
+          checkCashfree()
+          setTimeout(() => reject(new Error('Cashfree SDK timeout')), 5000)
+        })
       }
 
-      const cashfree = await (window as any).Cashfree({ mode: 'production' })
-      await cashfree.checkout({
-        paymentSessionId: orderData.paymentSessionId,
+      console.log('🔄 Opening Cashfree checkout with sessionId:', orderData.data.paymentSessionId)
+      const mode = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
+      console.log('🎯 Using Cashfree mode:', mode)
+      const cashfree = await (window as any).Cashfree({ mode })
+      const result = await cashfree.checkout({
+        paymentSessionId: orderData.data.paymentSessionId,
         redirectTarget: '_self'
       })
+      console.log('✅ Cashfree checkout result:', result)
     } catch (err) {
+      console.error('❌ Payment error:', err)
       setError(err instanceof Error ? err.message : 'Payment failed')
     } finally {
       setProcessing(false)
