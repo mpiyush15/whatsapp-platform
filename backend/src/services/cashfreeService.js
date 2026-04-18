@@ -54,11 +54,7 @@ export const cashfreeService = {
           order_note: orderData.description || 'Pixels WhatsApp Subscription'
         },
         {
-          headers: {
-            'X-Client-Id': CASHFREE_CLIENT_ID,
-            'X-Client-Secret': CASHFREE_API_KEY,
-            'Content-Type': 'application/json'
-          }
+          headers: getCashfreeHeaders()
         }
       );
 
@@ -157,11 +153,7 @@ export const cashfreeService = {
           refund_note: 'Customer requested refund'
         },
         {
-          headers: {
-            'X-Client-Id': CASHFREE_CLIENT_ID,
-            'X-Client-Secret': CASHFREE_API_KEY,
-            'Content-Type': 'application/json'
-          }
+          headers: getCashfreeHeaders()
         }
       );
 
@@ -187,11 +179,7 @@ export const cashfreeService = {
       const response = await axios.get(
         `${CASHFREE_BASE_URL}/orders/${orderId}/refunds/${refundId}`,
         {
-          headers: {
-            'X-Client-Id': CASHFREE_CLIENT_ID,
-            'X-Client-Secret': CASHFREE_API_KEY,
-            'Content-Type': 'application/json'
-          }
+          headers: getCashfreeHeaders()
         }
       );
 
