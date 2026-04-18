@@ -117,7 +117,15 @@ export const signup = async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const accountId = `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Generate accountId: YYMMDD + sequential number
+    // Format: 26041801 (April 18, 2026, Client #01)
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const sequential = String(Math.floor(Math.random() * 99) + 1).padStart(2, '0');
+    const accountId = `${yy}${mm}${dd}${sequential}`;
     
     let planName = selectedPlan.toLowerCase();
     
