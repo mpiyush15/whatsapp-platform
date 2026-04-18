@@ -74,6 +74,7 @@ export const cashfreeService = {
       );
 
       logger.info('✅ Cashfree order created:', response.data.order_id);
+      console.log('🔍 Full Cashfree response:', JSON.stringify(response.data, null, 2))
       
       return {
         success: true,

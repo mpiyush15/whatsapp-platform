@@ -150,7 +150,7 @@ function CheckoutPage() {
       const cashfree = await (window as any).Cashfree({ mode })
       const result = await cashfree.checkout({
         paymentSessionId: orderData.data.paymentSessionId,
-        redirectTarget: '_self'
+        redirectTarget: '_modal'
       })
       console.log('✅ Cashfree checkout result:', result)
     } catch (err) {
