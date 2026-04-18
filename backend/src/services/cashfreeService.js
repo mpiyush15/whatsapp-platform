@@ -63,7 +63,7 @@ export const cashfreeService = {
           order_meta: {
             notify_url: `${backendUrl}/api/payment/webhook/confirm`,
             return_url: `${frontendUrl}/payment-success?orderId=${orderData.orderId}&status=success`,
-            payment_methods: 'upi,netbanking,wallet,card',
+            payment_methods: 'cc,dc,upi,nb,paylater',
             internal_account_id: orderData.accountId // ✅ Store internal accountId in metadata
           },
           order_note: orderData.description || 'Pixels WhatsApp Subscription'
@@ -376,9 +376,10 @@ export const cashfreeService = {
             orderId: order.order_id,
             gatewayOrderId: order.cf_order_id,
             status: paymentStatus,
-            completedAt: paymentStatus === 'completed' ? new Date(order.order_paid_on || Date.now()) : null,
+            completedAt: paymentStatus === 'completed' && order.order_paid_on ? new Date(order.order_paid_on) : null,
             failedAt: paymentStatus === 'failed' ? new Date() : null,
             initiatedAt: new Date(order.order_created_at || Date.now()),
+            transactionDate: order.order_paid_on ? new Date(order.order_paid_on) : null, // ✅ ACTUAL Cashfree transaction date
             
             // Payment method info
             paymentMethod: {
@@ -398,6 +399,7 @@ export const cashfreeService = {
             // Store raw Cashfree response for debugging
             cashfreeRaw: {
               orderStatus: order.order_status,
+              orderPaidOn: order.order_paid_on,
               settlementId: order.settlement_id,
               settlements: order.settlements
             }

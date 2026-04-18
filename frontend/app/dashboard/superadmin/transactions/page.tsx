@@ -11,15 +11,17 @@ interface Transaction {
   accountId: string
   amount: number
   currency: string
-  status: "pending" | "processing" | "completed" | "failed" | "refunded" | "cancelled"
+  status: string
   paymentGateway: string
   paymentMethod?: {
     type: string
     brand?: string
   }
+  paymentStatus?: string
   orderId?: string
   createdAt: string
   completedAt?: string
+  transactionDate?: string
 }
 
 export default function TransactionsPage() {
@@ -63,12 +65,24 @@ export default function TransactionsPage() {
       setTransactions(txns)
       setLastSyncTime(new Date().toLocaleTimeString("en-IN"))
 
-      // Calculate stats
-      const completed = txns.filter((t: Transaction) => t.status === "completed").length
-      const failed = txns.filter((t: Transaction) => t.status === "failed").length
-      const pending = txns.filter((t: Transaction) => t.status === "pending").length
+      // Calculate stats - check both uppercase and display format
+      const completed = txns.filter((t: Transaction) => {
+        const status = t.status?.toUpperCase();
+        return status === "PAID" || status === "COMPLETED" || status === "SUCCESS";
+      }).length
+      const failed = txns.filter((t: Transaction) => {
+        const status = t.status?.toUpperCase();
+        return status === "FAILED" || status === "CANCELLED" || status === "EXPIRED";
+      }).length
+      const pending = txns.filter((t: Transaction) => {
+        const status = t.status?.toUpperCase();
+        return status === "PENDING" || status === "ACTIVE" || status === "PROCESSING";
+      }).length
       const totalAmount = txns
-        .filter((t: Transaction) => t.status === "completed")
+        .filter((t: Transaction) => {
+          const status = t.status?.toUpperCase();
+          return status === "PAID" || status === "COMPLETED" || status === "SUCCESS";
+        })
         .reduce((sum: number, t: Transaction) => sum + (t.amount || 0), 0)
 
       setStats({
@@ -120,19 +134,18 @@ export default function TransactionsPage() {
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed":
+    switch (status?.toUpperCase()) {
+      case "PAID":
         return "bg-green-100 text-green-700"
-      case "pending":
+      case "PENDING":
         return "bg-yellow-100 text-yellow-700"
-      case "processing":
+      case "PROCESSING":
+      case "ACTIVE":
         return "bg-blue-100 text-blue-700"
-      case "failed":
+      case "FAILED":
+      case "CANCELLED":
+      case "EXPIRED":
         return "bg-red-100 text-red-700"
-      case "refunded":
-        return "bg-purple-100 text-purple-700"
-      case "cancelled":
-        return "bg-gray-100 text-gray-700"
       default:
         return "bg-gray-100 text-gray-700"
     }
@@ -143,7 +156,7 @@ export default function TransactionsPage() {
       key: "paymentId",
       label: "Payment ID",
       render: (value: string) => (
-        <span className="font-mono text-sm font-semibold text-blue-600">{value.substring(0, 12)}...</span>
+        <span className="font-mono text-sm font-semibold text-blue-600">{value ? value.substring(0, 12) : 'N/A'}...</span>
       )
     },
     {
@@ -165,7 +178,7 @@ export default function TransactionsPage() {
       label: "Status",
       render: (value: string) => (
         <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(value)}`}>
-          {value.charAt(0).toUpperCase() + value.slice(1)}
+          {value ? value.charAt(0).toUpperCase() + value.slice(1) : 'N/A'}
         </span>
       )
     },
@@ -174,7 +187,7 @@ export default function TransactionsPage() {
       label: "Gateway",
       render: (value: string) => (
         <span className="px-2 py-1 rounded text-xs font-semibold bg-indigo-100 text-indigo-700">
-          {value.toUpperCase()}
+          {value ? value.toUpperCase() : 'N/A'}
         </span>
       )
     },
@@ -188,11 +201,11 @@ export default function TransactionsPage() {
       )
     },
     {
-      key: "createdAt",
+      key: "transactionDate",
       label: "Date",
-      render: (value: string) => (
+      render: (value: string, row: Transaction) => (
         <span className="text-sm">
-          {new Date(value).toLocaleDateString("en-IN")} {new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+          {value ? new Date(value).toLocaleDateString("en-IN") + " " + new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : new Date(row.createdAt).toLocaleDateString("en-IN") + " " + new Date(row.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
         </span>
       )
     }

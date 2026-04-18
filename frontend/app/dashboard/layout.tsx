@@ -228,6 +228,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       { name: "Demo Requests", icon: BookOpen, href: "/dashboard/superadmin/admin/demo-requests", roles: [UserRole.SUPERADMIN] },
       { name: "System Health", icon: Activity, href: "/dashboard/superadmin/system-health", roles: [UserRole.SUPERADMIN] },
       { name: "Transactions", icon: CreditCard, href: "/dashboard/superadmin/transactions", roles: [UserRole.SUPERADMIN] },
+      { name: "Subscriptions", icon: CreditCard, href: "/dashboard/superadmin/subscriptions", roles: [UserRole.SUPERADMIN] },
       { name: "Invoices", icon: Receipt, href: "/dashboard/superadmin/invoices", roles: [UserRole.SUPERADMIN] },
       { name: "Plans and Offers", icon: Sliders, href: "/dashboard/superadmin/plans-and-offers", roles: [UserRole.SUPERADMIN] },
       { name: "🧪 Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
@@ -244,6 +245,8 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
       { name: "Chatbot", icon: Bot, href: "/dashboard/features/chatbot", roles: [UserRole.ADMIN, UserRole.MANAGER] },
       { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+      { name: "Subscriptions", icon: CreditCard, href: "/dashboard/client/subscriptions", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Invoices", icon: Receipt, href: "/dashboard/client/invoices", roles: [UserRole.ADMIN, UserRole.MANAGER] },
       { name: "Billing", icon: CreditCard, href: "/dashboard/client/billing", roles: [UserRole.ADMIN, UserRole.MANAGER] },
     ]
   }

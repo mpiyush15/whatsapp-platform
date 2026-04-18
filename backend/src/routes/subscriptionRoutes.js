@@ -13,6 +13,7 @@ const router = express.Router();
 // Payment/Checkout routes
 router.post('/create-order', requireJWT, subscriptionController.createOrder);
 router.post('/verify-payment', requireJWT, subscriptionController.verifyPayment);
+router.get('/payments', requireJWT, subscriptionController.getPayments);  // Get user's payments/invoices
 
 // 🔴 Pending Transaction routes
 router.get('/pending-transactions', requireJWT, subscriptionController.getPendingTransactions);  // Client pending transactions
@@ -25,6 +26,7 @@ router.post('/change-plan', requireJWT, subscriptionController.changePlan);
 router.post('/cancel', requireJWT, subscriptionController.cancelSubscription);
 router.post('/pause', requireJWT, subscriptionController.pauseSubscription);
 router.post('/resume', requireJWT, subscriptionController.resumeSubscription);
+router.get('/:subscriptionId/transactions', requireJWT, subscriptionController.getSubscriptionTransactions);  // Get transactions for a subscription
 
 // Superadmin routes
 router.get('/', requireJWT, subscriptionController.getAllSubscriptions);

@@ -1,7 +1,35 @@
 import { sendSuccess, sendValidationError, sendNotFound } from '../utils/responseHandler.js';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
+import Invoice from '../models/Invoice.js';
 import mongoose from 'mongoose';
+
+export const getAllInvoices = async (req, res) => {
+  try {
+    const { status, accountId, page = 1, limit = 20 } = req.query;
+    
+    logger.info('📋 Fetching all invoices:', { status, accountId, page, limit });
+
+    const filter = {};
+    if (status) filter.status = status;
+    if (accountId) filter.accountId = accountId;
+
+    const invoices = await Invoice.find(filter)
+      .sort({ invoiceDate: -1 })
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit))
+      .populate('subscriptionId');
+
+    const total = await Invoice.countDocuments(filter);
+
+    return sendSuccess(res, {
+      data: invoices,
+      pagination: { page: parseInt(page), limit: parseInt(limit), total }
+    }, 'Invoices retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'getAllInvoices');
+  }
+};
 
 export const generateInvoice = async (req, res) => {
   try {
@@ -24,9 +52,34 @@ export const generateInvoice = async (req, res) => {
 export const getInvoice = async (req, res) => {
   try {
     const { invoiceId } = req.params;
-    return sendSuccess(res, { invoiceId }, 'Invoice retrieved');
+    
+    const invoice = await Invoice.findById(invoiceId).populate('subscriptionId');
+    if (!invoice) {
+      return sendNotFound(res, 'Invoice not found');
+    }
+
+    return sendSuccess(res, invoice, 'Invoice retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getInvoice');
+  }
+};
+
+export const getMyInvoices = async (req, res) => {
+  try {
+    const accountId = req.account?.accountId;
+    if (!accountId) {
+      return sendValidationError(res, 'Account ID required');
+    }
+
+    const invoices = await Invoice.find({ accountId })
+      .sort({ invoiceDate: -1 })
+      .populate('subscriptionId');
+
+    return sendSuccess(res, {
+      data: invoices
+    }, 'My invoices retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'getMyInvoices');
   }
 };
 
@@ -34,18 +87,29 @@ export const downloadInvoicePDF = async (req, res) => {
   try {
     const { invoiceId } = req.params;
     logger.info('📄 Invoice PDF requested:', invoiceId);
-    return sendSuccess(res, { invoiceId, format: 'pdf' }, 'Invoice PDF generated');
+    
+    const invoice = await Invoice.findById(invoiceId);
+    if (!invoice) {
+      return sendNotFound(res, 'Invoice not found');
+    }
+
+    // For now, return invoice data. In production, generate actual PDF
+    return sendSuccess(res, { 
+      invoiceId, 
+      format: 'pdf',
+      invoiceData: invoice 
+    }, 'Invoice PDF ready for download');
   } catch (error) {
     return handleControllerError(res, error, 'downloadInvoicePDF');
   }
 };
 
-export const getMyInvoices = async (req, res) => {
-  try {
-    return sendSuccess(res, { invoices: [] }, 'My invoices retrieved');
-  } catch (error) {
-    return handleControllerError(res, error, 'getMyInvoices');
-  }
+export default {
+  getAllInvoices,
+  generateInvoice,
+  getInvoice,
+  getMyInvoices,
+  downloadInvoicePDF
 };
 
 export const sendInvoiceEmail = async (req, res) => {

@@ -4,6 +4,7 @@ import { handleControllerError } from '../utils/errorHandler.js';
 import PricingPlan from '../models/PricingPlan.js';
 import Payment from '../models/Payment.js';
 import { cashfreeService } from '../services/cashfreeService.js';
+import mongoose from 'mongoose';
 
 export const createSubscription = async (req, res) => {
   try {
@@ -202,9 +203,145 @@ export const resumeSubscription = async (req, res) => {
 
 export const getAllSubscriptions = async (req, res) => {
   try {
-    return sendSuccess(res, { subscriptions: [] }, 'All subscriptions retrieved');
+    const accountId = req.account?.accountId || req.user?.accountId;
+    const userRole = req.account?.role || req.user?.role;
+    const isAdmin = userRole === 'superadmin' || userRole === 'admin';
+    const db = mongoose.connection.db;
+
+    logger.info(`🔍 getAllSubscriptions - isAdmin: ${isAdmin}, userRole: ${userRole}, accountId: ${accountId}`);
+
+    // First try to fetch from subscriptions collection
+    const subscriptionCollection = db.collection('subscriptions');
+    
+    // If admin/superadmin, fetch ALL subscriptions; otherwise filter by accountId
+    const filter = isAdmin ? {} : { accountId };
+    
+    const subscriptions = await subscriptionCollection
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    if (subscriptions.length > 0) {
+      const count = isAdmin ? subscriptions.length : `${subscriptions.length} for account ${accountId}`;
+      logger.info(`✅ Fetched ${count} subscriptions`);
+      return sendSuccess(res, { subscriptions }, 'Subscriptions retrieved');
+    }
+
+    // Fallback: Fetch from completed payments if no subscriptions found
+    const payments = await Payment.find({
+      ...(isAdmin ? {} : { accountId }),
+      status: { $in: ['completed', 'PAID', 'paid'] }
+    }).sort({ createdAt: -1 });
+
+    if (payments.length === 0) {
+      return sendSuccess(res, { subscriptions: [] }, 'No subscriptions found');
+    }
+
+    // Group by plan name to create subscriptions
+    const subscriptionMap = new Map();
+
+    payments.forEach(payment => {
+      const key = payment.planName;
+      if (!subscriptionMap.has(key)) {
+        subscriptionMap.set(key, {
+          _id: payment.accountId + '_' + payment.planName,
+          planName: payment.planName,
+          status: 'active',
+          startDate: payment.createdAt,
+          nextBillingDate: new Date(payment.createdAt),
+          billingCycle: payment.billingCycle,
+          totalTransactions: 0,
+          totalPaid: 0,
+          payments: []
+        });
+      }
+
+      const sub = subscriptionMap.get(key);
+      sub.totalTransactions += 1;
+      sub.totalPaid += payment.amount || 0;
+      sub.payments.push(payment);
+
+      // Update next billing date based on cycle
+      if (payment.billingCycle === 'monthly') {
+        sub.nextBillingDate = new Date(payment.createdAt);
+        sub.nextBillingDate.setMonth(sub.nextBillingDate.getMonth() + 1);
+      } else if (payment.billingCycle === 'quarterly' || payment.billingCycle === '3-months') {
+        sub.nextBillingDate = new Date(payment.createdAt);
+        sub.nextBillingDate.setMonth(sub.nextBillingDate.getMonth() + 3);
+      } else if (payment.billingCycle === 'annual') {
+        sub.nextBillingDate = new Date(payment.createdAt);
+        sub.nextBillingDate.setFullYear(sub.nextBillingDate.getFullYear() + 1);
+      }
+    });
+
+    const formattedSubscriptions = Array.from(subscriptionMap.values()).map(sub => {
+      const { payments, ...subData } = sub;
+      return subData;
+    });
+
+    logger.info(`✅ Fetched ${formattedSubscriptions.length} subscriptions for account ${accountId}`);
+
+    return sendSuccess(res, { subscriptions: formattedSubscriptions }, 'Subscriptions retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getAllSubscriptions');
+  }
+};
+
+export const getSubscriptionTransactions = async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const { subscriptionId } = req.params;
+
+    // Extract plan name from subscription ID (format: accountId_planName)
+    const planName = subscriptionId.split('_').slice(1).join('_');
+
+    // Fetch all payments for this plan
+    const transactions = await Payment.find({
+      accountId,
+      planName,
+      status: 'completed'
+    })
+      .sort({ createdAt: -1 })
+      .select('_id amount planName billingCycle status orderId createdAt updatedAt');
+
+    const formattedTransactions = transactions.map((trans, index) => ({
+      _id: trans._id,
+      invoiceNumber: `INV-${String(index + 1).padStart(5, '0')}`,
+      amount: trans.amount,
+      planName: trans.planName,
+      billingCycle: trans.billingCycle,
+      status: trans.status,
+      orderId: trans.orderId,
+      date: trans.createdAt,
+      createdAt: trans.createdAt
+    }));
+
+    logger.info(`✅ Fetched ${transactions.length} transactions for subscription ${subscriptionId}`);
+
+    return sendSuccess(res, { transactions: formattedTransactions }, 'Transactions retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'getSubscriptionTransactions');
+  }
+};
+
+export const getPayments = async (req, res) => {
+  try {
+    const accountId = req.account.accountId;
+    const status = req.query.status || 'completed';
+
+    // Fetch payments for this account with the specified status
+    const payments = await Payment.find({
+      accountId,
+      status: status === 'completed' ? 'completed' : 'pending'
+    })
+      .sort({ createdAt: -1 })
+      .select('_id amount planName billingCycle status orderId createdAt updatedAt');
+
+    logger.info(`✅ Fetched ${payments.length} payments for account ${accountId}`);
+
+    return sendSuccess(res, { payments }, 'Payments retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'getPayments');
   }
 };
 
@@ -220,5 +357,7 @@ export default {
   changePlan,
   pauseSubscription,
   resumeSubscription,
-  getAllSubscriptions
+  getAllSubscriptions,
+  getSubscriptionTransactions,
+  getPayments
 };

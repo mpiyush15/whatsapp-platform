@@ -72,39 +72,28 @@ export const refundPayment = async (req, res) => {
 
 export const getAllPayments = async (req, res) => {
   try {
-    const user = req.user;
-    
-    console.log('🔍 getAllPayments - Debug Info:');
-    console.log('   user object:', JSON.stringify(user, null, 2));
-    console.log('   user.role:', user?.role);
-    
-    // Temporarily allow all for debugging
-    console.log('✅ Fetching all payments...');
+    const { status } = req.query;
     const db = mongoose.connection.db;
-    const payments = await db.collection('payments').find().toArray();
-    console.log('💳 Found', payments.length, 'payments');
     
-    // Log detailed payment data
-    console.log('\n💵 PAYMENT DATA DETAILS:');
-    console.log('═══════════════════════════════════════');
-    payments.forEach((pay, idx) => {
-      console.log(`\n[Payment ${idx + 1}]`);
-      console.log(`  paymentId: ${pay.paymentId}`);
-      console.log(`  orderId: ${pay.orderId}`);
-      console.log(`  cashfreeOrderId: ${pay.cashfreeOrderId}`);
-      console.log(`  cashfreePaymentId: ${pay.cashfreePaymentId}`);
-      console.log(`  accountId: ${pay.accountId}`);
-      console.log(`  amount: ₹${pay.amount}`);
-      console.log(`  status: ${pay.status}`);
-      console.log(`  paymentMethod: ${pay.paymentMethod}`);
-      console.log(`  currency: ${pay.currency}`);
-      console.log(`  description: ${pay.description}`);
-      console.log(`  createdAt: ${pay.createdAt}`);
-      console.log(`  transactionDate: ${pay.transactionDate}`);
-    });
-    console.log('\n═══════════════════════════════════════');
+    // Build filter based on query params
+    const filter = {};
+    if (status === 'completed') {
+      filter.status = { $in: ['paid', 'completed'] };
+    } else if (status === 'pending') {
+      filter.status = 'pending';
+    } else if (status === 'failed') {
+      filter.status = { $in: ['failed', 'cancelled'] };
+    }
     
-    return sendSuccess(res, { payments }, 'All payments retrieved');
+    // Fetch payments with filter and sort by latest first (no duplicates - MongoDB _id is unique)
+    const payments = await db.collection('payments')
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .toArray();
+    
+    console.log(`✅ Found ${payments.length} payments with status: ${status || 'all'}`);
+    
+    return sendSuccess(res, { payments }, 'Payments retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getAllPayments');
   }
