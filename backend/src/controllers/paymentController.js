@@ -61,7 +61,7 @@ export const confirmPayment = async (req, res) => {
     // Update payment with webhook data
     payment.gatewayOrderId = orderId;
     payment.gatewayPaymentId = referenceId;
-    payment.status = orderStatus === 'PAID' ? 'paid' : 'failed';
+    payment.status = orderStatus; // Store Cashfree's exact status: PAID, PENDING, FAILED, etc.
     payment.completedAt = new Date();
     payment.webhookData = req.body;
     
