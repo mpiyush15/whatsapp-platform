@@ -10,6 +10,9 @@ const router = express.Router();
  * PROTECTED ROUTES - Requires JWT
  */
 
+// Superadmin routes (must be before generic routes)
+router.get('/', requireJWT, subscriptionController.getAllSubscriptions);
+
 // Payment/Checkout routes
 router.post('/create-order', requireJWT, subscriptionController.createOrder);
 router.post('/verify-payment', requireJWT, subscriptionController.verifyPayment);
@@ -21,15 +24,14 @@ router.get('/all-pending-transactions', requireJWT, subscriptionController.getAl
 
 // User subscription routes
 router.get('/my-subscriptions', requireJWT, subscriptionController.getMySubscription);
+router.post('/my-subscriptions', requireJWT, subscriptionController.getMySubscription);  // POST version for client calls
 router.get('/my-subscription', requireJWT, subscriptionController.getMySubscription);
+router.post('/my-subscription', requireJWT, subscriptionController.getMySubscription);  // POST version for client calls
 router.post('/create', requireJWT, subscriptionController.createSubscription);
 router.post('/change-plan', requireJWT, subscriptionController.changePlan);
 router.post('/cancel', requireJWT, subscriptionController.cancelSubscription);
 router.post('/pause', requireJWT, subscriptionController.pauseSubscription);
 router.post('/resume', requireJWT, subscriptionController.resumeSubscription);
 router.get('/:subscriptionId/transactions', requireJWT, subscriptionController.getSubscriptionTransactions);  // Get transactions for a subscription
-
-// Superadmin routes
-router.get('/', requireJWT, subscriptionController.getAllSubscriptions);
 
 export default router;

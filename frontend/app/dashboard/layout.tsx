@@ -117,19 +117,33 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         const token = localStorage.getItem("token")
         if (!token) return
 
-        const response = await fetch(`${API_URL}/subscriptions`, {
-          headers: { Authorization: `Bearer ${token}` }
+        // Use correct endpoint based on user type
+        const endpoint = user?.role === 'superadmin' 
+          ? '/subscriptions' 
+          : '/subscriptions/my-subscriptions'
+        
+        const method = user?.role === 'superadmin' ? 'GET' : 'POST'
+
+        const response = await fetch(`${API_URL}${endpoint}`, {
+          method: method,
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         })
 
         if (response.ok) {
           const data = await response.json()
-          if (data.data && Array.isArray(data.data)) {
+          // Handle both response formats
+          const subscriptions = data.data?.subscriptions || data.data || []
+          
+          if (Array.isArray(subscriptions)) {
             // Find the first active subscription
-            const activeSubscription = data.data.find((sub: any) => sub.status === 'active')
+            const activeSubscription = subscriptions.find((sub: any) => sub.status === 'active')
             const status = activeSubscription ? 'active' : 'inactive'
             setSubscriptionStatus(status)
-          } else if (data.data) {
-            const status = data.data.status || 'inactive'
+          } else if (subscriptions?.status) {
+            const status = subscriptions.status || 'inactive'
             setSubscriptionStatus(status)
           }
         }
@@ -144,7 +158,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       const interval = setInterval(fetchSubscriptionStatus, 60000)
       return () => clearInterval(interval)
     }
-  }, [user?.accountId])
+  }, [user?.accountId, user?.role])
 
   // Fetch notifications
   useEffect(() => {

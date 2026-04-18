@@ -175,13 +175,14 @@ export const getMySubscription = async (req, res) => {
       return sendValidationError(res, 'Account ID required');
     }
 
-    const db = require('../config/database.js').default;
-    const connection = db();
+    // Use mongoose connection to get subscriptions
+    const db = mongoose.connection.db;
+    const subscriptionCollection = db.collection('subscriptions');
 
     // Get all subscriptions for this user
-    const subscriptions = await connection.collection('subscriptions').find({
+    const subscriptions = await subscriptionCollection.find({
       accountId: accountId
-    }).toArray();
+    }).sort({ createdAt: -1 }).toArray();
 
     return sendSuccess(res, { 
       subscriptions: subscriptions || [],
@@ -220,11 +221,12 @@ export const resumeSubscription = async (req, res) => {
 export const getAllSubscriptions = async (req, res) => {
   try {
     const accountId = req.account?.accountId || req.user?.accountId;
-    const userRole = req.account?.role || req.user?.role;
-    const isAdmin = userRole === 'superadmin' || userRole === 'admin';
+    const userRole = req.user?.role;  // Get role from req.user since that's where JWT middleware puts it
+    const userType = req.account?.type || req.user?.type;  // Check type for superadmin
+    const isAdmin = userRole === 'superadmin' || userRole === 'admin' || userType === 'internal';
     const db = mongoose.connection.db;
 
-    logger.info(`🔍 getAllSubscriptions - isAdmin: ${isAdmin}, userRole: ${userRole}, accountId: ${accountId}`);
+    logger.info(`🔍 getAllSubscriptions - isAdmin: ${isAdmin}, userRole: ${userRole}, userType: ${userType}, accountId: ${accountId}`);
 
     // First try to fetch from subscriptions collection
     const subscriptionCollection = db.collection('subscriptions');

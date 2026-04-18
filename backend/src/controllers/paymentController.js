@@ -6,6 +6,7 @@ import { cashfreeService } from '../services/cashfreeService.js';
 import Payment from '../models/Payment.js';
 import Account from '../models/Account.js';
 import Subscription from '../models/Subscription.js';
+import Invoice from '../models/Invoice.js';
 import { emailService } from '../services/emailService.js';
 
 export const initiatePayment = async (req, res) => {
@@ -68,60 +69,107 @@ export const confirmPayment = async (req, res) => {
     await payment.save();
     logger.info('✅ Payment updated:', payment._id);
 
-    // If payment successful, activate the account
-    if (orderStatus === 'PAID') {
-      const account = await Account.findOne({ accountId: payment.accountId });
-      if (account) {
-        account.status = 'active';
-        account.billingStatus = 'active';
-        await account.save();
-        logger.info('✅ Account activated:', {
+    // If payment successful (PAID or completed)
+    if (orderStatus === 'PAID' || orderStatus === 'completed') {
+      // 1. Create subscription for the org
+      try {
+        const newSubscription = new Subscription({
+          subscriptionId: `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           accountId: payment.accountId,
-          status: account.status
+          planId: payment.planId,
+          status: 'active',
+          billingCycle: payment.billingCycle || 'monthly',
+          pricing: {
+            amount: payment.amount,
+            finalAmount: payment.amount,
+            currency: 'INR'
+          },
+          startDate: new Date(),
+          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          paymentGateway: 'cashfree',
+          paymentStatus: 'completed',
+          paymentAmount: payment.amount,
+          orderId: payment.orderId,
+          transactionId: payment._id.toString(),
+          createdAt: new Date()
         });
+        await newSubscription.save();
+        logger.info('✅ Subscription created:', newSubscription._id);
 
-        // Create or update subscription
+        // 2. Link subscription to account
         try {
-          const subscription = await Subscription.findOne({ accountId: payment.accountId });
-          if (!subscription) {
-            // Create new subscription
-            const newSubscription = new Subscription({
-              accountId: payment.accountId,
-              paymentId: payment._id,
-              planId: payment.planId,
-              status: 'active',
-              billingCycle: payment.billingCycle,
-              amount: payment.amount,
-              currency: 'INR',
-              startDate: new Date(),
-              endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days default
-              renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-              createdAt: new Date()
-            });
-            await newSubscription.save();
-            logger.info('✅ Subscription created:', newSubscription._id);
-          } else {
-            subscription.status = 'active';
-            subscription.paymentId = payment._id;
-            await subscription.save();
-            logger.info('✅ Subscription updated:', subscription._id);
+          await Account.findOneAndUpdate(
+            { accountId: payment.accountId },
+            { subscriptionId: newSubscription.subscriptionId },
+            { new: true }
+          );
+          logger.info('✅ Account linked to subscription');
+        } catch (linkErr) {
+          logger.error('⚠️ Error linking subscription to account:', linkErr.message);
+        }
+
+        // 3. Generate invoice
+        try {
+          const account = await Account.findOne({ accountId: payment.accountId });
+          
+          const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+          const newInvoice = new Invoice({
+            invoiceId: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            invoiceNumber: invoiceNumber,
+            accountId: payment.accountId,
+            subscriptionId: newSubscription._id,
+            invoiceDate: new Date(),
+            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+            periodStart: newSubscription.startDate,
+            periodEnd: newSubscription.endDate,
+            billTo: {
+              name: account?.name || 'Customer',
+              email: account?.email || '',
+              company: account?.companyName || 'N/A',
+              address: account?.address || 'N/A'
+            },
+            lineItems: [{
+              description: `${payment.planId} Plan - ${payment.billingCycle} Billing`,
+              quantity: 1,
+              unitPrice: payment.amount,
+              amount: payment.amount
+            }],
+            subtotal: payment.amount,
+            taxRate: 0,
+            taxAmount: 0,
+            totalAmount: payment.amount,
+            currency: 'INR',
+            status: 'issued',
+            paymentStatus: 'paid',
+            paymentMethod: 'cashfree',
+            notes: `Auto-generated invoice for subscription renewal`,
+            createdAt: new Date()
+          });
+          
+          await newInvoice.save();
+          logger.info('✅ Invoice created:', newInvoice._id, 'Number:', invoiceNumber);
+
+          // 4. Send invoice email
+          try {
+            if (account?.email) {
+              await emailService.sendInvoiceEmail({
+                to: account.email,
+                invoiceNumber: invoiceNumber,
+                amount: payment.amount,
+                planId: payment.planId,
+                accountName: account.name
+              });
+              logger.info('✅ Invoice email sent to:', account.email);
+            }
+          } catch (emailErr) {
+            logger.error('⚠️ Error sending invoice email:', emailErr.message);
           }
-        } catch (subErr) {
-          logger.error('⚠️ Error updating subscription:', subErr.message);
+        } catch (invoiceErr) {
+          logger.error('⚠️ Error generating invoice:', invoiceErr.message);
         }
-
-        // Send confirmation email
-        try {
-          await emailService.sendPaymentConfirmationEmail(
-            account.email,
-            payment._id,
-            payment.amount,
-            'success',
-            payment.pricingSnapshot?.planName || 'Plan'
-          ).catch(err => logger.error('⚠️ Email error:', err.message));
-        } catch (emailErr) {
-          logger.error('⚠️ Email service error:', emailErr.message);
-        }
+      } catch (subErr) {
+        logger.error('⚠️ Error in payment processing:', subErr.message);
       }
     }
 

@@ -19,54 +19,63 @@ export const login = async (req, res) => {
     
     // IMPORTANT: Include password in select() even though it's sensitive
     // We need it for bcrypt.compare()
-    const account = await Account.findOne({ email }).select('+password');
+    let account = await Account.findOne({ email }).select('+password');
     logger.info('📊 Account found:', !!account);
-    console.log('🔐 Password in DB?:', !!account?.password);
     
+    // If not in accounts collection, check users collection (for superadmin)
+    let user = null;
     if (!account) {
-      logger.info('❌ No account for email:', email);
-      return sendUnauthorized(res, 'Invalid email or password');
+      user = await User.findOne({ email }).select('+password');
+      logger.info('📊 User (superadmin) found:', !!user);
+      if (!user) {
+        logger.info('❌ No account/user for email:', email);
+        return sendUnauthorized(res, 'Invalid email or password');
+      }
     }
     
-    if (account.status !== 'active') {
+    // Use account or user
+    const authEntity = account || user;
+    console.log('🔐 Password in DB?:', !!authEntity?.password);
+    
+    if (account && account.status !== 'active') {
       return sendUnauthorized(res, 'Account is not active');
     }
     
     // ✅ VERIFY PASSWORD WITH BCRYPT
-    if (!account.password) {
-      logger.error('❌ No password stored for account:', email);
+    if (!authEntity.password) {
+      logger.error('❌ No password stored for:', email);
       return sendUnauthorized(res, 'Invalid email or password');
     }
     
-    const isPasswordValid = await bcrypt.compare(password, account.password);
+    const isPasswordValid = await bcrypt.compare(password, authEntity.password);
     if (!isPasswordValid) {
       logger.info('❌ Invalid password for email:', email);
       return sendUnauthorized(res, 'Invalid email or password');
     }
     
-    const user = {
-      email: account.email,
-      accountId: account.accountId,
-      name: account.name,
-      role: account.role || 'user',
-      type: account.type || 'client', // Add type field (internal, client, company)
-      workspaceId: account.accountId,
-      isDemoAccount: account.isDemoAccount || false,
-      demoLabel: account.demoLabel || null,
-      demoNote: account.demoNote || null
+    const tokenUser = {
+      email: authEntity.email,
+      accountId: authEntity.accountId || authEntity._id.toString(),
+      name: authEntity.name,
+      role: authEntity.role || 'user',
+      type: authEntity.type || (user ? 'internal' : 'client'), // Mark superadmin as internal
+      workspaceId: authEntity.accountId || authEntity._id.toString(),
+      isDemoAccount: authEntity.isDemoAccount || false,
+      demoLabel: authEntity.demoLabel || null,
+      demoNote: authEntity.demoNote || null
     };
     
-    const token = generateToken(user);
+    const token = generateToken(tokenUser);
     
-    if (account.isDemoAccount) {
+    if (account?.isDemoAccount) {
       logger.info(`🎭 DEMO ACCOUNT LOGIN: ${account.email} (${account.accountId})`);
     }
     
     return sendSuccess(res, {
       token,
-      user,
-      isDemo: account.isDemoAccount || false,
-      demoLabel: account.demoLabel || null
+      user: tokenUser,
+      isDemo: account?.isDemoAccount || false,
+      demoLabel: account?.demoLabel || null
     }, 'Login successful');
   } catch (error) {
     logger.error('❌ Login error:', error.message);
