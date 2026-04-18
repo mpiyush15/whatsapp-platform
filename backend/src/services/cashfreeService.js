@@ -134,22 +134,33 @@ export const cashfreeService = {
     }
   },
 
-  // Verify webhook signature
-  verifyWebhookSignature: (signature, body) => {
+  // Verify webhook signature - PROPER METHOD
+  verifyWebhookSignature: (signature, timestamp, rawBody) => {
     try {
-      // Cashfree sends signature in x-webhook-signature header
-      // Create HMAC SHA-256 of the body
+      if (!signature || !timestamp || !rawBody) {
+        logger.warn('⚠️ Missing signature verification headers');
+        return false;
+      }
+
+      // Per Cashfree docs: signature = HMAC-SHA256(timestamp.rawBody, CLIENT_SECRET) in base64
+      const signStr = `${timestamp}.${rawBody}`;
+      
       const computedSignature = crypto
         .createHmac('sha256', CASHFREE_API_KEY)
-        .update(JSON.stringify(body))
-        .digest('hex');
+        .update(signStr)
+        .digest('base64');
 
       const isValid = computedSignature === signature;
+      
       logger.info('🔐 Webhook signature verification:', isValid ? '✅ Valid' : '❌ Invalid');
+      if (!isValid) {
+        logger.warn('   Expected:', computedSignature);
+        logger.warn('   Received:', signature);
+      }
       
       return isValid;
     } catch (error) {
-      logger.error('❌ Webhook verification failed:', error.message);
+      logger.error('❌ Webhook verification error:', error.message);
       return false;
     }
   },

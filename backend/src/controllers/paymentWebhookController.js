@@ -12,14 +12,20 @@ export const handleCashfreeWebhook = async (req, res) => {
   try {
     const body = req.body;
     const signature = req.headers['x-webhook-signature'];
+    const timestamp = req.headers['x-webhook-timestamp'];
+    const rawBody = req.rawBody; // Captured by custom middleware
 
-    logger.info('💳 Cashfree webhook received:', body);
+    logger.info('💳 Cashfree webhook received');
+    logger.info('   Headers: signature=' + (signature ? 'YES' : 'MISSING'), 'timestamp=' + (timestamp ? 'YES' : 'MISSING'));
+    logger.info('   Body:', body);
 
-    // TODO: Fix signature verification with correct key from Cashfree
-    // For now, log and proceed (temporary for testing)
-    logger.warn('⚠️ Webhook signature verification BYPASSED (temporary for testing)');
-    logger.info('   Signature from header:', signature);
-    logger.info('   This should be fixed with correct Cashfree webhook secret key');
+    // Verify webhook signature - PROPER METHOD
+    if (!cashfreeService.verifyWebhookSignature(signature, timestamp, rawBody)) {
+      logger.warn('⚠️ Webhook signature verification FAILED - rejecting webhook');
+      return sendSuccess(res, { processed: false }, 'Signature verification failed');
+    }
+
+    logger.info('✅ Webhook signature verified - processing payment');
 
     const { data } = body;
     if (!data) {

@@ -16,6 +16,18 @@ node_modules/
 API_KEYS.md
 **/API_KEYS.md
 
+# Test & Debug Scripts (mjs, md docs)
+*.mjs
+**/*.mjs
+*-test.js
+*-debug.js
+*-verify.js
+*-check.js
+*-COMPLETE.md
+*-SUMMARY.md
+*-BRIEF.md
+*-STATUS.md
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
