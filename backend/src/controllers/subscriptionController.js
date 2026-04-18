@@ -170,7 +170,23 @@ export const getAllPendingTransactions = async (req, res) => {
 
 export const getMySubscription = async (req, res) => {
   try {
-    return sendSuccess(res, { subscription: null }, 'My subscription retrieved');
+    const accountId = req.account?.accountId;
+    if (!accountId) {
+      return sendValidationError(res, 'Account ID required');
+    }
+
+    const db = require('../config/database.js').default;
+    const connection = db();
+
+    // Get all subscriptions for this user
+    const subscriptions = await connection.collection('subscriptions').find({
+      accountId: accountId
+    }).toArray();
+
+    return sendSuccess(res, { 
+      subscriptions: subscriptions || [],
+      count: subscriptions?.length || 0
+    }, 'Subscriptions retrieved successfully');
   } catch (error) {
     return handleControllerError(res, error, 'getMySubscription');
   }

@@ -31,7 +31,6 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import campaignRoutes from './routes/campaignRoutes.js';
 import pricingRoutes from './routes/pricingRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
-import billingRoutes from './routes/billingRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import paymentWebhookRoutes from './routes/paymentWebhookRoutes.js';
 import organizationsRoutes from './routes/organizationsRoutes.js';
@@ -332,9 +331,6 @@ app.use('/api/payment', requireJWT, paymentRoutes);
 
 // Mount payment webhook routes (PUBLIC for Cashfree webhooks, JWT AUTH for status checks)
 app.use('/api/payments', paymentWebhookRoutes);
-
-// Mount billing routes (JWT AUTH for billing and invoices)
-app.use('/api/billing', requireJWT, billingRoutes);
 
 // Mount dashboard routes (JWT AUTH for dashboard statistics)
 app.use('/api/dashboard', requireJWT, dashboardRoutes);

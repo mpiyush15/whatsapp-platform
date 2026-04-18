@@ -20,6 +20,7 @@ router.get('/pending-transactions', requireJWT, subscriptionController.getPendin
 router.get('/all-pending-transactions', requireJWT, subscriptionController.getAllPendingTransactions);  // Superadmin all pending
 
 // User subscription routes
+router.get('/my-subscriptions', requireJWT, subscriptionController.getMySubscription);
 router.get('/my-subscription', requireJWT, subscriptionController.getMySubscription);
 router.post('/create', requireJWT, subscriptionController.createSubscription);
 router.post('/change-plan', requireJWT, subscriptionController.changePlan);

@@ -63,8 +63,16 @@ function CheckoutPage() {
       const endpoint = authMode === 'login' ? '/auth/login' : '/auth/signup'
       const body = authMode === 'login'
         ? { email: formData.email, password: formData.password }
-        : { name: formData.name, email: formData.email, password: formData.password }
+        : { 
+            name: formData.name, 
+            email: formData.email, 
+            password: formData.password,
+            selectedPlan: selectedPlan?.name,
+            billingCycle
+          }
 
+      console.log('📝 Auth request:', { endpoint, body })
+      
       const res = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -72,13 +80,16 @@ function CheckoutPage() {
       })
 
       const result = await res.json()
+      console.log('📦 Auth response:', result)
+      
       if (!res.ok) throw new Error(result.message || 'Auth failed')
 
-      localStorage.setItem('token', result.data.token)
+      localStorage.setItem('token', result.data?.token || result.token)
       setIsAuthenticated(true)
       setShowLogin(false)
       setFormData({ name: '', email: '', password: '' })
     } catch (err) {
+      console.error('❌ Auth error:', err)
       setAuthError(err instanceof Error ? err.message : 'Error')
     } finally {
       setAuthLoading(false)
