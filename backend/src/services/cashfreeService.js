@@ -35,8 +35,19 @@ export const cashfreeService = {
       });
 
       // Get the primary frontend URL (handle comma-separated list)
-      const frontendUrl = (process.env.FRONTEND_URL || 'https://replysys.com').split(',')[0].trim();
-      const backendUrl = (process.env.BACKEND_URL || 'http://localhost:5050').split(',')[0].trim();
+      let frontendUrl = (process.env.FRONTEND_URL || 'https://replysys.com').split(',')[0].trim();
+      let backendUrl = (process.env.BACKEND_URL || 'http://localhost:5050').split(',')[0].trim();
+
+      // Ensure production URLs use https
+      if (process.env.NODE_ENV === 'production') {
+        if (!backendUrl.startsWith('https')) {
+          // Use the backend domain from Railway
+          backendUrl = 'https://whatsapp-platform-production-e48b.up.railway.app';
+        }
+        if (!frontendUrl.startsWith('https')) {
+          frontendUrl = 'https://replysys.com';
+        }
+      }
 
       const response = await axios.post(
         `${CASHFREE_BASE_URL}/orders`,
