@@ -144,6 +144,25 @@ const pricingPlanSchema = new mongoose.Schema({
     default: false
   },
   
+  // Credits System
+  signupCredits: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  monthlyCredits: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  
+  // Publishing Control
+  publishedToPublic: {
+    type: Boolean,
+    default: true,
+    index: true
+  },
+  
   // Metadata
   createdAt: {
     type: Date,

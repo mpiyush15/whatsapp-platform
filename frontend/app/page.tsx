@@ -44,29 +44,9 @@ export default function LandingPage() {
   const [selectedChat, setSelectedChat] = useState(0)
   const [selectedProblem, setSelectedProblem] = useState(0)
 
-  // Check if user is authenticated and redirect to appropriate dashboard
-  useEffect(() => {
-    const token = getJWT()
-    if (token) {
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        
-        // Route based on user type
-        if (payload.type === 'internal') {
-          router.push('/superadmin')
-        } else if (payload.type === 'client') {
-          if (payload.accountId === '2600000') {
-            router.push('/company')
-          } else {
-            router.push('/client')
-          }
-        }
-      } catch (e) {
-        // Token parse error, continue to landing
-      }
-    }
-  }, [router])
-
+  // Note: Removed auto-redirect for logged-in users
+  // Users can now browse public pages and navigate to dashboard via navbar
+  
   const fallbackPlans = [
     {
       planId: "starter",
@@ -125,15 +105,27 @@ export default function LandingPage() {
     const fetchPricing = async () => {
       try {
         setIsLoadingPlans(true)
-        const res = await fetch(`${API_URL}/pricing/plans/public`)
+        console.log('📡 Fetching pricing plans from:', `${API_URL}/pricing/plans/public`)
+        const res = await fetch(`${API_URL}/pricing/plans/public`, {
+          cache: 'no-store'
+        })
+        console.log('📥 Response status:', res.status)
         if (res.ok) {
           const data = await res.json()
-          if (data?.data?.length) {
-            setPricingPlans(data.data.map((p: any) => ({ ...p, setupFee: p.setupFee || 3000 })))
+          console.log('📥 Plans data:', data)
+          // Handle nested response: { success, data: { data: [...], count: X } }
+          const plans = data?.data?.data || data?.data || []
+          if (plans?.length) {
+            console.log('✅ Found', plans.length, 'plans')
+            setPricingPlans(plans.map((p: any) => ({ ...p, setupFee: p.setupFee || 3000 })))
+          } else {
+            console.log('⚠️ No plans in response, using fallback')
           }
+        } else {
+          console.error('❌ API error:', res.status)
         }
       } catch (e) {
-        console.error("Failed to fetch pricing:", e)
+        console.error("❌ Failed to fetch pricing:", e)
       } finally {
         setIsLoadingPlans(false)
       }

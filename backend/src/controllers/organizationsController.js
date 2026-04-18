@@ -78,8 +78,25 @@ export const getAllOrganizations = async (req, res) => {
 
 export const getOrganizationById = async (req, res) => {
   try {
-    const { organizationId } = req.params;
-    return sendSuccess(res, { organizationId }, 'Organization retrieved');
+    const { id } = req.params;
+    const user = req.user;
+    
+    // Only superadmin can view organization details
+    if (user.role !== 'superadmin') {
+      return sendError(res, 'Unauthorized: Only superadmin can view organization details', 403);
+    }
+    
+    // Query by accountId using Mongoose
+    const Account = mongoose.model('Account');
+    const organization = await Account.findOne({
+      accountId: id
+    }).lean();
+    
+    if (!organization) {
+      return sendError(res, 'Organization not found', 404);
+    }
+    
+    return sendSuccess(res, organization, 'Organization retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getOrganizationById');
   }
@@ -138,6 +155,89 @@ export const resetOrganizationPassword = async (req, res) => {
   }
 };
 
+export const assignPlanToOrganization = async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const { plan, billingCycle, reason, markAsPaid } = req.body;
+
+    // Validation
+    if (!accountId) {
+      return sendValidationError(res, 'Account ID is required');
+    }
+
+    const validPlans = ['free', 'starter', 'pro', 'enterprise', 'custom'];
+    if (plan && !validPlans.includes(plan)) {
+      return sendValidationError(res, `Invalid plan. Must be one of: ${validPlans.join(', ')}`);
+    }
+
+    const validCycles = ['monthly', 'quarterly', 'annual'];
+    if (billingCycle && !validCycles.includes(billingCycle)) {
+      return sendValidationError(res, `Invalid billing cycle. Must be one of: ${validCycles.join(', ')}`);
+    }
+
+    // Get Account model
+    const Account = mongoose.model('Account');
+    
+    const account = await Account.findOne({ accountId });
+    if (!account) {
+      return sendNotFound(res, 'Organization not found');
+    }
+
+    // Update plan and billing cycle
+    if (plan) account.plan = plan;
+    if (billingCycle) account.billingCycle = billingCycle;
+
+    // Track plan assignment history
+    if (!account.planAssignmentHistory) {
+      account.planAssignmentHistory = [];
+    }
+
+    account.planAssignmentHistory.push({
+      plan: plan || account.plan,
+      billingCycle: billingCycle || account.billingCycle,
+      assignedBy: req.user?.email || 'system',
+      reason: reason || '',
+      assignedAt: new Date(),
+      markedAsPaid: markAsPaid || false
+    });
+
+    // If marked as paid, update billing status for old organizations
+    if (markAsPaid) {
+      account.billingStatus = 'active';
+      account.lastPaymentDate = new Date();
+      
+      logger.info('✅ Old organization plan assigned and marked as paid', {
+        accountId,
+        plan,
+        billingCycle,
+        markedAsPaid: true,
+        assignedBy: req.user?.email
+      });
+    }
+
+    await account.save();
+
+    logger.info('✅ Plan assigned to organization', {
+      accountId,
+      plan,
+      billingCycle,
+      reason,
+      markAsPaid,
+      assignedBy: req.user?.email
+    });
+
+    return sendSuccess(res, {
+      accountId: account.accountId,
+      name: account.name,
+      plan: account.plan,
+      billingCycle: account.billingCycle,
+      markedAsPaid: markAsPaid || false
+    }, 'Plan assigned successfully');
+  } catch (error) {
+    return handleControllerError(res, error, 'assignPlanToOrganization');
+  }
+}
+
 export default { 
   createOrganization, 
   getOrganization, 
@@ -149,5 +249,6 @@ export default {
   migrateBillingDates,
   generatePaymentLink,
   createInvoice,
-  resetOrganizationPassword
+  resetOrganizationPassword,
+  assignPlanToOrganization
 };

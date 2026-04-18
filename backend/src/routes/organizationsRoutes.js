@@ -15,7 +15,8 @@ import {
   migrateBillingDates,
   generatePaymentLink,
   createInvoice,
-  resetOrganizationPassword
+  resetOrganizationPassword,
+  assignPlanToOrganization
 } from '../controllers/organizationsController.js';
 
 const router = express.Router();
@@ -82,5 +83,12 @@ router.delete('/:id', deleteOrganization);
  * @access  Admin only (requires JWT auth)
  */
 router.post('/:id/reset-password', resetOrganizationPassword);
+
+/**
+ * @route   PUT /api/admin/organizations/:accountId/assign-plan
+ * @desc    Assign a pricing plan to an organization
+ * @access  Admin only (requires JWT auth)
+ */
+router.put('/:accountId/assign-plan', assignPlanToOrganization);
 
 export default router;

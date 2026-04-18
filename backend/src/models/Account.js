@@ -310,6 +310,13 @@ const accountSchema = new mongoose.Schema({
     default: null
   },
   
+  // Credits System (for message-based billing)
+  creditBalance: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  
   paymentHistory: [{
     invoiceId: mongoose.Schema.Types.ObjectId,
     orderId: String,

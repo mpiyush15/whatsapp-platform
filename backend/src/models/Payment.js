@@ -14,6 +14,10 @@ const paymentSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  cashfreeAccountId: {
+    type: String, // ✅ Store Cashfree customer_id for reference
+    index: true
+  },
   subscriptionId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Subscription'

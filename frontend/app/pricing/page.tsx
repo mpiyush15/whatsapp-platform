@@ -1,403 +1,231 @@
 'use client'
 
-import { Check, ChevronRight, ArrowRight } from 'lucide-react'
-import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { Check } from 'lucide-react'
+import { API_URL } from '@/lib/config/api'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
-import { PlanAgreementModal } from '@/components/PlanAgreementModal'
-import { BookDemoModal } from '@/components/BookDemoModal'
-import { API_URL } from '@/lib/config/api'
+
+interface Plan {
+  _id: string
+  name: string
+  description: string
+  monthlyPrice: number
+  yearlyPrice: number
+  setupFee: number
+  signupCredits: number
+  monthlyCredits: number
+  isPopular: boolean
+  isActive: boolean
+  features: { included: string[] }
+}
 
 export default function PricingPage() {
-  const [plans, setPlans] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [showAgreementModal, setShowAgreementModal] = useState(false)
-  const [showDemoModal, setShowDemoModal] = useState(false)
-  const [selectedPlanName, setSelectedPlanName] = useState<string>("")
-
-  const fallbackPlans = [
-    {
-      planId: 'starter',
-      name: 'Starter',
-      description: 'Perfect for getting started',
-      monthlyPrice: 2499,
-      setupFee: 3000,
-      isPopular: false,
-      features: {
-        included: [
-          '1 WhatsApp Number',
-          'Broadcast Messaging',
-          'Basic Chatbot (Menu-driven)',
-          'Live Chat Dashboard',
-          '3 Team Agents',
-          'Contact Management',
-          'Basic Analytics',
-          'Email Notifications',
-          'Standard Support',
-        ],
-      },
-    },
-    {
-      planId: 'pro',
-      name: 'Pro',
-      description: 'For scaling businesses',
-      monthlyPrice: 4999,
-      setupFee: 3000,
-      isPopular: true,
-      features: {
-        included: [
-          '3 WhatsApp Numbers',
-          'Everything in Starter',
-          'Advanced Chatbot (Logic-based)',
-          'Campaign Automation',
-          '10 Team Agents',
-          'Scheduled Broadcasting',
-          'Advanced Analytics & Reports',
-          'Webhook Support',
-          'Priority Support 24/7',
-          'Agent Routing & Tagging',
-        ],
-      },
-    },
-  ]
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('monthly')
 
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        const response = await fetch(`${API_URL}/pricing/plans/public`)
-        const data = await response.json()
-        setPlans(data.data || fallbackPlans)
+        setLoading(true)
+        console.log('📡 Fetching public pricing plans...')
+        
+        const res = await fetch(`${API_URL}/pricing/plans/public`, {
+          cache: 'no-store'
+        })
+        
+        console.log('📥 Response:', res.status)
+        
+        if (!res.ok) {
+          throw new Error(`API error: ${res.status}`)
+        }
+
+        const data = await res.json()
+        console.log('📥 Data:', data)
+
+        // Handle nested response structure
+        const plansData = data?.data?.data || data?.data || []
+        console.log('✅ Plans:', plansData)
+        
+        if (Array.isArray(plansData)) {
+          setPlans(plansData)
+        }
       } catch (err) {
-        console.error('Failed to fetch plans:', err)
-        setPlans(fallbackPlans)
+        console.error('❌ Error:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load pricing')
       } finally {
-        setIsLoading(false)
+        setLoading(false)
       }
     }
+
     fetchPlans()
   }, [])
 
-  const plansToDisplay = isLoading ? fallbackPlans : (plans.length > 0 ? plans : fallbackPlans)
-
-  const comparisonFeatures = [
-    { name: 'WhatsApp Numbers', starter: '1', pro: '3' },
-    { name: 'Team Agents', starter: '3', pro: '10' },
-    { name: 'Broadcast Messages', starter: 'Limited', pro: 'Unlimited' },
-    { name: 'Chatbot Type', starter: 'Basic (Menu)', pro: 'Advanced (Logic)' },
-    { name: 'Campaign Automation', starter: '❌', pro: '✓' },
-    { name: 'Scheduled Broadcasting', starter: '❌', pro: '✓' },
-    { name: 'Advanced Analytics', starter: 'Basic', pro: 'Advanced' },
-    { name: 'Webhook Support', starter: '❌', pro: '✓' },
-    { name: 'API Access', starter: '❌', pro: 'Limited' },
-    { name: 'Live Chat Dashboard', starter: '✓', pro: '✓' },
-    { name: 'Contact Management', starter: '✓', pro: '✓' },
-    { name: 'Email Notifications', starter: '✓', pro: '✓' },
-    { name: 'Support Level', starter: 'Standard', pro: 'Priority 24/7' },
-    { name: 'Agent Routing', starter: '❌', pro: '✓' },
-  ]
-
   return (
-    <div className='min-h-screen bg-white'>
+    <div className="min-h-screen bg-white flex flex-col">
       <Navbar />
 
-      {/* HERO */}
-      <section className='pt-32 pb-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-green-50 to-white'>
-        <div className='max-w-5xl mx-auto text-center'>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <h1 className='text-6xl font-bold text-gray-900 mb-6'>Transparent Pricing</h1>
-            <p className='text-xl text-gray-600 mb-8 max-w-3xl mx-auto'>
-              No hidden fees. No surprises. Just simple, straightforward pricing that scales with your business.
-            </p>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* PRICING CARDS */}
-      <section className='py-20 px-4 sm:px-6 lg:px-8 bg-white'>
-        <div className='max-w-5xl mx-auto'>
-          <div className='grid lg:grid-cols-2 gap-8 mb-16'>
-            {plansToDisplay.map((plan: any, idx: number) => (
-              <motion.div
-                key={plan.planId}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: idx * 0.15 }}
-                viewport={{ once: true }}
-                whileHover={{ scale: 1.02, transition: { duration: 0.3 } }}
-                className={`rounded-2xl border-2 overflow-hidden transition-all ${
-                  plan.isPopular
-                    ? 'border-gray-300 shadow-2xl lg:scale-105 bg-white'
-                    : 'border-gray-200 shadow-lg hover:shadow-xl bg-white'
-                }`}
+      <main className="flex-1 py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">Simple, Transparent Pricing</h1>
+            <p className="text-xl text-gray-600 mb-8">Choose the perfect plan for your business</p>
+            
+            {/* Billing Period Toggle */}
+            <div className="flex justify-center items-center gap-4 mb-8">
+              <span className={`text-sm font-semibold ${billingPeriod === 'monthly' ? 'text-gray-900' : 'text-gray-500'}`}>
+                Monthly
+              </span>
+              <button
+                onClick={() => setBillingPeriod(billingPeriod === 'monthly' ? 'annual' : 'monthly')}
+                className="relative inline-flex h-8 w-14 items-center rounded-full bg-gray-300 transition-colors focus:outline-none"
+                style={{
+                  backgroundColor: billingPeriod === 'annual' ? '#3b82f6' : '#d1d5db'
+                }}
               >
-                {/* Header */}
-                <div className={`p-8 bg-gray-50 text-gray-900`}>
-                  {plan.isPopular && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      whileInView={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.4 }}
-                      className='mb-4 inline-block bg-gray-200 text-gray-900 px-4 py-1.5 rounded-full text-xs font-bold tracking-wide'
-                    >
-                      🌟 RECOMMENDED
-                    </motion.div>
-                  )}
-                  <h3 className='text-3xl font-bold mb-2'>{plan.name}</h3>
-                  <p className={`mb-6 text-sm text-gray-600`}>
-                    {plan.description}
-                  </p>
-
-                  {/* Price */}
-                  <div className='mb-6'>
-                    <div className='flex items-baseline gap-1 mb-2'>
-                      <span className='text-5xl font-bold'>₹{plan.monthlyPrice.toLocaleString()}</span>
-                      <span className={`text-gray-600`}>/month</span>
-                    </div>
-                    <p className={`text-sm text-gray-600`}>
-                      + ₹{(plan.setupFee || 3000).toLocaleString()} setup (one-time)
-                    </p>
-                  </div>
-
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      setSelectedPlanName(plan.name)
-                      setShowAgreementModal(true)
-                    }}
-                    className={`w-full py-3 px-6 rounded-lg font-bold text-center transition-all bg-gray-200 text-gray-900 hover:bg-gray-300`}
-                  >
-                    Get Started
-                  </motion.button>
-                </div>
-
-                {/* Features */}
-                <div className={`p-8 ${plan.isPopular ? 'bg-white text-gray-900' : ''}`}>
-                  <p className='font-semibold text-sm mb-6 text-gray-700 uppercase tracking-wide'>Included Features</p>
-                  <motion.ul
-                    initial='hidden'
-                    whileInView='visible'
-                    transition={{ staggerChildren: 0.05 }}
-                    variants={{
-                      hidden: { opacity: 0 },
-                      visible: { opacity: 1 },
-                    }}
-                    className='space-y-4'
-                  >
-                    {plan.features?.included?.map((feature: string, i: number) => (
-                      <motion.li
-                        key={feature}
-                        variants={{
-                          hidden: { opacity: 0, x: -10 },
-                          visible: { opacity: 1, x: 0 },
-                        }}
-                        transition={{ duration: 0.3 }}
-                        className='flex gap-3 items-start'
-                      >
-                        <Check className='h-5 w-5 text-green-600 flex-shrink-0 mt-0.5' />
-                        <span className='text-gray-700'>{feature}</span>
-                      </motion.li>
-                    ))}
-                  </motion.ul>
-                </div>
-              </motion.div>
-            ))}
+                <span
+                  className="inline-block h-6 w-6 transform rounded-full bg-white transition-transform"
+                  style={{
+                    transform: billingPeriod === 'annual' ? 'translateX(1.75rem)' : 'translateX(0.25rem)'
+                  }}
+                />
+              </button>
+              <span className={`text-sm font-semibold ${billingPeriod === 'annual' ? 'text-gray-900' : 'text-gray-500'}`}>
+                Annual <span className="text-green-600 text-xs font-bold">Save 20%</span>
+              </span>
+            </div>
           </div>
 
-          {/* Info */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            viewport={{ once: true }}
-            className='bg-green-50 border border-green-200 rounded-xl p-6 mb-16'
-          >
-            <p className='text-green-900'>
-              <strong>💡 Tip:</strong> Choose Pro if you need multiple numbers, advanced automation, and priority support. Start with Starter and upgrade anytime.
-            </p>
-          </motion.div>
-        </div>
-      </section>
+          {/* Error State */}
+          {error && (
+            <div className="max-w-2xl mx-auto mb-8 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-600">❌ {error}</p>
+            </div>
+          )}
 
-      {/* DETAILED COMPARISON TABLE */}
-      <section className='py-20 px-4 sm:px-6 lg:px-8 bg-gray-50'>
-        <div className='max-w-6xl mx-auto'>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            viewport={{ once: true }}
-            className='text-center mb-16'
-          >
-            <h2 className='text-4xl font-bold text-gray-900 mb-4'>Detailed Comparison</h2>
-            <p className='text-gray-600'>See exactly what's included in each plan</p>
-          </motion.div>
+          {/* Loading State */}
+          {loading && (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin">⏳</div>
+              <p className="text-gray-600 mt-2">Loading pricing plans...</p>
+            </div>
+          )}
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            viewport={{ once: true }}
-            className='overflow-x-auto'
-          >
-            <table className='w-full'>
-              <thead>
-                <tr className='border-b-2 border-gray-300'>
-                  <th className='text-left py-4 px-6 font-bold text-gray-900'>Feature</th>
-                  <th className='text-center py-4 px-6 font-bold text-gray-900'>Starter</th>
-                  <th className='text-center py-4 px-6 font-bold text-green-600'>Pro</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparisonFeatures.map((feature, i) => (
-                  <motion.tr
-                    key={i}
-                    initial={{ opacity: 0 }}
-                    whileInView={{ opacity: 1 }}
-                    transition={{ duration: 0.3, delay: i * 0.05 }}
-                    viewport={{ once: true }}
-                    className={i % 2 === 0 ? 'bg-white hover:bg-green-50' : 'bg-gray-100 hover:bg-green-50'}
+          {/* Plans Grid */}
+          {!loading && plans.length > 0 && (
+            <div className="flex justify-center">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 w-full max-w-6xl">
+                {plans.map((plan) => (
+                  <div
+                    key={plan._id}
+                    className={`relative rounded-lg shadow-lg overflow-hidden transition-transform hover:scale-105 mx-auto w-full max-w-sm ${
+                      plan.isPopular
+                        ? 'ring-2 ring-blue-500 transform lg:scale-105'
+                        : 'border border-gray-200'
+                    }`}
                   >
-                    <td className='py-4 px-6 font-medium text-gray-900'>{feature.name}</td>
-                    <td className='text-center py-4 px-6 text-gray-700'>{feature.starter}</td>
-                    <td className='text-center py-4 px-6 text-green-600 font-bold'>{feature.pro}</td>
-                  </motion.tr>
+                    {plan.isPopular && (
+                      <div className="absolute top-0 right-0 bg-blue-500 text-white px-4 py-1 text-xs font-bold">
+                        POPULAR ⭐
+                      </div>
+                    )}
+
+                    <div className="p-6 bg-white h-full flex flex-col">
+                      {/* Plan Name */}
+                      <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                      
+                      {/* Description */}
+                      {plan.description && (
+                        <p className="text-sm text-gray-600 mb-4">{plan.description}</p>
+                      )}
+
+                      {/* Pricing */}
+                      <div className="mb-6">
+                        <div className="mb-2">
+                          <p className="text-4xl font-bold text-gray-900">
+                            ₹{billingPeriod === 'monthly' ? plan.monthlyPrice : Math.floor(plan.yearlyPrice / 12)}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {billingPeriod === 'monthly' ? '/month' : '/month (billed annually)'}
+                          </p>
+                        </div>
+                        {billingPeriod === 'annual' && (
+                          <p className="text-sm text-green-600 font-semibold">
+                            Total: ₹{plan.yearlyPrice}/year
+                          </p>
+                        )}
+                        {plan.setupFee > 0 && (
+                          <p className="text-xs text-gray-500 mt-2">
+                            Setup fee: ₹{plan.setupFee}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Credits */}
+                      {(plan.signupCredits > 0 || plan.monthlyCredits > 0) && (
+                        <div className="mb-6 pb-6 border-b border-gray-200">
+                          {plan.signupCredits > 0 && (
+                            <p className="text-sm text-green-600">
+                              ✓ ₹{plan.signupCredits} signup credits
+                            </p>
+                          )}
+                          {plan.monthlyCredits > 0 && (
+                            <p className="text-sm text-green-600">
+                              ✓ ₹{plan.monthlyCredits}/month recurring
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Features */}
+                      {plan.features?.included && plan.features.included.length > 0 && (
+                        <div className="mb-6 flex-grow">
+                          <h4 className="font-semibold text-gray-900 mb-3">Features</h4>
+                          <ul className="space-y-2">
+                            {plan.features.included.map((feature: string, idx: number) => (
+                              <li key={idx} className="flex items-start gap-2">
+                                <Check className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                                <span className="text-sm text-gray-700">{feature}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* CTA Button */}
+                      <button
+                        onClick={() => {
+                          const token = localStorage.getItem('token')
+                          // Redirect to new checkout with selected plan
+                          window.location.href = `/checkout-v2?plan=${plan.name.toLowerCase()}&cycle=${billingPeriod}`
+                        }}
+                        className={`w-full py-3 rounded-lg font-semibold transition ${
+                          plan.isPopular
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                        }`}
+                      >
+                        Get Started
+                      </button>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </motion.div>
+              </div>
+            </div>
+          )}
+
+          {/* No Plans State */}
+          {!loading && plans.length === 0 && !error && (
+            <div className="text-center py-12">
+              <p className="text-gray-600 mb-4">No pricing plans available yet.</p>
+              <p className="text-gray-500 text-sm">Please check back soon!</p>
+            </div>
+          )}
         </div>
-      </section>
-
-      {/* FAQ */}
-      <section className='py-20 px-4 sm:px-6 lg:px-8 bg-white'>
-        <div className='max-w-3xl mx-auto'>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            viewport={{ once: true }}
-            className='text-center mb-16'
-          >
-            <h2 className='text-4xl font-bold text-gray-900 mb-4'>Frequently Asked Questions</h2>
-          </motion.div>
-
-          <motion.div
-            variants={{
-              hidden: { opacity: 0 },
-              visible: {
-                opacity: 1,
-                transition: {
-                  staggerChildren: 0.1,
-                },
-              },
-            }}
-            initial='hidden'
-            whileInView='visible'
-            viewport={{ once: true }}
-            className='space-y-4'
-          >
-            {[
-              {
-                q: 'Can I change plans later?',
-                a: 'Yes! You can upgrade or downgrade your plan anytime. Changes take effect on your next billing cycle.',
-              },
-              {
-                q: 'Do you offer annual billing?',
-                a: 'Currently, we bill monthly. Contact us if you need annual billing options.',
-              },
-              {
-                q: 'How do I get started?',
-                a: 'Book a demo with our team to understand your needs and get personalized guidance. We\'ll schedule a time that works for you.',
-              },
-              {
-                q: 'What about message costs?',
-                a: 'Messages are billed separately at Meta\'s rates (approximately ₹0.15 per message). The plan covers platform features only.',
-              },
-              {
-                q: 'Can I get a custom plan?',
-                a: 'Absolutely! For enterprises with special needs, book a demo or contact our sales team for a custom proposal.',
-              },
-              {
-                q: 'What if I need help choosing?',
-                a: 'Our team is happy to help! Contact us and we\'ll recommend the best plan for your use case.',
-              },
-            ].map((faq, i) => (
-              <motion.details
-                key={i}
-                variants={{
-                  hidden: { opacity: 0, y: 10 },
-                  visible: { opacity: 1, y: 0 },
-                }}
-                transition={{ duration: 0.3 }}
-                className='group border border-gray-200 rounded-lg p-6 cursor-pointer hover:border-green-600 hover:shadow-lg transition-all'
-              >
-                <summary className='flex items-center justify-between font-bold text-gray-900'>
-                  {faq.q}
-                  <motion.div
-                    animate={{ rotate: 0 }}
-                    className='group-open:rotate-90 transition-transform text-green-600'
-                  >
-                    <ChevronRight className='h-5 w-5' />
-                  </motion.div>
-                </summary>
-                <motion.p
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  transition={{ duration: 0.3 }}
-                  className='text-gray-600 mt-4 leading-relaxed'
-                >
-                  {faq.a}
-                </motion.p>
-              </motion.details>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className='py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-green-600 to-green-700'>
-        <div className='max-w-4xl mx-auto text-center text-white'>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            viewport={{ once: true }}
-          >
-            <h2 className='text-4xl font-bold mb-6'>Ready to grow your business?</h2>
-            <p className='text-lg text-green-100 mb-8 max-w-2xl mx-auto'>
-              Book a demo today and see how Replysys can transform your customer engagement.
-            </p>
-            <button
-              onClick={() => setShowDemoModal(true)}
-              className='bg-white text-green-600 hover:bg-gray-100 px-8 py-4 rounded-lg font-bold text-lg inline-flex items-center gap-2 transition-all shadow-lg'
-            >
-              Book Your Demo <ArrowRight className='h-5 w-5' />
-            </button>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* MODALS */}
-      <PlanAgreementModal
-        isOpen={showAgreementModal}
-        planName={selectedPlanName}
-        onClose={() => {
-          setShowAgreementModal(false)
-          setSelectedPlanName('')
-        }}
-        onConfirm={() => {
-          window.location.href = `/checkout?plan=${encodeURIComponent(selectedPlanName)}`
-        }}
-      />
-
-      <BookDemoModal isOpen={showDemoModal} onClose={() => setShowDemoModal(false)} />
+      </main>
 
       <Footer />
     </div>

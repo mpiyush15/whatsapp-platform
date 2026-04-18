@@ -42,6 +42,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     const userType = user.type;
     const userRole = user.role;
     
+    // Debug log
+    console.log('🔐 Dashboard Access Check:', { userType, userRole, pathname });
+    
     const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin');
     const isClientTier = pathname.startsWith('/dashboard/client');
     const isFeaturesTier = pathname.startsWith('/dashboard/features');
@@ -226,7 +229,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       { name: "System Health", icon: Activity, href: "/dashboard/superadmin/system-health", roles: [UserRole.SUPERADMIN] },
       { name: "Transactions", icon: CreditCard, href: "/dashboard/superadmin/transactions", roles: [UserRole.SUPERADMIN] },
       { name: "Invoices", icon: Receipt, href: "/dashboard/superadmin/invoices", roles: [UserRole.SUPERADMIN] },
-      { name: "Website Settings", icon: Sliders, href: "/dashboard/superadmin/website-settings", roles: [UserRole.SUPERADMIN] },
+      { name: "Plans and Offers", icon: Sliders, href: "/dashboard/superadmin/website-settings", roles: [UserRole.SUPERADMIN] },
       { name: "🧪 Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
     ]
   } else if (isClientTier) {

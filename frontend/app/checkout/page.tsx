@@ -13,6 +13,7 @@ function CheckoutContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialPlanId = searchParams.get('plan') || ''
+  const initialCycle = (searchParams.get('cycle') as 'monthly' | 'quarterly' | 'annual') || 'monthly'
 
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -21,7 +22,7 @@ function CheckoutContent() {
 
   // Plan & tenure state
   const [selectedPlanId, setSelectedPlanId] = useState(initialPlanId)
-  const [selectedTenure, setSelectedTenure] = useState<'monthly' | 'quarterly' | 'annual'>('monthly')
+  const [selectedTenure, setSelectedTenure] = useState<'monthly' | 'quarterly' | 'annual'>(initialCycle)
   const [allPlans, setAllPlans] = useState<any[]>([])
   const [isLoadingPlans, setIsLoadingPlans] = useState(true)
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
@@ -60,10 +61,23 @@ function CheckoutContent() {
         const response = await fetch(`${API_URL}/pricing/plans/public`)
         if (response.ok) {
           const data = await response.json()
-          if (data.data && data.data.length > 0) {
-            setAllPlans(data.data)
-            if (!selectedPlanId && data.data[0]) {
-              setSelectedPlanId(data.data[0].name) // Use name not planId
+          console.log('📊 Raw API Response:', data)
+          
+          // Handle different response structures
+          const plans = data.data || data.plans || []
+          console.log('📋 Extracted Plans:', plans)
+          
+          if (plans.length > 0) {
+            setAllPlans(plans)
+            // If plan from URL exists in fetched plans, use it; otherwise use first plan
+            const planFromUrl = initialPlanId || plans[0].name
+            const planExists = plans.find(p => p.name.toLowerCase() === planFromUrl.toLowerCase())
+            if (planExists) {
+              console.log('✅ Using plan from URL:', planFromUrl)
+              setSelectedPlanId(planExists.name) // Use exact name from DB
+            } else {
+              console.log('⚠️ Plan from URL not found, using first plan:', plans[0].name)
+              setSelectedPlanId(plans[0].name)
             }
           }
         }
@@ -112,8 +126,18 @@ function CheckoutContent() {
     document.body.appendChild(script)
   }, [isAuthenticated])
 
-  // Get selected plan details (select by name)
-  const selectedPlan = allPlans.find((p) => p.name === selectedPlanId || p.name.toLowerCase() === selectedPlanId?.toLowerCase())
+  // Get selected plan details (case-insensitive matching)
+  const selectedPlan = allPlans.find((p) => {
+    if (!p || !selectedPlanId) return false
+    return p.name.toLowerCase() === selectedPlanId.toLowerCase()
+  })
+
+  console.log('🔍 Plan Matching:', {
+    selectedPlanId,
+    planNames: allPlans.map(p => p.name),
+    selectedPlan: selectedPlan?.name,
+    foundMatch: !!selectedPlan
+  })
 
   // Add-ons configuration
   const ADD_ONS = [
@@ -131,26 +155,22 @@ function CheckoutContent() {
     if (!selectedPlan) return 0
 
     const monthlyPrice = selectedPlan.monthlyPrice || 0
-    let multiplier = 1
-    let discount = 0
+    const yearlyPrice = selectedPlan.yearlyPrice || (monthlyPrice * 12)
+    let basePrice = monthlyPrice
 
     switch (selectedTenure) {
       case 'monthly':
-        multiplier = 1
-        discount = (selectedPlan.monthlyDiscount || 0) / 100
+        basePrice = monthlyPrice
         break
       case 'quarterly':
-        multiplier = 3
-        discount = (selectedPlan.quarterlyDiscount || 0) / 100
+        basePrice = monthlyPrice * 3
         break
       case 'annual':
-        multiplier = 12
-        discount = (selectedPlan.annualDiscount || 0) / 100
+        basePrice = yearlyPrice
         break
     }
 
-    const basePrice = monthlyPrice * multiplier
-    const finalPrice = Math.round(basePrice * (1 - discount))
+    const finalPrice = Math.round(basePrice)
     return finalPrice + addOnTotal
   }
 
@@ -646,87 +666,66 @@ function CheckoutContent() {
 
           {/* Right Column: Order Summary */}
           <div className="lg:col-span-1">
-            {/* Limited Time Offer Banner */}
-            <div className="mb-4 sm:mb-6 bg-gradient-to-r from-white via-orange-100 to-purple-100 rounded-2xl p-3 sm:p-4 text-gray-900 shadow-lg border-2 border-gray-200">
-              <p className="text-center font-bold text-sm sm:text-lg text-gray-900">⏰ LIMITED TIME OFFER!</p>
-              <p className="text-center text-xs sm:text-sm mt-1 sm:mt-2 text-gray-700">Save UP TO {Math.max(selectedPlan?.quarterlyDiscount || 0, selectedPlan?.annualDiscount || 0)}% with longer billing periods</p>
-              <p className="text-center text-xs mt-1 sm:mt-2 font-semibold text-gray-800">Offer ends soon - Don't miss out!</p>
-            </div>
+            <div className="sticky bottom-0 lg:relative lg:bottom-auto bg-white rounded-xl sm:rounded-2xl border border-gray-300 p-4 sm:p-6 shadow-lg">
+              <h3 className="text-lg sm:text-xl font-bold text-black mb-6">Order Summary</h3>
 
-            <div className="sticky bottom-0 lg:relative lg:bottom-auto bg-white rounded-xl sm:rounded-2xl border border-gray-300 p-4 sm:p-6 shadow-lg lg:shadow-none">
-              <h3 className="text-lg sm:text-xl font-bold text-black mb-4 sm:mb-6">Order Summary</h3>
-
-              {selectedPlan && (
-                <div className="space-y-4 pb-6 border-b border-gray-300">
-                  <div>
-                    <p className="text-sm text-gray-700">Plan</p>
-                    <p className="font-semibold text-black">{selectedPlan.name}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-700">Billing Period</p>
-                    <p className="font-semibold text-black capitalize">{selectedTenure}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-700">Duration</p>
-                    <p className="font-semibold text-black">
-                      {selectedTenure === 'monthly' ? '1 Month' : selectedTenure === 'quarterly' ? '3 Months' : '12 Months'}
-                    </p>
-                  </div>
-
-                  {finalAmount > 0 && (
+              {!isLoadingPlans && selectedPlan ? (
+                <>
+                  <div className="space-y-4 pb-6 border-b border-gray-300">
                     <div>
-                      <p className="text-sm text-gray-700">Plan Subtotal</p>
-                      <p className="font-semibold text-black">₹{(selectedPlan.monthlyPrice * (selectedTenure === 'monthly' ? 1 : selectedTenure === 'quarterly' ? 3 : 12)).toLocaleString()}</p>
+                      <p className="text-sm text-gray-700">Plan</p>
+                      <p className="font-semibold text-black">{selectedPlan.name}</p>
                     </div>
-                  )}
 
-                  {selectedAddOns.length > 0 && (
                     <div>
-                      <p className="text-sm text-gray-700">Add-ons</p>
-                      <div className="space-y-1">
-                        {selectedAddOns.map(addOnId => {
-                          const addOn = ADD_ONS.find(a => a.id === addOnId)
-                          return (
-                            <div key={addOnId} className="flex justify-between">
-                              <p className="text-sm text-gray-600">• {addOn?.name}</p>
-                              <p className="text-sm font-semibold text-black">+₹{addOn?.price.toLocaleString()}</p>
-                            </div>
-                          )
-                        })}
-                      </div>
+                      <p className="text-sm text-gray-700">Billing Period</p>
+                      <p className="font-semibold text-black capitalize">{selectedTenure}</p>
                     </div>
-                  )}
 
-                  {selectedTenure !== 'monthly' && (
-                    <div className="bg-purple-50 border border-purple-300 rounded-lg p-3">
-                      <p className="text-sm text-gray-700">Discount (Limited Time)</p>
-                      <p className="font-bold text-purple-700 text-lg">
-                        -{selectedTenure === 'quarterly' ? (selectedPlan?.quarterlyDiscount || 0) : (selectedPlan?.annualDiscount || 0)}%
+                    <div>
+                      <p className="text-sm text-gray-700">Monthly Price</p>
+                      <p className="font-semibold text-black">₹{selectedPlan.monthlyPrice?.toLocaleString() || '0'}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-sm text-gray-700">Duration</p>
+                      <p className="font-semibold text-black">
+                        {selectedTenure === 'monthly' ? '1 Month' : selectedTenure === 'quarterly' ? '3 Months' : '12 Months'}
                       </p>
                     </div>
-                  )}
+
+                    {selectedAddOns.length > 0 && (
+                      <div>
+                        <p className="text-sm text-gray-700">Add-ons</p>
+                        <div className="space-y-1">
+                          {selectedAddOns.map(addOnId => {
+                            const addOn = ADD_ONS.find(a => a.id === addOnId)
+                            return (
+                              <div key={addOnId} className="flex justify-between">
+                                <p className="text-sm text-gray-600">• {addOn?.name}</p>
+                                <p className="text-sm font-semibold text-black">+₹{addOn?.price.toLocaleString()}</p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Total Amount */}
+                  <div className="mb-6 py-4 bg-gray-50 rounded-lg p-4">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm text-gray-700 font-semibold">Total Amount</span>
+                      <span className="text-3xl font-bold text-black">₹{finalAmount.toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Secured by Cashfree</p>
+                  </div>
+                </>
+              ) : (
+                <div className="py-6 text-center text-gray-500">
+                  {isLoadingPlans ? 'Loading plans...' : 'Select a plan above'}
                 </div>
               )}
-
-              {/* Total Amount */}
-              <div className="mb-4 sm:mb-6 py-3 sm:py-4 bg-gray-50 rounded-lg p-3 sm:p-4">
-                <div className="flex justify-between items-baseline mb-2">
-                  <span className="text-xs sm:text-sm text-gray-700 font-semibold">Total Amount</span>
-                  <span className="text-2xl sm:text-3xl font-bold text-black">₹{finalAmount.toLocaleString()}</span>
-                </div>
-                {selectedTenure !== 'monthly' && (
-                  <div className="bg-green-100 border border-green-400 rounded p-2 mt-2 sm:mt-3">
-                    <p className="text-xs font-bold text-green-700">
-                      ✓ You're saving ₹{(
-                        (selectedPlan.monthlyPrice * (selectedTenure === 'quarterly' ? 3 : 12)) - finalAmount
-                      ).toLocaleString()}!
-                    </p>
-                  </div>
-                )}
-                <p className="text-xs text-gray-500 mt-1 sm:mt-2">Secured by Cashfree</p>
-              </div>
 
               {/* Payment Button */}
               <Button

@@ -3,10 +3,35 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { MessageSquare, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { authService } from '@/lib/auth'
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    try {
+      const currentUser = authService.getCurrentUser()
+      setUser(currentUser)
+    } catch (e) {
+      setUser(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const getDashboardLink = () => {
+    if (!user) return '/dashboard'
+    
+    if (user.type === 'internal') {
+      return '/dashboard/superadmin'
+    } else if (user.type === 'client' && user.accountId === '2600000') {
+      return '/dashboard/company'
+    }
+    return '/dashboard/client'
+  }
 
   return (
     <nav className="fixed top-0 w-full bg-white/95 backdrop-blur-sm z-50 border-b border-gray-100">
@@ -36,16 +61,27 @@ export default function Navbar() {
             <Link href="/about" className="text-sm text-gray-600 hover:text-green-600 transition">
               About
             </Link>
-            <Link href="/auth/login">
-              <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700 hover:bg-green-50">
-                Login
-              </Button>
-            </Link>
-            <Link href="/auth/register">
-              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
-                Start Free
-              </Button>
-            </Link>
+            
+            {user ? (
+              <Link href={getDashboardLink()}>
+                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                  Dashboard
+                </Button>
+              </Link>
+            ) : (
+              <>
+                <Link href="/auth/login">
+                  <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700 hover:bg-green-50">
+                    Login
+                  </Button>
+                </Link>
+                <Link href="/auth/register">
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                    Start Free
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -101,16 +137,26 @@ export default function Navbar() {
                 About
               </Link>
               <div className="pt-2 border-t border-gray-200 flex flex-col gap-2">
-                <Link href="/auth/login" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="outline" className="w-full">
-                    Login
-                  </Button>
-                </Link>
-                <Link href="/auth/register" onClick={() => setMobileMenuOpen(false)}>
-                  <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
-                    Start Free
-                  </Button>
-                </Link>
+                {user ? (
+                  <Link href={getDashboardLink()} onClick={() => setMobileMenuOpen(false)}>
+                    <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                      Dashboard
+                    </Button>
+                  </Link>
+                ) : (
+                  <>
+                    <Link href="/auth/login" onClick={() => setMobileMenuOpen(false)}>
+                      <Button variant="outline" className="w-full">
+                        Login
+                      </Button>
+                    </Link>
+                    <Link href="/auth/register" onClick={() => setMobileMenuOpen(false)}>
+                      <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                        Start Free
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
           </div>

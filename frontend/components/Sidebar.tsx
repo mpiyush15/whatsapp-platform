@@ -175,7 +175,7 @@ export default function Sidebar() {
                     { name: "Platform Billing", icon: "DollarSign" as const, href: "/dashboard/platform-billing" },
                     { name: "Transactions", icon: "CreditCard" as const, href: "/dashboard/transactions" },
                     { name: "Invoices", icon: "Receipt" as const, href: "/dashboard/invoices" },
-                    { name: "Website Settings", icon: "Sliders" as const, href: "/dashboard/website-settings" },
+                    { name: "Plans and Offers", icon: "Sliders" as const, href: "/dashboard/superadmin/plans-and-offers" },
                   ].map((adminItem) => {
                     const Icon = iconMap[adminItem.icon as keyof typeof iconMap]
                     const isActive = pathname === adminItem.href || pathname.startsWith(adminItem.href + '/')

@@ -30,7 +30,8 @@ export const cashfreeService = {
       logger.info('📝 Creating Cashfree order:', {
         orderId: orderData.orderId,
         amount: orderData.amount,
-        customerEmail: orderData.email
+        customerEmail: orderData.email,
+        accountId: orderData.accountId // ✅ Log the internal accountId
       });
 
       const response = await axios.post(
@@ -47,7 +48,8 @@ export const cashfreeService = {
           order_meta: {
             notify_url: `${process.env.BACKEND_URL}/api/payment/webhook/confirm`,
             return_url: `${process.env.FRONTEND_URL}/payment-success?order_id=${orderData.orderId}`,
-            payment_methods: 'upi,netbanking,wallet,card'
+            payment_methods: 'upi,netbanking,wallet,card',
+            internal_account_id: orderData.accountId // ✅ Store internal accountId in metadata
           },
           order_note: orderData.description || 'Pixels WhatsApp Subscription'
         },
@@ -336,7 +338,13 @@ export const cashfreeService = {
 
           // Extract customer/account info
           const customer = order.customer_details || {};
-          const accountId = customer.customer_id || customer.phone || order.order_id;
+          const orderMeta = order.order_meta || {};
+          
+          // ✅ Try to get internal accountId from order metadata first, fallback to Cashfree customer_id
+          let accountId = orderMeta.internal_account_id || customer.customer_id || customer.phone || order.order_id;
+          
+          // If still using Cashfree account ID format, also try to find by that
+          const cashfreeAccountId = customer.customer_id;
 
           // Get transaction ID from payments array if available
           let transactionId = order.order_id;
@@ -357,7 +365,8 @@ export const cashfreeService = {
           // Prepare payment document to match our schema
           const paymentData = {
             paymentId: paymentId,
-            accountId: String(accountId),
+            accountId: String(accountId), // ✅ Internal accountId (from metadata or derived)
+            cashfreeAccountId: cashfreeAccountId, // ✅ Store Cashfree account ID for reference
             amount: parseFloat(order.order_amount) || 0,
             currency: order.order_currency || 'INR',
             paymentGateway: 'cashfree',

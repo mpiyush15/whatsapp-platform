@@ -112,7 +112,22 @@ export const generateToken = (user) => {
   );
 };
 
+/**
+ * Require Superadmin Role
+ * Must be used AFTER requireJWT middleware
+ */
+export const requireSuperAdmin = (req, res, next) => {
+  if (req.account?.type !== 'internal') {
+    return res.status(403).json({
+      success: false,
+      message: 'Superadmin access required'
+    });
+  }
+  next();
+};
+
 export default {
   requireJWT,
+  requireSuperAdmin,
   generateToken
 };

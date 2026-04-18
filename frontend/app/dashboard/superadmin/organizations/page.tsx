@@ -3,11 +3,14 @@
 import { useState, useEffect } from "react"
 import { API_URL } from "@/lib/config/api"
 import DataTable from "@/components/DataTable"
+import OrganizationDetailsDrawer from "@/components/OrganizationDetailsDrawer"
 
 export default function OrganizationsPage() {
   const [organizations, setOrganizations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [selectedOrg, setSelectedOrg] = useState<any | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   useEffect(() => {
     const fetchOrgs = async () => {
@@ -100,7 +103,10 @@ export default function OrganizationsPage() {
   const actions = [
     {
       label: "View",
-      onClick: (row) => alert(`Viewing ${row.name}`),
+      onClick: (row) => {
+        setSelectedOrg(row)
+        setDrawerOpen(true)
+      },
       variant: "primary" as const
     },
     {
@@ -152,6 +158,16 @@ export default function OrganizationsPage() {
           emptyMessage="No organizations found"
         />
       </div>
+
+      {/* Organization Details Drawer */}
+      <OrganizationDetailsDrawer
+        isOpen={drawerOpen}
+        onClose={() => {
+          setDrawerOpen(false)
+          setSelectedOrg(null)
+        }}
+        organization={selectedOrg}
+      />
     </div>
   )
 }
