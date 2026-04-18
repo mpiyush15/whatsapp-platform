@@ -41,7 +41,9 @@ export const getPaymentStatus = async (req, res) => {
 
 export const confirmPayment = async (req, res) => {
   try {
-    const { orderId, orderStatus, txStatus, txMsg, orderAmount, referenceId } = req.body;
+    // Cashfree can send data via POST body or query params
+    const webhookData = { ...req.body, ...req.query };
+    const { orderId, orderStatus, txStatus, txMsg, orderAmount, referenceId } = webhookData;
     
     logger.info('📝 Payment webhook received:', {
       orderId,
@@ -49,13 +51,21 @@ export const confirmPayment = async (req, res) => {
       txStatus,
       txMsg,
       orderAmount,
-      referenceId
+      referenceId,
+      fullBody: req.body,
+      fullQuery: req.query
     });
 
     // Find payment by orderId
     const payment = await Payment.findOne({ orderId });
     if (!payment) {
       logger.warn('⚠️ Payment not found for orderId:', orderId);
+      logger.warn('   Checking all orderId formats...');
+      
+      // Try to find by any orderId field
+      const allPayments = await Payment.find({}).limit(5);
+      logger.warn('   Sample orders in DB:', allPayments.map(p => p.orderId));
+      
       return sendSuccess(res, { orderId, status: 'notfound' }, 'Payment record not found');
     }
 
@@ -64,13 +74,26 @@ export const confirmPayment = async (req, res) => {
     payment.gatewayPaymentId = referenceId;
     payment.status = orderStatus; // Store Cashfree's exact status: PAID, PENDING, FAILED, etc.
     payment.completedAt = new Date();
-    payment.webhookData = req.body;
+    payment.webhookData = webhookData;
     
     await payment.save();
     logger.info('✅ Payment updated:', payment._id);
 
-    // If payment successful (PAID or completed)
-    if (orderStatus === 'PAID' || orderStatus === 'completed') {
+    // If payment successful - Check multiple status formats from Cashfree
+    // Cashfree can send: PAID, completed, SUCCESS
+    const isPaymentSuccessful = 
+      orderStatus === 'PAID' || 
+      orderStatus === 'completed' || 
+      orderStatus === 'SUCCESS' ||
+      (txStatus === 'SUCCESS' && orderStatus !== 'FAILED' && orderStatus !== 'PENDING');
+    
+    logger.info('🔍 Payment check:', {
+      orderStatus,
+      txStatus,
+      isPaymentSuccessful
+    });
+
+    if (isPaymentSuccessful) {
       // 1. Create subscription for the org
       try {
         const newSubscription = new Subscription({
