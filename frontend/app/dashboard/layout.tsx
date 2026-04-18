@@ -229,7 +229,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       { name: "System Health", icon: Activity, href: "/dashboard/superadmin/system-health", roles: [UserRole.SUPERADMIN] },
       { name: "Transactions", icon: CreditCard, href: "/dashboard/superadmin/transactions", roles: [UserRole.SUPERADMIN] },
       { name: "Invoices", icon: Receipt, href: "/dashboard/superadmin/invoices", roles: [UserRole.SUPERADMIN] },
-      { name: "Plans and Offers", icon: Sliders, href: "/dashboard/superadmin/website-settings", roles: [UserRole.SUPERADMIN] },
+      { name: "Plans and Offers", icon: Sliders, href: "/dashboard/superadmin/plans-and-offers", roles: [UserRole.SUPERADMIN] },
       { name: "🧪 Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
     ]
   } else if (isClientTier) {

@@ -34,6 +34,10 @@ export const cashfreeService = {
         accountId: orderData.accountId // ✅ Log the internal accountId
       });
 
+      // Get the primary frontend URL (handle comma-separated list)
+      const frontendUrl = (process.env.FRONTEND_URL || 'https://replysys.com').split(',')[0].trim();
+      const backendUrl = (process.env.BACKEND_URL || 'http://localhost:5050').split(',')[0].trim();
+
       const response = await axios.post(
         `${CASHFREE_BASE_URL}/orders`,
         {
@@ -46,8 +50,8 @@ export const cashfreeService = {
             customer_phone: orderData.phone || '9999999999'
           },
           order_meta: {
-            notify_url: `${process.env.BACKEND_URL}/api/payment/webhook/confirm`,
-            return_url: `${process.env.FRONTEND_URL}/payment-success?order_id=${orderData.orderId}`,
+            notify_url: `${backendUrl}/api/payment/webhook/confirm`,
+            return_url: `${frontendUrl}/payment-success?orderId=${orderData.orderId}&status=success`,
             payment_methods: 'upi,netbanking,wallet,card',
             internal_account_id: orderData.accountId // ✅ Store internal accountId in metadata
           },
