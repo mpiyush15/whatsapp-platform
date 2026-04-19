@@ -16,9 +16,6 @@ import {
 
 const router = express.Router();
 
-// All routes require JWT authentication
-router.use(requireJWT);
-
 /**
  * GET /api/admin/organizations
  * List all organizations with status, subscriptions, and invoices (superadmin only)

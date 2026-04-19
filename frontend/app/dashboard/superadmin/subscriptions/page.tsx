@@ -113,14 +113,14 @@ export default function SuperAdminSubscriptionsPage() {
           <table className="w-full bg-white rounded-lg shadow">
             <thead className="bg-gray-100 border-b border-gray-200">
               <tr>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Subscription ID</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Account ID</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Plan</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Account</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Amount</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Billing</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Start Date</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">End Date</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Subscription ID</th>
               </tr>
             </thead>
             <tbody>
@@ -129,11 +129,14 @@ export default function SuperAdminSubscriptionsPage() {
                   key={String(sub._id)}
                   className="border-b border-gray-200 hover:bg-gray-50 transition"
                 >
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                    {sub.planId || 'N/A'}
+                  <td className="px-6 py-4 text-xs font-mono text-blue-600 font-semibold">
+                    {sub.subscriptionId || String(sub._id).substring(0, 12)}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
+                  <td className="px-6 py-4 text-sm font-bold text-gray-900 bg-blue-50">
                     {sub.accountId}
+                  </td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    {sub.planId || sub.planName || 'N/A'}
                   </td>
                   <td className="px-6 py-4 text-sm font-semibold text-gray-900">
                     ₹{sub.pricing?.finalAmount || sub.paymentAmount || 0}
@@ -142,18 +145,19 @@ export default function SuperAdminSubscriptionsPage() {
                     {sub.billingCycle || 'monthly'}
                   </td>
                   <td className="px-6 py-4 text-sm">
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      sub.status === 'active' ? 'bg-green-100 text-green-800' :
+                      sub.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
                       {sub.status || 'active'}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
-                    {sub.startDate ? new Date(sub.startDate).toLocaleDateString() : 'N/A'}
+                    {sub.startDate ? new Date(sub.startDate).toLocaleDateString('en-IN') : 'N/A'}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
-                    {sub.endDate ? new Date(sub.endDate).toLocaleDateString() : 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 text-xs font-mono text-gray-600 max-w-xs truncate">
-                    {sub.subscriptionId || String(sub._id)}
+                    {sub.endDate ? new Date(sub.endDate).toLocaleDateString('en-IN') : 'N/A'}
                   </td>
                 </tr>
               ))}

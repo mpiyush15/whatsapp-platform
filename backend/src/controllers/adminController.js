@@ -320,7 +320,10 @@ export const changeUserStatus = async (req, res) => {
 
     if (status === 'active') {
       try {
-        const plan = await PricingPlan.findOne({ name: planName, isActive: true });
+        const plan = await PricingPlan.findOne({ 
+          name: new RegExp(`^${planName}$`, 'i'),  // Case-insensitive
+          isActive: true 
+        });
         
         if (plan) {
           const startDate = new Date();
@@ -343,7 +346,7 @@ export const changeUserStatus = async (req, res) => {
             startDate,
             endDate,
             renewalDate: endDate,
-            paymentGateway: 'admin_activated',
+            paymentGateway: 'manual',  // ✅ FIXED: use valid enum value
             autoRenew: false,
             nextRenewalDate: endDate
           });
@@ -654,48 +657,80 @@ export const activateAccount = async (req, res) => {
     if (!subscription) {
       logger.info(`💰 No subscription found, creating one for ${accountId}...`);
 
-      // Get pricing plan
-      const plan = await PricingPlan.findOne({ name: account.plan });
-      if (!plan) {
-        return sendNotFound(res, 'Pricing plan not found');
+      try {
+        // Get pricing plan (case-insensitive search - "starter" → "Starter")
+        const plan = await PricingPlan.findOne({ 
+          name: new RegExp(`^${account.plan}$`, 'i')  // Case-insensitive
+        });
+        if (!plan) {
+          logger.error(`❌ Pricing plan not found for: ${account.plan}`);
+          return sendNotFound(res, 'Pricing plan not found');
+        }
+
+        logger.info(`✅ Found plan: ${plan.name}`);
+
+        // Calculate end date based on billing cycle
+        const startDate = new Date();
+        let endDate = new Date(startDate);
+        if (account.billingCycle === 'monthly') {
+          endDate.setMonth(endDate.getMonth() + 1);
+        } else if (account.billingCycle === 'quarterly') {
+          endDate.setMonth(endDate.getMonth() + 3);
+        } else if (account.billingCycle === 'annual') {
+          endDate.setFullYear(endDate.getFullYear() + 1);
+        }
+
+        logger.info(`📅 Dates: start=${startDate}, end=${endDate}`);
+
+        // Calculate pricing based on billing cycle
+        let priceAmount = 0;
+        let discount = 0;
+        
+        if (account.billingCycle === 'monthly') {
+          priceAmount = plan.monthlyPrice || 0;
+          discount = plan.monthlyDiscount || 0;
+        } else if (account.billingCycle === 'quarterly') {
+          priceAmount = (plan.monthlyPrice || 0) * 3;
+          discount = plan.quarterlyDiscount || 0;
+        } else if (account.billingCycle === 'annual' || account.billingCycle === 'yearly') {
+          priceAmount = plan.yearlyPrice || 0;
+          discount = plan.yearlyDiscount || plan.annualDiscount || 0;
+        }
+        
+        const finalAmount = priceAmount - (priceAmount * discount / 100);
+        
+        logger.info(`💰 Pricing: amount=${priceAmount}, discount=${discount}%, final=${finalAmount}`);
+
+        // Create subscription
+        subscription = new Subscription({
+          subscriptionId: generateId('SUB'),
+          accountId: account.accountId,  // ✅ FIXED: use account.accountId (8-digit), not _id
+          planId: plan._id,
+          planName: plan.name,
+          status: 'active',
+          billingCycle: account.billingCycle,
+          pricing: {
+            amount: priceAmount,
+            discount: discount,
+            finalAmount: finalAmount,
+            tax: 0
+          },
+          paymentGateway: 'manual',
+          startDate,
+          endDate,
+          nextBillingDate: endDate,
+          autoRenew: true,
+          activatedBy: 'admin-manual',
+          activatedAt: new Date()
+        });
+
+        await subscription.save();
+        logger.info(`✅ Subscription created: ${subscription.subscriptionId}`);
+      } catch (subError) {
+        logger.error(`❌ Error creating subscription: ${subError.message}`);
+        logger.error(subError);
+        throw subError;
       }
-
-      // Calculate end date based on billing cycle
-      const startDate = new Date();
-      let endDate = new Date(startDate);
-      if (account.billingCycle === 'monthly') {
-        endDate.setMonth(endDate.getMonth() + 1);
-      } else if (account.billingCycle === 'quarterly') {
-        endDate.setMonth(endDate.getMonth() + 3);
-      } else if (account.billingCycle === 'annual') {
-        endDate.setFullYear(endDate.getFullYear() + 1);
-      }
-
-      // Create subscription
-      subscription = new Subscription({
-        subscriptionId: generateId('SUB'),
-        accountId: account._id,
-        planId: plan._id,
-        planName: plan.name,
-        status: 'active',
-        billingCycle: account.billingCycle,
-        pricing: {
-          amount: plan.pricing[account.billingCycle]?.amount || 0,
-          discount: plan.pricing[account.billingCycle]?.discount || 0,
-          finalAmount: plan.pricing[account.billingCycle]?.finalAmount || 0,
-          tax: plan.pricing[account.billingCycle]?.tax || 0
-        },
-        paymentGateway: 'manual-activation',
-        startDate,
-        endDate,
-        nextBillingDate: endDate,
-        autoRenew: true,
-        activatedBy: 'admin-manual',
-        activatedAt: new Date()
-      });
-
-      await subscription.save();
-      logger.info(`✅ Subscription created: ${subscription.subscriptionId}`);
 
       // Link subscription to account
       account.subscriptionId = subscription._id;
@@ -709,28 +744,41 @@ export const activateAccount = async (req, res) => {
 
     // Generate invoice
     logger.info(`📄 Generating invoice for ${accountId}...`);
+    const invoiceAmount = subscription.pricing.finalAmount;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 30); // Due in 30 days
+
     const invoice = new Invoice({
       invoiceId: generateId('INV'),
       invoiceNumber: `INV-${Date.now()}`,
-      accountId: account._id,
+      accountId: account.accountId,  // Use accountId string, not ObjectId
       subscriptionId: subscription._id,
-      amount: subscription.pricing.finalAmount,
-      status: 'paid',
+      dueDate,
+      invoiceDate: new Date(),
+      periodStart: subscription.startDate,
+      periodEnd: subscription.endDate,
       billTo: {
         name: account.name,
         email: account.email,
         company: account.company,
         phone: account.phone
       },
-      items: [
+      lineItems: [
         {
           description: `${subscription.planName} - ${subscription.billingCycle} subscription (Manual Activation)`,
-          amount: subscription.pricing.finalAmount,
           quantity: 1,
-          rate: subscription.pricing.finalAmount
+          unitPrice: invoiceAmount,
+          amount: invoiceAmount
         }
       ],
-      notes: 'This subscription was manually activated by admin'
+      subtotal: invoiceAmount,
+      taxAmount: 0,
+      taxRate: 0,
+      discountAmount: 0,
+      totalAmount: invoiceAmount,
+      paidAmount: invoiceAmount,
+      dueAmount: 0,
+      status: 'paid'
     });
 
     await invoice.save();
