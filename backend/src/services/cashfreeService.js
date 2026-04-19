@@ -9,6 +9,7 @@ dotenv.config();
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const CASHFREE_API_KEY = process.env.CASHFREE_CLIENT_SECRET;
 const CASHFREE_CLIENT_ID = process.env.CASHFREE_CLIENT_ID;
+const CASHFREE_WEBHOOK_SECRET = process.env.CASHFREE_WEBHOOK_SECRET || process.env.CASHFREE_CLIENT_SECRET;
 const CASHFREE_BASE_URL = process.env.CASHFREE_API_URL || (
   process.env.NODE_ENV === 'production' 
     ? 'https://api.cashfree.com/pg'
@@ -134,7 +135,7 @@ export const cashfreeService = {
     }
   },
 
-  // Verify webhook signature - use CLIENT_SECRET per Cashfree official docs
+  // Verify webhook signature - use WEBHOOK_SECRET per Cashfree official docs
   verifyWebhookSignature: (signature, timestamp, rawBody) => {
     try {
       if (!signature || !timestamp || !rawBody) {
@@ -142,11 +143,11 @@ export const cashfreeService = {
         return false;
       }
 
-      // Per Cashfree docs: signature = HMAC-SHA256(timestamp.rawBody, CLIENT_SECRET) in base64
+      // Per Cashfree docs: signature = HMAC-SHA256(timestamp.rawBody, WEBHOOK_SECRET) in base64
       const signStr = `${timestamp}.${rawBody}`;
       
       const computedSignature = crypto
-        .createHmac('sha256', CASHFREE_API_KEY)
+        .createHmac('sha256', CASHFREE_WEBHOOK_SECRET)
         .update(signStr)
         .digest('base64');
 
