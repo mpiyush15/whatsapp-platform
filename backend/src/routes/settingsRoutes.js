@@ -1,6 +1,7 @@
 import express from 'express';
 import settingsController from '../controllers/settingsController.js';
 import templateController from '../controllers/templateController.js';
+import { getWhatsAppStatus, disconnectWhatsApp, recordOAuthInitiation } from '../controllers/whatsappStatusController.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -11,6 +12,11 @@ const router = express.Router();
  * Uses JWT auth (set in app.js) - NO API KEYS!
  * User must be logged in via /api/auth/login
  */
+
+// WhatsApp Status (for polling)
+router.get('/whatsapp-status', getWhatsAppStatus);
+router.post('/whatsapp-oauth/initiate', recordOAuthInitiation); // NEW: Record when OAuth starts
+router.post('/whatsapp/disconnect', disconnectWhatsApp);
 
 // Phone Number Management (JWT Auth - from app.js)
 router.get('/phone-numbers', settingsController.getPhoneNumbers);

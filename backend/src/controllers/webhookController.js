@@ -1,6 +1,7 @@
 import { sendSuccess, sendValidationError } from '../utils/responseHandler.js';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
+import { getRecentOAuthSession } from '../utils/oauthSessionStore.js';
 
 export const registerWebhook = async (req, res) => {
   try {
@@ -51,6 +52,9 @@ export const handleWebhook = async (req, res) => {
       logger.info('✅ WhatsApp webhook received from Meta');
       
       const entries = body.entry || [];
+      const Account = require('mongoose').model('Account');
+      const PhoneNumber = require('mongoose').model('PhoneNumber');
+      
       for (const entry of entries) {
         const wabaId = entry.id;
         const changes = entry.changes || [];
@@ -61,8 +65,94 @@ export const handleWebhook = async (req, res) => {
           
           logger.info(`🔍 Field: ${field} | WABA: ${wabaId}`);
           
+          // ⭐ Handle account updates - this is when user authorizes WhatsApp
+          if (field === 'account_update') {
+            logger.info(`🔔 Account Update Event Received for WABA: ${wabaId}`);
+            
+            const phoneNumbers = value.phone_numbers || [];
+            logger.info(`📱 Found ${phoneNumbers.length} phone number(s) in account_update`);
+            
+            // Save each phone number
+            for (const phoneData of phoneNumbers) {
+              try {
+                const phoneEntry = {
+                  phoneNumberId: phoneData.phone_number_id || phoneData.id,
+                  wabaId,
+                  displayName: phoneData.display_name || 'WhatsApp Number',
+                  displayPhone: phoneData.phone_number || phoneData.number || '',
+                  phone: phoneData.phone_number || phoneData.number || '',
+                  isActive: true,
+                  verifiedAt: new Date(),
+                  qualityRating: 'UNKNOWN'
+                };
+                
+                logger.info(`💾 Saving phone: ${phoneEntry.displayPhone} | ID: ${phoneEntry.phoneNumberId}`);
+                
+                const savedPhone = await PhoneNumber.findOneAndUpdate(
+                  { phoneNumberId: phoneEntry.phoneNumberId },
+                  phoneEntry,
+                  { upsert: true, new: true }
+                );
+                
+                logger.info(`✅ Phone saved: ${savedPhone._id}`);
+              } catch (phoneError) {
+                logger.error(`❌ Error saving phone:`, phoneError.message);
+              }
+            }
+            
+            // Find account - first try to find from pending OAuth sessions
+            let accountIdToUpdate = null;
+            let account = null;
+            
+            try {
+              // Check if there's a pending OAuth session
+              accountIdToUpdate = getRecentOAuthSession();
+              
+              if (accountIdToUpdate) {
+                logger.info(`🔗 Using pending OAuth session for account: ${accountIdToUpdate}`);
+                
+                // Update account with WABA ID
+                account = await Account.findOneAndUpdate(
+                  { accountId: accountIdToUpdate },
+                  {
+                    wabaId,
+                    isWhatsAppConnected: true,
+                    whatsappConfig: {
+                      wabaId,
+                      connectedAt: new Date()
+                    }
+                  },
+                  { new: true }
+                );
+              } else {
+                // Fallback: try to find existing account by WABA ID
+                logger.info(`⏳ No pending OAuth session found, trying to find account by WABA ID`);
+                account = await Account.findOneAndUpdate(
+                  { wabaId },
+                  {
+                    wabaId,
+                    isWhatsAppConnected: true,
+                    whatsappConfig: {
+                      wabaId,
+                      connectedAt: new Date()
+                    }
+                  },
+                  { new: true }
+                );
+              }
+              
+              if (account) {
+                logger.info(`✅ Account updated with WABA: ${wabaId} | Account: ${account.accountId}`);
+              } else {
+                logger.warn(`⚠️ Could not find account to link with WABA: ${wabaId}`);
+              }
+            } catch (accountError) {
+              logger.error(`❌ Error updating account:`, accountError.message);
+            }
+          }
+          
           // Handle incoming messages
-          if (field === 'messages') {
+          else if (field === 'messages') {
             const messages = value.messages || [];
             const contacts = value.contacts || [];
             const metadata = value.metadata || {};

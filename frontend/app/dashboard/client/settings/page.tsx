@@ -414,42 +414,77 @@ export default function SettingsPage() {
         return
       }
       
-      // Store return URL
-      localStorage.setItem('oauth_return_to', '/dashboard/settings?tab=whatsapp')
-      
-      // Show loading state while OAuth is in progress
-      setIsLoading(true)
-      setError("")
-      
-      // Add a timeout to handle cases where callback never fires
-      const timeoutId = setTimeout(async () => {
-        console.warn('⚠️ OAuth callback timeout - polling for phone numbers...')
-        // Poll for phone numbers (webhook may still be processing)
-        let phonesFound = false
-        for (let i = 0; i < 10; i++) {
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          await fetchPhoneNumbers()
-          // Check if phoneNumbers state was updated
-          if (phoneNumbers.length > 0) {
-            phonesFound = true
-            break
-          }
-        }
-        setIsLoading(false)
-      }, 5000)
-      
-      // Clear timeout when callback fires
-      const originalCallback = window.fbLoginCallback
-      window.fbLoginCallback = function(response) {
-        clearTimeout(timeoutId)
-        console.log('✅ Facebook Business Login callback fired')
-        if (originalCallback) {
-          originalCallback.call(this, response)
+      // Record OAuth initiation on backend
+      const recordOAuth = async () => {
+        try {
+          const token = authService.getToken()
+          await fetch(`${API_URL}/settings/whatsapp-oauth/initiate`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+          console.log('📋 OAuth initiation recorded')
+        } catch (err) {
+          console.error('⚠️ Could not record OAuth initiation:', err)
         }
       }
       
-      // Launch the Facebook Business Login flow
-      window.launchWhatsAppSignup()
+      // Store return URL
+      localStorage.setItem('oauth_return_to', '/dashboard/client/settings?tab=whatsapp')
+      
+      // Show loading state while OAuth is in progress
+      setIsLoading(true)
+      setError("⏳ Waiting for WhatsApp authorization... (This may take 30-60 seconds)")
+      
+      // Start polling for status every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const token = authService.getToken()
+          const response = await fetch(`${API_URL}/settings/whatsapp-status`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            
+            if (data.connected && data.phoneNumbers.length > 0) {
+              // ✅ Phone numbers found!
+              clearInterval(pollInterval)
+              setIsLoading(false)
+              setError("")
+              setPhoneNumbers(data.phoneNumbers)
+              alert(`✅ WhatsApp Connected! Found ${data.phoneNumbers.length} phone number(s)`)
+              console.log('✅ WhatsApp setup complete:', data)
+            } else if (data.connected) {
+              setError(`⏳ WhatsApp account connected... (Waiting for phone numbers to sync)`)
+            }
+          }
+        } catch (err) {
+          // Silently continue polling
+          console.log('⏳ Still waiting for webhook...')
+        }
+      }, 2000) // Poll every 2 seconds
+      
+      // Stop polling after 60 seconds
+      setTimeout(() => {
+        clearInterval(pollInterval)
+        setIsLoading(false)
+        
+        if (phoneNumbers.length === 0) {
+          setError("⚠️ WhatsApp setup timeout. Please check:\n\n1. Meta Business dashboard for authorization\n2. That your phone number is verified in Meta\n3. Try again if needed")
+        }
+      }, 60000) // 60 second timeout
+      
+      // First record OAuth, then launch signup
+      recordOAuth().then(() => {
+        // Launch the Facebook Business Login flow
+        window.launchWhatsAppSignup()
+      })
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to initiate login'
       console.error('❌ Error:', errorMsg)
