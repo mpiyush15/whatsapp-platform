@@ -11,6 +11,7 @@ export default function OrganizationsPage() {
   const [error, setError] = useState(null)
   const [selectedOrg, setSelectedOrg] = useState<any | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [activatingId, setActivatingId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchOrgs = async () => {
@@ -31,6 +32,8 @@ export default function OrganizationsPage() {
           orgs = data.data
         } else if (data.data?.data && Array.isArray(data.data.data)) {
           orgs = data.data.data
+        } else if (data.data?.organizations) {
+          orgs = data.data.organizations
         } else if (data.data) {
           orgs = Object.values(data.data || {})
         }
@@ -45,6 +48,43 @@ export default function OrganizationsPage() {
 
     fetchOrgs()
   }, [])
+
+  const handleActivateAccount = async (accountId: string, name: string) => {
+    if (!confirm(`Activate ${name}? This will create a subscription and send an invoice email.`)) {
+      return
+    }
+
+    setActivatingId(accountId)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`${API_URL}/admin/accounts/${accountId}/activate`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      if (!response.ok) throw new Error("Failed to activate")
+      
+      const data = await response.json()
+      alert(`✅ ${name} activated successfully!\n\nSubscription: ${data.data?.subscription?.subscriptionId}\nInvoice: ${data.data?.invoice?.invoiceId}\nEmail sent to: ${data.data?.account?.email}`)
+      
+      // Refresh organizations list
+      const orgResponse = await fetch(`${API_URL}/admin/organizations`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      })
+      const orgData = await orgResponse.json()
+      setOrganizations(orgData.data?.organizations || orgData.data?.data || [])
+      setActivatingId(null)
+    } catch (err) {
+      alert(`❌ Error: ${err.message}`)
+      setActivatingId(null)
+    }
+  }
 
   const columns = [
     {
@@ -110,10 +150,17 @@ export default function OrganizationsPage() {
       variant: "primary" as const
     },
     {
-      label: "Edit",
-      onClick: (row) => alert(`Editing ${row.name}`),
-      variant: "secondary" as const
-    }
+      label: (row) => row.status === 'pending' ? "Activate" : "Active",
+      onClick: (row) => {
+        if (row.status === 'pending') {
+          handleActivateAccount(row.accountId, row.name)
+        }
+      },
+      variant: (row) => row.status === 'pending' ? "success" : "secondary",
+      disabled: (row) => row.status !== 'pending' || activatingId === row.accountId,
+      loading: (row) => activatingId === row.accountId,
+      className: (row) => row.status === 'pending' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+    } as const
   ]
 
   return (
