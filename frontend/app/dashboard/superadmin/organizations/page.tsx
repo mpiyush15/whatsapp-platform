@@ -48,43 +48,6 @@ export default function OrganizationsPage() {
     fetchOrgs()
   }, [])
 
-  const handleActivateAccount = async (accountId: string, name: string) => {
-    if (!confirm(`Activate ${name}? This will create a subscription and send an invoice email.`)) {
-      return
-    }
-
-    setActivatingId(accountId)
-    try {
-      const token = localStorage.getItem("token")
-      const response = await fetch(`${API_URL}/admin/accounts/${accountId}/activate`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        }
-      })
-
-      if (!response.ok) throw new Error("Failed to activate")
-      
-      const data = await response.json()
-      alert(`✅ ${name} activated successfully!\n\nSubscription: ${data.data?.subscription?.subscriptionId}\nInvoice: ${data.data?.invoice?.invoiceId}\nEmail sent to: ${data.data?.account?.email}`)
-      
-      // Refresh organizations list
-      const orgResponse = await fetch(`${API_URL}/admin/organizations`, {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        }
-      })
-      const orgData = await orgResponse.json()
-      setOrganizations(orgData.data?.organizations || orgData.data?.data || [])
-      setActivatingId(null)
-    } catch (err) {
-      alert(`❌ Error: ${err.message}`)
-      setActivatingId(null)
-    }
-  }
-
   const columns = [
     {
       key: "accountId",
