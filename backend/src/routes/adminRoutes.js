@@ -9,7 +9,8 @@ import {
   changeUserStatus,
   insertOldCashfreeOrders,
   getTransactions,
-  syncCashfreeTransactions
+  syncCashfreeTransactions,
+  activateAccount
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -58,5 +59,11 @@ router.get('/transactions', getTransactions);
  * Sync transactions from Cashfree API (superadmin only)
  */
 router.post('/sync-cashfree', syncCashfreeTransactions);
+
+/**
+ * POST /api/admin/accounts/:accountId/activate
+ * Manually activate account & create subscription + invoice + send email (superadmin only)
+ */
+router.post('/accounts/:accountId/activate', activateAccount);
 
 export default router;

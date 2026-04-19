@@ -2,6 +2,7 @@ import Account from '../models/Account.js';
 import Subscription from '../models/Subscription.js';
 import PricingPlan from '../models/PricingPlan.js';
 import Payment from '../models/Payment.js';
+import Invoice from '../models/Invoice.js';
 import { cashfreeService } from '../services/cashfreeService.js';
 import { handleCashfreeWebhook } from './paymentWebhookController.js';
 import { generateId } from '../utils/idGenerator.js';
@@ -547,6 +548,132 @@ export const syncCashfreeTransactions = async (req, res) => {
   }
 };
 
+export const activateAccount = async (req, res) => {
+  try {
+    if (req.account.type !== 'internal') {
+      return sendForbidden(res, 'Only superadmins can activate accounts');
+    }
+
+    const { accountId } = req.params;
+
+    if (!accountId) {
+      return sendValidationError(res, 'accountId is required');
+    }
+
+    // Find the account
+    const account = await Account.findOne({ accountId });
+    if (!account) {
+      return sendNotFound(res, 'Account not found');
+    }
+
+    logger.info(`📝 Manually activating account: ${accountId}`);
+
+    // Check if account already has a subscription
+    let subscription = await Subscription.findById(account.subscriptionId);
+
+    if (!subscription) {
+      logger.info(`💰 No subscription found, creating one for ${accountId}...`);
+
+      // Get pricing plan
+      const plan = await PricingPlan.findOne({ name: account.plan });
+      if (!plan) {
+        return sendNotFound(res, 'Pricing plan not found');
+      }
+
+      // Calculate end date based on billing cycle
+      const startDate = new Date();
+      let endDate = new Date(startDate);
+      if (account.billingCycle === 'monthly') {
+        endDate.setMonth(endDate.getMonth() + 1);
+      } else if (account.billingCycle === 'quarterly') {
+        endDate.setMonth(endDate.getMonth() + 3);
+      } else if (account.billingCycle === 'annual') {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      }
+
+      // Create subscription
+      subscription = new Subscription({
+        subscriptionId: generateId('SUB'),
+        accountId: account._id,
+        planId: plan._id,
+        planName: plan.name,
+        status: 'active',
+        billingCycle: account.billingCycle,
+        pricing: {
+          amount: plan.pricing[account.billingCycle]?.amount || 0,
+          discount: plan.pricing[account.billingCycle]?.discount || 0,
+          finalAmount: plan.pricing[account.billingCycle]?.finalAmount || 0,
+          tax: plan.pricing[account.billingCycle]?.tax || 0
+        },
+        paymentGateway: 'manual-activation',
+        startDate,
+        endDate,
+        nextBillingDate: endDate,
+        autoRenew: true,
+        activatedBy: 'admin-manual',
+        activatedAt: new Date()
+      });
+
+      await subscription.save();
+      logger.info(`✅ Subscription created: ${subscription.subscriptionId}`);
+
+      // Link subscription to account
+      account.subscriptionId = subscription._id;
+    }
+
+    // Update account status to active
+    account.status = 'active';
+    await account.save();
+
+    logger.info(`✅ Account activated: ${accountId}`);
+
+    // Generate invoice
+    logger.info(`📄 Generating invoice for ${accountId}...`);
+    const invoice = new Invoice({
+      invoiceId: generateId('INV'),
+      invoiceNumber: `INV-${Date.now()}`,
+      accountId: account._id,
+      subscriptionId: subscription._id,
+      amount: subscription.pricing.finalAmount,
+      status: 'paid',
+      billTo: {
+        name: account.name,
+        email: account.email,
+        company: account.company,
+        phone: account.phone
+      },
+      items: [
+        {
+          description: `${subscription.planName} - ${subscription.billingCycle} subscription (Manual Activation)`,
+          amount: subscription.pricing.finalAmount,
+          quantity: 1,
+          rate: subscription.pricing.finalAmount
+        }
+      ],
+      notes: 'This subscription was manually activated by admin'
+    });
+
+    await invoice.save();
+    logger.info(`✅ Invoice created: ${invoice.invoiceId}`);
+
+    // Send invoice email
+    logger.info(`📧 Sending invoice email to ${account.email}...`);
+    await emailService.sendInvoiceEmail(account.email, account.name, invoice, subscription);
+    logger.info(`✅ Invoice email sent to ${account.email}`);
+
+    return sendSuccess(res, {
+      account,
+      subscription,
+      invoice,
+      message: `Account activated, subscription created, and invoice sent to ${account.email}`
+    }, 'Account activated successfully');
+
+  } catch (error) {
+    logger.error('❌ Error activating account:', error.message);
+    return handleControllerError(res, error, 'activateAccount');
+  }
+};
+
 export default {
   getPendingUsers,
   sendPaymentReminder,
@@ -554,5 +681,6 @@ export default {
   changeUserStatus,
   insertOldCashfreeOrders,
   getTransactions,
-  syncCashfreeTransactions
+  syncCashfreeTransactions,
+  activateAccount
 };
