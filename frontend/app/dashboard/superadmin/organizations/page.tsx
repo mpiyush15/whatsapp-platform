@@ -150,17 +150,17 @@ export default function OrganizationsPage() {
       variant: "primary" as const
     },
     {
-      label: (row) => row.status === 'pending' ? "Activate" : "Active",
+      label: "Activate",
       onClick: (row) => {
         if (row.status === 'pending') {
           handleActivateAccount(row.accountId, row.name)
         }
       },
-      variant: (row) => row.status === 'pending' ? "success" : "secondary",
+      variant: "success" as const,
       disabled: (row) => row.status !== 'pending' || activatingId === row.accountId,
       loading: (row) => activatingId === row.accountId,
       className: (row) => row.status === 'pending' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
-    } as const
+    }
   ]
 
   return (
