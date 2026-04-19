@@ -32,6 +32,7 @@ router.post('/change-plan', requireJWT, subscriptionController.changePlan);
 router.post('/cancel', requireJWT, subscriptionController.cancelSubscription);
 router.post('/pause', requireJWT, subscriptionController.pauseSubscription);
 router.post('/resume', requireJWT, subscriptionController.resumeSubscription);
+router.patch('/:id/status', requireJWT, subscriptionController.updateSubscriptionStatus);
 router.get('/:subscriptionId/transactions', requireJWT, subscriptionController.getSubscriptionTransactions);  // Get transactions for a subscription
 
 export default router;

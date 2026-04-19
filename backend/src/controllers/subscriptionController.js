@@ -363,6 +363,49 @@ export const getPayments = async (req, res) => {
   }
 };
 
+export const updateSubscriptionStatus = async (req, res) => {
+  try {
+    // Only superadmins can change subscription status
+    if (!req.account || req.account.type !== 'internal') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only superadmins can change subscription status'
+      });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return sendValidationError(res, 'Invalid subscription ID');
+    }
+
+    const validStatuses = ['active', 'paused', 'suspended', 'cancelled', 'expired', 'pending_payment'];
+    if (!status || !validStatuses.includes(status)) {
+      return sendValidationError(res, `Invalid status. Must be one of: ${validStatuses.join(', ')}`);
+    }
+
+    // Import Subscription model
+    const Subscription = mongoose.model('Subscription');
+
+    const subscription = await Subscription.findByIdAndUpdate(
+      id,
+      { status, updatedAt: new Date() },
+      { new: true }
+    );
+
+    if (!subscription) {
+      return sendNotFound(res, 'Subscription not found');
+    }
+
+    logger.info(`✅ Subscription ${id} status updated to ${status}`);
+
+    return sendSuccess(res, { subscription }, `Subscription status changed to ${status}`);
+  } catch (error) {
+    return handleControllerError(res, error, 'updateSubscriptionStatus');
+  }
+};
+
 export default { 
   createSubscription,
   getSubscription,
@@ -377,5 +420,6 @@ export default {
   resumeSubscription,
   getAllSubscriptions,
   getSubscriptionTransactions,
-  getPayments
+  getPayments,
+  updateSubscriptionStatus
 };

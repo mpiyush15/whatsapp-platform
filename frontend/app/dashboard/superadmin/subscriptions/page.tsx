@@ -7,10 +7,37 @@ export default function SuperAdminSubscriptionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSubscriptions();
   }, []);
+
+  const handleStatusChange = async (subscriptionId: string, newStatus: string) => {
+    if (!confirm(`Change subscription status to ${newStatus}?`)) return;
+
+    setUpdatingId(subscriptionId);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
+      const response = await fetch(`${apiUrl}/subscriptions/${subscriptionId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update status');
+
+      alert(`✅ Subscription status changed to ${newStatus}`);
+      await fetchSubscriptions();
+    } catch (err) {
+      alert(`❌ Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const fetchSubscriptions = async () => {
     try {
@@ -121,6 +148,7 @@ export default function SuperAdminSubscriptionsPage() {
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Start Date</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">End Date</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -158,6 +186,24 @@ export default function SuperAdminSubscriptionsPage() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
                     {sub.endDate ? new Date(sub.endDate).toLocaleDateString('en-IN') : 'N/A'}
+                  </td>
+                  <td className="px-6 py-4 text-sm">
+                    <div className="flex gap-1">
+                      {['active', 'suspended', 'cancelled', 'paused'].map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => handleStatusChange(sub._id, status)}
+                          disabled={updatingId === sub._id}
+                          className={`px-2 py-1 text-xs rounded font-semibold transition ${
+                            sub.status === status
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          } ${updatingId === sub._id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          {status.charAt(0).toUpperCase() + status.slice(1)}
+                        </button>
+                      ))}
+                    </div>
                   </td>
                 </tr>
               ))}

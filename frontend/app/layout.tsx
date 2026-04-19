@@ -34,6 +34,10 @@ export default function RootLayout({
     <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <head>
         <ThemeScript />
+        {/* Set WhatsApp Config ID from environment */}
+        <script suppressHydrationWarning>
+          {`window.WHATSAPP_CONFIG_ID = '${process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID || '1239299391737840'}';`}
+        </script>
         {/* Meta SDK for Embedded Signup */}
         <script
           suppressHydrationWarning
@@ -102,8 +106,11 @@ export default function RootLayout({
                   return;
                 }
                 
+                const configId = window.WHATSAPP_CONFIG_ID || '1239299391737840';
+                console.log('📋 Using WhatsApp Config ID:', configId);
+                
                 FB.login(window.fbLoginCallback, {
-                  config_id: '1567923197597440',
+                  config_id: configId,
                   response_type: 'code',
                   override_default_response_type: true,
                   extras: { 'version': 'v3' }
