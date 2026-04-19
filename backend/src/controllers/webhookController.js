@@ -45,33 +45,88 @@ export const handleWebhook = async (req, res) => {
     const body = req.body;
     
     // Meta WhatsApp sends webhooks in this format:
-    // { object: "whatsapp_business_account", entry: [{ changes: [{ field, value }] }] }
+    // { object: "whatsapp_business_account", entry: [{ id: "waba_id", changes: [{ field, value }] }] }
     
     if (body.object === 'whatsapp_business_account') {
       logger.info('✅ WhatsApp webhook received from Meta');
-      logger.info('📋 Full webhook body:', JSON.stringify(body, null, 2));
       
       const entries = body.entry || [];
       for (const entry of entries) {
+        const wabaId = entry.id;
         const changes = entry.changes || [];
+        
         for (const change of changes) {
           const field = change.field;
-          const value = change.value;
+          const value = change.value || {};
           
-          logger.info('🔍 Webhook field:', field);
-          logger.info('📦 Webhook value:', JSON.stringify(value, null, 2));
+          logger.info(`🔍 Field: ${field} | WABA: ${wabaId}`);
           
-          // Handle different field types
+          // Handle incoming messages
           if (field === 'messages') {
-            logger.info('💬 Message event received');
-          } else if (field === 'message_status') {
-            logger.info('📨 Message status change:', value);
-          } else if (field === 'message_template_status_update') {
-            logger.info('📝 Template status update:', value);
+            const messages = value.messages || [];
+            const contacts = value.contacts || [];
+            const metadata = value.metadata || {};
+            
+            logger.info(`💬 ${messages.length} message(s) received`);
+            
+            for (const message of messages) {
+              const { from, id: messageId, timestamp, type, text, media, interactive, button, image, audio, document, video } = message;
+              
+              logger.info(`📩 Message from ${from} | Type: ${type} | ID: ${messageId}`);
+              
+              // Extract message content based on type
+              let content = '';
+              if (type === 'text' && text) {
+                content = text.body;
+              } else if (type === 'image' && media) {
+                content = `[Image: ${media.id}]`;
+              } else if (type === 'document' && media) {
+                content = `[Document: ${media.id}]`;
+              } else if (type === 'audio' && media) {
+                content = `[Audio: ${media.id}]`;
+              } else if (type === 'video' && media) {
+                content = `[Video: ${media.id}]`;
+              } else if (type === 'button' && button) {
+                content = button.text;
+              } else if (type === 'interactive' && interactive) {
+                content = interactive.button_reply?.title || interactive.list_reply?.title || 'Interactive message';
+              }
+              
+              logger.info(`📝 Content: ${content.substring(0, 50)}`);
+            }
+          }
+          
+          // Handle message status updates (delivered, read, failed, etc.)
+          else if (field === 'message_status') {
+            const statuses = value.statuses || [];
+            
+            logger.info(`📨 ${statuses.length} status update(s)`);
+            
+            for (const status of statuses) {
+              const { id: messageId, status: msgStatus, timestamp, recipient_id, errors } = status;
+              
+              logger.info(`📊 Message ${messageId}: ${msgStatus} at ${new Date(timestamp * 1000).toISOString()}`);
+              
+              if (errors) {
+                logger.warn(`⚠️ Error for message ${messageId}:`, errors);
+              }
+            }
+          }
+          
+          // Handle template status updates
+          else if (field === 'message_template_status_update') {
+            const templates = value.message_template_status_update || [];
+            logger.info(`📝 ${templates.length} template status update(s)`);
+          }
+          
+          // Handle account updates (phone number verified, etc.)
+          else if (field === 'account_updates') {
+            logger.info(`🔄 Account update received`);
           }
         }
       }
       
+      // Always return 200 immediately so Meta knows we received it
       return sendSuccess(res, { processed: true }, 'WhatsApp webhook processed');
     }
     
