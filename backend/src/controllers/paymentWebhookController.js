@@ -27,20 +27,28 @@ export const handleCashfreeWebhook = async (req, res) => {
     // }
 
     logger.info('✅ Processing webhook (signature verification bypassed for testing)');
+    logger.info('📋 FULL WEBHOOK BODY:', JSON.stringify(body, null, 2));
 
-    const { data } = body;
-    if (!data) {
-      logger.warn('⚠️ No data in webhook');
-      return sendSuccess(res, { processed: false }, 'No data in webhook');
+    // Cashfree sends payment_status inside data.order.payment
+    let orderId, orderStatus;
+    
+    if (body.data?.order) {
+      orderId = body.data.order.order_id;
+      // Cashfree sends payment_status in data.order.payment
+      orderStatus = body.data.order.payment?.payment_status || body.data.order.order_status;
+    } else if (body.order) {
+      orderId = body.order.order_id;
+      orderStatus = body.order.payment?.payment_status || body.order.order_status;
+    } else if (body.order_id) {
+      orderId = body.order_id;
+      orderStatus = body.order_status || body.status;
     }
 
-    const orderId = data.order?.order_id;
-    const orderStatus = data.order?.order_status;
+    logger.info('🔍 Processing webhook:', { orderId, orderStatus, bodyKeys: Object.keys(body) });
 
-    logger.info('🔍 Processing webhook:', { orderId, orderStatus });
-
-    if (orderStatus !== 'PAID') {
-      logger.info('⏭️ Payment not completed, skipping processing');
+    // Cashfree sends "SUCCESS" (not "PAID")
+    if (orderStatus !== 'SUCCESS' && orderStatus !== 'PAID') {
+      logger.info('⏭️ Payment not completed, skipping processing', { receivedStatus: orderStatus });
       return sendSuccess(res, { orderId, processed: true }, 'Non-paid status, skipped');
     }
 
