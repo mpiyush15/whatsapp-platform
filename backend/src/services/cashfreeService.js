@@ -134,7 +134,7 @@ export const cashfreeService = {
     }
   },
 
-  // Verify webhook signature - PROPER METHOD
+  // Verify webhook signature - use CLIENT_SECRET per Cashfree official docs
   verifyWebhookSignature: (signature, timestamp, rawBody) => {
     try {
       if (!signature || !timestamp || !rawBody) {
