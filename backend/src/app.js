@@ -94,21 +94,28 @@ app.use(cors({
 }));
 
 // ✅ CRITICAL: Custom body parser that captures raw body AND parses JSON
+// IMPORTANT: This middleware runs ONCE per request and sets up per-request data collection
 app.use((req, res, next) => {
-  let data = Buffer.alloc(0);
+  // Each request gets its own data buffer (per-request scope)
+  let requestData = Buffer.alloc(0);
+  const chunks = [];
   
+  // Collect all chunks for this specific request
   req.on('data', chunk => {
-    data = Buffer.concat([data, chunk]);
+    chunks.push(chunk);
+    requestData = Buffer.concat([requestData, chunk]);
   });
   
+  // When THIS request's body ends, process it immediately
   req.on('end', () => {
-    // Store raw body as Buffer (needed for webhook signature verification)
-    req.rawBody = data;
+    // ✅ Store raw body as Buffer immediately (for webhook signature verification)
+    req.rawBody = requestData;
     
-    // Also store as string for logging
-    const rawBodyString = data.toString('utf-8');
+    // Debug: Log raw body info
+    const rawBodyString = requestData.toString('utf-8');
+    console.log(`[${new Date().toISOString()}] Request body size: ${requestData.length} bytes`);
     
-    // Now parse the JSON
+    // Parse JSON
     try {
       if (req.get('content-type')?.includes('application/json')) {
         req.body = JSON.parse(rawBodyString);
@@ -116,13 +123,22 @@ app.use((req, res, next) => {
         const qs = require('querystring');
         req.body = qs.parse(rawBodyString);
       } else {
-        req.body = data;
+        req.body = requestData;
       }
     } catch (e) {
+      console.error('Body parse error:', e.message);
       req.body = {};
     }
     
+    // Call next() - this allows the request to proceed to the handler
+    // Each request has its own req.rawBody and req.body (proper scoping)
     next();
+  });
+  
+  // Handle errors during body collection
+  req.on('error', err => {
+    console.error('Request error during body collection:', err);
+    next(err);
   });
 });
 

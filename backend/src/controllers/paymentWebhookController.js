@@ -15,18 +15,21 @@ export const handleCashfreeWebhook = async (req, res) => {
     const timestamp = req.headers['x-webhook-timestamp'];
     const rawBody = req.rawBody; // Captured by custom middleware
 
-    logger.info('💳 Cashfree webhook received');
-    logger.info('   Headers: signature=' + (signature ? 'YES' : 'MISSING'), 'timestamp=' + (timestamp ? 'YES' : 'MISSING'));
+    // ✅ Debug concurrent requests: capture this exact request's data immediately
+    const requestId = `${timestamp}-${signature?.substring(0, 8)}`;
+    const rawBodyLength = Buffer.isBuffer(rawBody) ? rawBody.length : rawBody?.length || 0;
+    logger.info(`💳 [${requestId}] Cashfree webhook received - rawBody: ${rawBodyLength} bytes`);
+    logger.info(`   [${requestId}] Headers: signature=${signature?.substring(0, 8)}... timestamp=${timestamp}`);
 
     // ✅ WEBHOOK SIGNATURE VERIFICATION (per Cashfree docs - use CLIENT_SECRET)
     if (!signature || !timestamp || !rawBody) {
-      logger.warn('⚠️ Missing webhook headers - rejecting');
+      logger.warn(`⚠️ [${requestId}] Missing webhook headers - rejecting`);
       return sendSuccess(res, { processed: false }, 'Missing webhook headers');
     }
 
     if (!cashfreeService.verifyWebhookSignature(signature, timestamp, rawBody)) {
-      logger.error('❌ WEBHOOK SIGNATURE VERIFICATION FAILED - REJECTING');
-      logger.error('   Expected signature from Cashfree but got mismatch');
+      logger.error(`❌ [${requestId}] WEBHOOK SIGNATURE VERIFICATION FAILED - REJECTING`);
+      logger.error(`   [${requestId}] Expected signature from Cashfree but got mismatch`);
       return sendSuccess(res, { processed: false }, 'Signature verification failed');
     }
 
