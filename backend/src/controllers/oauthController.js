@@ -91,34 +91,53 @@ export const handleWhatsAppOAuth = async (req, res) => {
 
     // Get phone numbers for this WABA
     const phoneUrl = `https://graph.facebook.com/v18.0/${wabaId}/phone_numbers`;
-    const phoneResponse = await axios.get(phoneUrl, {
-      params: { access_token: accessToken }
-    });
+    logger.info(`🔗 Fetching phones from: ${phoneUrl}`);
+    
+    let phoneResponse;
+    try {
+      phoneResponse = await axios.get(phoneUrl, {
+        params: { access_token: accessToken }
+      });
+    } catch (phoneError) {
+      logger.error(`❌ Error fetching phone numbers:`, phoneError.response?.data || phoneError.message);
+      return sendValidationError(res, `Failed to fetch phone numbers: ${phoneError.response?.data?.error?.message || phoneError.message}`);
+    }
 
     const phones = phoneResponse.data.data || [];
     logger.info(`✅ Found ${phones.length} phone numbers for WABA ${wabaId}`);
+    
+    if (phones.length === 0) {
+      logger.warn(`⚠️ No phone numbers returned from Meta for WABA ${wabaId}`);
+      logger.warn(`📋 Full phone response:`, JSON.stringify(phoneResponse.data, null, 2));
+    }
 
     // Save phone numbers to database
     const savedPhones = [];
     for (const phone of phones) {
-      const phoneData = {
-        phoneNumberId: phone.id,
-        wabaId,
-        displayName: phone.display_name_address_book || phone.display_name || '',
-        displayPhone: phone.phone_number || '',
-        phone: phone.phone_number,
-        isActive: true,
-        accessToken
-      };
+      try {
+        const phoneData = {
+          phoneNumberId: phone.id,
+          wabaId,
+          displayName: phone.display_name_address_book || phone.display_name || '',
+          displayPhone: phone.phone_number || '',
+          phone: phone.phone_number,
+          isActive: true,
+          accessToken
+        };
 
-      const phoneNumber = await PhoneNumber.findOneAndUpdate(
-        { phoneNumberId: phone.id },
-        phoneData,
-        { upsert: true, new: true }
-      );
+        logger.info(`📝 Saving phone data:`, JSON.stringify(phoneData, null, 2));
 
-      savedPhones.push(phoneNumber);
-      logger.info(`✅ Saved phone: ${phone.phone_number} (ID: ${phone.id})`);
+        const phoneNumber = await PhoneNumber.findOneAndUpdate(
+          { phoneNumberId: phone.id },
+          phoneData,
+          { upsert: true, new: true }
+        );
+
+        savedPhones.push(phoneNumber);
+        logger.info(`✅ Saved phone: ${phone.phone_number} (ID: ${phone.id})`);
+      } catch (phoneError) {
+        logger.error(`❌ Error saving phone ${phone.phone_number}:`, phoneError);
+      }
     }
 
     // Update account with WABA ID and access token
