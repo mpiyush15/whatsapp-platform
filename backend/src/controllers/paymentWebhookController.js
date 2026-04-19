@@ -82,10 +82,21 @@ export const handleCashfreeWebhook = async (req, res) => {
 
     // 4. Get account and plan details
     const account = await Account.findOne({ accountId });
-    const plan = await PricingPlan.findOne({ name: payment.planName });
+    
+    // Extract plan name from orderId (e.g., ORDER_STARTER_1776569276035 → "Starter")
+    let planName = payment.planName;
+    if (!planName) {
+      const planMatch = orderId.match(/ORDER_([A-Z]+)_/);
+      if (planMatch) {
+        planName = planMatch[1].charAt(0) + planMatch[1].slice(1).toLowerCase(); // STARTER → Starter
+        logger.info('📦 Extracted plan from orderId:', { orderId, planName });
+      }
+    }
+    
+    const plan = await PricingPlan.findOne({ name: planName });
 
     if (!account || !plan) {
-      logger.error('❌ Account or plan not found:', { accountId, planName: payment.planName });
+      logger.error('❌ Account or plan not found:', { accountId, planName, orderId });
       return sendSuccess(res, { orderId, processed: false, error: 'Account or plan not found' });
     }
 
