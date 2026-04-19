@@ -65,6 +65,7 @@ export const handleWebhook = async (req, res) => {
           const value = change.value || {};
           
           logger.info(`🔍 Field: ${field} | WABA: ${wabaId}`);
+          logger.info(`📋 Full value payload:`, JSON.stringify(value, null, 2));
           
           // ⭐ Handle account updates - this is when user authorizes WhatsApp
           if (field === 'account_update') {
@@ -72,6 +73,7 @@ export const handleWebhook = async (req, res) => {
             
             const phoneNumbers = value.phone_numbers || [];
             logger.info(`📱 Found ${phoneNumbers.length} phone number(s) in account_update`);
+            logger.info(`📋 Phone numbers data:`, JSON.stringify(phoneNumbers, null, 2));
             
             // Save each phone number
             for (const phoneData of phoneNumbers) {

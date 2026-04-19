@@ -111,10 +111,13 @@ export const recordOAuthInitiation = async (req, res) => {
     const accountId = req.account.accountId;
     
     logger.info(`📋 OAuth session initiated for account: ${accountId}`);
+    logger.info(`🔔 Recording OAuth initiation at ${new Date().toISOString()}`);
     recordSession(accountId);
+    logger.info(`✅ OAuth session recorded successfully`);
     
-    return sendSuccess(res, { message: 'OAuth initiation recorded' });
+    return sendSuccess(res, { message: 'OAuth initiation recorded', accountId });
   } catch (error) {
+    logger.error(`❌ Error recording OAuth initiation:`, error.message);
     return handleControllerError(res, error, 'recordOAuthInitiation');
   }
 };

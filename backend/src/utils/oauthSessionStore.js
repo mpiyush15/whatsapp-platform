@@ -15,6 +15,8 @@ export const recordOAuthInitiation = (accountId) => {
   });
   
   console.log(`📋 OAuth session recorded for account ${accountId}`);
+  console.log(`   Expires at: ${new Date(now + OAUTH_EXPIRY_TIME).toISOString()}`);
+  console.log(`   Active sessions: ${pendingOAuthSessions.size}`);
   
   // Clean up expired sessions
   cleanupExpiredSessions();
@@ -27,7 +29,10 @@ export const getRecentOAuthSession = () => {
   let mostRecent = null;
   let mostRecentTime = 0;
   
+  console.log(`🔍 Looking for pending OAuth sessions (${pendingOAuthSessions.size} active)`);
+  
   for (const [accountId, session] of pendingOAuthSessions.entries()) {
+    console.log(`   - Account ${accountId}: expires at ${new Date(session.expiresAt).toISOString()}`);
     if (session.expiresAt > now && session.initiatedAt > mostRecentTime) {
       mostRecent = accountId;
       mostRecentTime = session.initiatedAt;
@@ -35,9 +40,12 @@ export const getRecentOAuthSession = () => {
   }
   
   if (mostRecent) {
-    console.log(`🔍 Found pending OAuth for account ${mostRecent}`);
+    console.log(`✅ Found pending OAuth for account ${mostRecent}`);
     // Remove the session after retrieval (one-time use)
     pendingOAuthSessions.delete(mostRecent);
+    console.log(`   Removed from pending sessions`);
+  } else {
+    console.log(`❌ No valid pending OAuth session found`);
   }
   
   return mostRecent;
