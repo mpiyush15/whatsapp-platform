@@ -2,6 +2,7 @@ import { sendSuccess, sendValidationError } from '../utils/responseHandler.js';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import { getRecentOAuthSession } from '../utils/oauthSessionStore.js';
+import mongoose from 'mongoose';
 
 export const registerWebhook = async (req, res) => {
   try {
@@ -52,8 +53,8 @@ export const handleWebhook = async (req, res) => {
       logger.info('✅ WhatsApp webhook received from Meta');
       
       const entries = body.entry || [];
-      const Account = require('mongoose').model('Account');
-      const PhoneNumber = require('mongoose').model('PhoneNumber');
+      const Account = mongoose.model('Account');
+      const PhoneNumber = mongoose.model('PhoneNumber');
       
       for (const entry of entries) {
         const wabaId = entry.id;
