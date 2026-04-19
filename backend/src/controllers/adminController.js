@@ -12,6 +12,86 @@ import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import crypto from 'crypto';
 
+export const getOrganizations = async (req, res) => {
+  try {
+    if (req.account.type !== 'internal') {
+      return sendForbidden(res, 'Only superadmins can view organizations');
+    }
+
+    const { limit = 100, offset = 0, status = 'all' } = req.query;
+
+    // Build filter
+    let filter = { type: { $in: ['client', 'agency'] } };
+    if (status !== 'all') {
+      filter.status = status;
+    }
+
+    const organizations = await Account.find(filter)
+      .select('_id accountId name email company phone plan billingCycle status role createdAt subscriptionId lastPaymentDate')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(offset));
+
+    // Enrich with subscription and invoice data
+    const enrichedOrgs = await Promise.all(organizations.map(async (org) => {
+      let subscription = null;
+      let invoice = null;
+
+      if (org.subscriptionId) {
+        subscription = await Subscription.findById(org.subscriptionId).select('subscriptionId status startDate endDate planName');
+        if (subscription) {
+          invoice = await Invoice.findOne({ subscriptionId: org.subscriptionId }).select('invoiceId invoiceNumber amount status');
+        }
+      }
+
+      return {
+        _id: org._id,
+        accountId: org.accountId,
+        name: org.name,
+        email: org.email,
+        company: org.company,
+        phone: org.phone,
+        plan: org.plan,
+        billingCycle: org.billingCycle,
+        status: org.status,
+        role: org.role,
+        createdAt: org.createdAt,
+        hasSubscription: !!org.subscriptionId,
+        subscription: subscription ? {
+          subscriptionId: subscription.subscriptionId,
+          status: subscription.status,
+          planName: subscription.planName
+        } : null,
+        invoice: invoice ? {
+          invoiceId: invoice.invoiceId,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: invoice.amount,
+          status: invoice.status
+        } : null,
+        registeredAt: org.createdAt,
+        hoursAgo: Math.floor((Date.now() - new Date(org.createdAt).getTime()) / (1000 * 60 * 60))
+      };
+    }));
+
+    const total = await Account.countDocuments(filter);
+
+    logger.info('✅ Fetched organizations:', { count: enrichedOrgs.length, total, status });
+
+    return sendSuccess(res, {
+      organizations: enrichedOrgs,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        status
+      }
+    }, 'Organizations retrieved');
+  } catch (error) {
+    logger.error('❌ Error fetching organizations:', error.message);
+    return handleControllerError(res, error, 'getOrganizations');
+  }
+};
+
 export const getPendingUsers = async (req, res) => {
   try {
     if (req.account.type !== 'internal') {
@@ -675,6 +755,7 @@ export const activateAccount = async (req, res) => {
 };
 
 export default {
+  getOrganizations,
   getPendingUsers,
   sendPaymentReminder,
   sendReminderAllPending,

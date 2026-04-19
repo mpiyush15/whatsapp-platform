@@ -3,6 +3,7 @@ import { requireJWT } from '../middlewares/jwtAuth.js';
 import logger from '../utils/logger.js';
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 import {
+  getOrganizations,
   getPendingUsers,
   sendPaymentReminder,
   sendReminderAllPending,
@@ -17,6 +18,12 @@ const router = express.Router();
 
 // All routes require JWT authentication
 router.use(requireJWT);
+
+/**
+ * GET /api/admin/organizations
+ * List all organizations with status, subscriptions, and invoices (superadmin only)
+ */
+router.get('/organizations', getOrganizations);
 
 /**
  * GET /api/admin/pending-users
