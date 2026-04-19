@@ -17,16 +17,20 @@ export const handleCashfreeWebhook = async (req, res) => {
 
     logger.info('💳 Cashfree webhook received');
     logger.info('   Headers: signature=' + (signature ? 'YES' : 'MISSING'), 'timestamp=' + (timestamp ? 'YES' : 'MISSING'));
-    logger.info('   Body:', body);
 
-    // ⚠️ BYPASS SIGNATURE VERIFICATION FOR TESTING
-    // TODO: Re-enable once webhook secret is confirmed
-    // if (!cashfreeService.verifyWebhookSignature(signature, timestamp, rawBody)) {
-    //   logger.warn('⚠️ Webhook signature verification FAILED - rejecting webhook');
-    //   return sendSuccess(res, { processed: false }, 'Signature verification failed');
-    // }
+    // ✅ WEBHOOK SIGNATURE VERIFICATION (per Cashfree docs - use CLIENT_SECRET)
+    if (!signature || !timestamp || !rawBody) {
+      logger.warn('⚠️ Missing webhook headers - rejecting');
+      return sendSuccess(res, { processed: false }, 'Missing webhook headers');
+    }
 
-    logger.info('✅ Processing webhook (signature verification bypassed for testing)');
+    if (!cashfreeService.verifyWebhookSignature(signature, timestamp, rawBody)) {
+      logger.error('❌ WEBHOOK SIGNATURE VERIFICATION FAILED - REJECTING');
+      logger.error('   Expected signature from Cashfree but got mismatch');
+      return sendSuccess(res, { processed: false }, 'Signature verification failed');
+    }
+
+    logger.info('✅ Webhook signature verified - processing payment');
     logger.info('📋 FULL WEBHOOK BODY:', JSON.stringify(body, null, 2));
 
     // Cashfree sends payment_status at data.payment (not data.order.payment)
@@ -153,6 +157,7 @@ export const handleCashfreeWebhook = async (req, res) => {
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 30); // Due in 30 days
 
+    logger.info('🧾 Starting invoice generation...');
     const invoice = new Invoice({
       invoiceId,
       invoiceNumber,
@@ -186,34 +191,72 @@ export const handleCashfreeWebhook = async (req, res) => {
       notes: 'Payment received and processed',
       createdAt: new Date()
     });
-    await invoice.save();
-    logger.info('✅ Invoice generated:', invoiceNumber);
 
-    // 7. SEND INVOICE EMAIL
+    try {
+      await invoice.save();
+      logger.info('✅ Invoice saved to database:', { invoiceNumber, invoiceId });
+    } catch (invoiceError) {
+      logger.error('❌ Failed to save invoice:', invoiceError.message);
+      throw invoiceError;
+    }
+
+    // 7. SEND INVOICE EMAIL TO CUSTOMER
+    logger.info('📧 Sending invoice email...');
     try {
       const { emailService } = await import('../services/emailService.js');
+      
       const invoiceContent = `
-        <h2>Invoice #${invoiceNumber}</h2>
-        <p><strong>Plan:</strong> ${plan.name}</p>
-        <p><strong>Amount:</strong> ₹${invoice.total}</p>
-        <p><strong>Date:</strong> ${invoice.invoiceDate.toLocaleDateString()}</p>
-        <p><strong>Due Date:</strong> ${invoice.dueDate.toLocaleDateString()}</p>
+        <h2>Payment Confirmation - Invoice #${invoiceNumber}</h2>
+        <hr>
+        <h3>Thank you for your subscription!</h3>
+        
+        <h4>Invoice Details:</h4>
+        <table style="border-collapse: collapse; width: 100%;">
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 10px;"><strong>Invoice Number:</strong></td>
+            <td style="padding: 10px;">${invoiceNumber}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 10px;"><strong>Date:</strong></td>
+            <td style="padding: 10px;">${invoice.invoiceDate.toLocaleDateString()}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 10px;"><strong>Plan:</strong></td>
+            <td style="padding: 10px;">${plan.name}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 10px;"><strong>Billing Cycle:</strong></td>
+            <td style="padding: 10px;">${payment.billingCycle}</td>
+          </tr>
+        </table>
+        
+        <h4>Amount Paid:</h4>
+        <p style="font-size: 24px; color: green;"><strong>₹${invoice.total}</strong></p>
+        
+        <h4>Due Date:</h4>
+        <p>${invoice.dueDate.toLocaleDateString()}</p>
+        
+        <p>Your subscription is now active. You can access all features immediately.</p>
+        <p>Thank you for choosing us!</p>
       `;
       
       await emailService.sendEmail({
         to: account.email,
-        subject: `Invoice ${invoiceNumber} - ${plan.name} Plan`,
+        subject: `Invoice ${invoiceNumber} - ${plan.name} Plan Subscription Confirmed`,
         html: invoiceContent
       });
-      logger.info('✅ Invoice email sent to:', account.email);
+      logger.info('✅ Invoice email sent successfully:', { to: account.email, invoiceNumber });
     } catch (emailError) {
-      logger.warn('⚠️ Failed to send invoice email:', emailError.message);
+      logger.error('❌ Failed to send invoice email:', emailError.message);
+      logger.error('   Email would have been sent to:', account.email);
+      // Don't throw - invoice is created even if email fails
     }
 
     // 8. Update payment with subscription and invoice references
     payment.subscriptionId = subscription._id;
     payment.invoiceId = invoice._id;
     await payment.save();
+    logger.info('✅ Payment linked with subscription and invoice');
 
     logger.info('✅ Webhook processing complete:', {
       orderId,
