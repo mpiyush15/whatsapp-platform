@@ -1,7 +1,6 @@
 import { sendSuccess, sendValidationError } from '../utils/responseHandler.js';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
-import axios from 'axios';
 import mongoose from 'mongoose';
 
 const Account = mongoose.model('Account');
@@ -48,159 +47,21 @@ export const handleOAuthCallback = async (req, res) => {
 export const handleWhatsAppOAuth = async (req, res) => {
   try {
     const accountId = req.account.accountId;
-    const { code } = req.body;
 
-    if (!code) {
-      return sendValidationError(res, 'Authorization code required');
-    }
+    logger.info(`✅ WhatsApp OAuth callback received for account ${accountId}`);
+    logger.info(`📋 Webhook will handle the authorization and phone number sync`);
 
-    logger.info(`🔐 Exchanging WhatsApp OAuth code for account ${accountId}...`);
-
-    // Exchange code for access token using Meta API
-    const tokenUrl = 'https://graph.instagram.com/v18.0/oauth/access_token';
+    // NOTE: The actual phone number sync happens via Meta's webhook
+    // This endpoint just confirms receipt
+    // The webhook sends account_update event with phone numbers
     
-    // Get the primary frontend URL (first one if multiple are set)
-    const frontendUrl = (process.env.FRONTEND_URL || 'https://replysys.com').split(',')[0].trim();
-    // Use the redirect_uri registered in Meta Developer Settings
-    const redirectUri = `${frontendUrl}/auth/whatsapp/callback`;
-    
-    logger.info(`🔗 Using redirect_uri: ${redirectUri}`);
-    
-    const tokenResponse = await axios.post(tokenUrl, {
-      client_id: process.env.META_APP_ID,
-      client_secret: process.env.META_APP_SECRET,
-      redirect_uri: redirectUri,
-      code
-    });
-
-    const accessToken = tokenResponse.data.access_token;
-    logger.info(`✅ Got access token for account ${accountId}`);
-
-    // Get WABA ID using the access token
-    const wabaUrl = `https://graph.facebook.com/v18.0/me/owned_whatsapp_business_accounts`;
-    const wabaResponse = await axios.get(wabaUrl, {
-      params: { access_token: accessToken }
-    });
-
-    const wabaId = wabaResponse.data.data[0]?.id;
-    if (!wabaId) {
-      return sendValidationError(res, 'No WhatsApp Business Account found');
-    }
-
-    logger.info(`✅ Got WABA ID: ${wabaId}`);
-
-    // Get phone numbers for this WABA
-    const phoneUrl = `https://graph.facebook.com/v18.0/${wabaId}/phone_numbers`;
-    logger.info(`🔗 Fetching phones from: ${phoneUrl}`);
-    
-    let phoneResponse;
-    try {
-      phoneResponse = await axios.get(phoneUrl, {
-        params: { access_token: accessToken }
-      });
-    } catch (phoneError) {
-      logger.error(`❌ Error fetching phone numbers:`, phoneError.response?.data || phoneError.message);
-      return sendValidationError(res, `Failed to fetch phone numbers: ${phoneError.response?.data?.error?.message || phoneError.message}`);
-    }
-
-    const phones = phoneResponse.data.data || [];
-    logger.info(`✅ Found ${phones.length} phone numbers for WABA ${wabaId}`);
-    
-    if (phones.length === 0) {
-      logger.warn(`⚠️ No phone numbers returned from Meta for WABA ${wabaId}`);
-      logger.warn(`📋 Full phone response:`, JSON.stringify(phoneResponse.data, null, 2));
-    }
-
-    // Save phone numbers to database
-    const savedPhones = [];
-    for (const phone of phones) {
-      try {
-        const phoneData = {
-          phoneNumberId: phone.id,
-          wabaId,
-          displayName: phone.display_name_address_book || phone.display_name || '',
-          displayPhone: phone.phone_number || '',
-          phone: phone.phone_number,
-          isActive: true,
-          accessToken
-        };
-
-        logger.info(`📝 Saving phone data:`, JSON.stringify(phoneData, null, 2));
-
-        const phoneNumber = await PhoneNumber.findOneAndUpdate(
-          { phoneNumberId: phone.id },
-          phoneData,
-          { upsert: true, new: true }
-        );
-
-        savedPhones.push(phoneNumber);
-        logger.info(`✅ Saved phone: ${phone.phone_number} (ID: ${phone.id})`);
-      } catch (phoneError) {
-        logger.error(`❌ Error saving phone ${phone.phone_number}:`, phoneError);
-      }
-    }
-
-    // Update account with WABA ID and access token
-    const updatedAccount = await Account.findOneAndUpdate(
-      { accountId },
-      {
-        wabaId,
-        accessToken,
-        whatsappConfig: {
-          wabaId,
-          accessToken,
-          connectedAt: new Date()
-        }
-      },
-      { new: true }
-    );
-
-    logger.info(`✅ WhatsApp OAuth successful for ${accountId}. Connected ${savedPhones.length} phone numbers.`);
-
     return sendSuccess(res, {
-      accessToken,
-      wabaId,
-      phoneNumbers: savedPhones.map(p => ({
-        _id: p._id,
-        phoneNumberId: p.phoneNumberId,
-        wabaId: p.wabaId,
-        displayName: p.displayName,
-        displayPhone: p.displayPhone,
-        isActive: p.isActive
-      }))
-    }, `WhatsApp OAuth successful. Connected ${savedPhones.length} phone number(s)`);
-
+      status: 'callback_received',
+      message: 'Waiting for webhook with phone number data...',
+      accountId
+    }, 'WhatsApp OAuth callback processed');
   } catch (error) {
-    logger.error('❌ WhatsApp OAuth error:', error.response?.data || error.message);
     return handleControllerError(res, error, 'handleWhatsAppOAuth');
-  }
-};
-
-export const getWhatsAppStatus = async (req, res) => {
-  try {
-    const accountId = req.account.accountId;
-
-    const account = await Account.findOne({ accountId }).select('wabaId accessToken whatsappConfig');
-
-    if (!account?.wabaId) {
-      return sendSuccess(res, { status: 'disconnected', phoneNumbers: [] }, 'WhatsApp not connected');
-    }
-
-    // Fetch connected phone numbers
-    const phoneNumbers = await PhoneNumber.find({ wabaId: account.wabaId }).select(
-      '_id phoneNumberId wabaId displayName displayPhone isActive'
-    );
-
-    logger.info(`✅ Retrieved ${phoneNumbers.length} phone numbers for WABA ${account.wabaId}`);
-
-    return sendSuccess(res, {
-      status: 'connected',
-      wabaId: account.wabaId,
-      phoneNumbers
-    }, 'WhatsApp status retrieved');
-
-  } catch (error) {
-    return handleControllerError(res, error, 'getWhatsAppStatus');
   }
 };
 
@@ -239,6 +100,5 @@ export default {
   initiateOAuth, 
   handleOAuthCallback,
   handleWhatsAppOAuth,
-  getWhatsAppStatus,
   disconnectWhatsApp
 };
