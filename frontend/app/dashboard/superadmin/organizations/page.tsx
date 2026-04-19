@@ -137,6 +137,34 @@ export default function OrganizationsPage() {
       key: "createdAt",
       label: "Created",
       render: (value) => new Date(value).toLocaleDateString('en-IN')
+    },
+    {
+      key: "status",
+      label: "Actions",
+      render: (value, row) => (
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setSelectedOrg(row)
+              setDrawerOpen(true)
+            }}
+            className="px-3 py-1 text-sm font-semibold bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+          >
+            View
+          </button>
+          <button
+            onClick={() => row.status === 'pending' && handleActivateAccount(row.accountId, row.name)}
+            disabled={row.status !== 'pending' || activatingId === row.accountId}
+            className={`px-3 py-1 text-sm font-semibold rounded transition ${
+              row.status === 'pending'
+                ? 'bg-green-600 text-white hover:bg-green-700 cursor-pointer'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+            }`}
+          >
+            {activatingId === row.accountId ? 'Activating...' : 'Activate'}
+          </button>
+        </div>
+      )
     }
   ]
 
@@ -156,10 +184,7 @@ export default function OrganizationsPage() {
           handleActivateAccount(row.accountId, row.name)
         }
       },
-      variant: "success" as const,
-      disabled: (row) => row.status !== 'pending' || activatingId === row.accountId,
-      loading: (row) => activatingId === row.accountId,
-      className: (row) => row.status === 'pending' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+      variant: "success" as const
     }
   ]
 
@@ -201,7 +226,6 @@ export default function OrganizationsPage() {
           data={organizations}
           loading={loading}
           error={error}
-          actions={actions}
           emptyMessage="No organizations found"
         />
       </div>
