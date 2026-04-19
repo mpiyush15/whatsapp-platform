@@ -29,22 +29,22 @@ export const handleCashfreeWebhook = async (req, res) => {
     logger.info('✅ Processing webhook (signature verification bypassed for testing)');
     logger.info('📋 FULL WEBHOOK BODY:', JSON.stringify(body, null, 2));
 
-    // Cashfree sends payment_status inside data.order.payment
+    // Cashfree sends payment_status at data.payment (not data.order.payment)
     let orderId, orderStatus;
     
     if (body.data?.order) {
       orderId = body.data.order.order_id;
       logger.info('📦 Found data.order:', JSON.stringify(body.data.order, null, 2));
-      logger.info('📦 data.order.payment:', JSON.stringify(body.data.order.payment, null, 2));
-      // Cashfree sends payment_status in data.order.payment
-      orderStatus = body.data.order.payment?.payment_status || body.data.order.order_status;
+      logger.info('📦 data.payment:', JSON.stringify(body.data.payment, null, 2));
+      // CORRECT: payment_status is at data.payment, NOT data.order.payment
+      orderStatus = body.data.payment?.payment_status || body.data.order.order_status;
     } else if (body.order) {
       orderId = body.order.order_id;
       logger.info('📦 Found body.order:', JSON.stringify(body.order, null, 2));
-      orderStatus = body.order.payment?.payment_status || body.order.order_status;
+      orderStatus = body.payment?.payment_status || body.order.order_status;
     } else if (body.order_id) {
       orderId = body.order_id;
-      orderStatus = body.order_status || body.status;
+      orderStatus = body.payment?.payment_status || body.order_status || body.status;
     }
 
     logger.info('🔍 Processing webhook:', { orderId, orderStatus, bodyKeys: Object.keys(body) });

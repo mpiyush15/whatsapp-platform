@@ -38,6 +38,7 @@ import leadRoutes from './routes/leadRoutes.js';
 import paymentReminderRoutes from './routes/paymentReminderRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import { startPaymentStatusPoller } from './jobs/paymentStatusPoller.js';
 import jobRoutes from './routes/jobRoutes.js';
 import demoRoutes from './routes/demoRoutes.js';
 import oauthRoutes from './routes/oauthRoutes.js';
@@ -433,6 +434,9 @@ export const setupSocketIO = (io) => {
   import('./controllers/messageController.js').then(module => {
     module.setSocketIO(io);
   });
+
+  // Start payment status poller (auto-checks pending payments every 10 seconds)
+  startPaymentStatusPoller();
 };
 
 export default app;
