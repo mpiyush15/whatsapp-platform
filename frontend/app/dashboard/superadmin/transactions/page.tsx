@@ -30,6 +30,7 @@ export default function TransactionsPage() {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState<string>("")
+  const [activatingId, setActivatingId] = useState<string | null>(null)
   const [stats, setStats] = useState({
     total: 0,
     completed: 0,
@@ -41,6 +42,36 @@ export default function TransactionsPage() {
   useEffect(() => {
     fetchTransactions()
   }, [])
+
+  const handleActivateFromTransaction = async (transaction: Transaction, accountId: string) => {
+    if (!confirm(`Activate account for transaction ${transaction.orderId}? This will create a subscription and send invoice.`)) {
+      return
+    }
+
+    setActivatingId(transaction.orderId)
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`${API_URL}/admin/accounts/${accountId}/activate`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      if (!response.ok) throw new Error("Failed to activate")
+      
+      const data = await response.json()
+      alert(`✅ Account activated!\n\nOrder: ${transaction.orderId}\nSubscription: ${data.data?.subscription?.subscriptionId}\nInvoice sent to: ${data.data?.account?.email}`)
+      
+      // Refresh transactions
+      await fetchTransactions()
+      setActivatingId(null)
+    } catch (err) {
+      alert(`❌ Error: ${err instanceof Error ? err.message : "Unknown error"}`)
+      setActivatingId(null)
+    }
+  }
 
   const fetchTransactions = async () => {
     try {
@@ -208,6 +239,30 @@ export default function TransactionsPage() {
           {value ? new Date(value).toLocaleDateString("en-IN") + " " + new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : new Date(row.createdAt).toLocaleDateString("en-IN") + " " + new Date(row.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
         </span>
       )
+    },
+    {
+      key: "actions",
+      label: "Actions",
+      render: (_, row: Transaction) => {
+        const isCompleted = row.status?.toUpperCase() === "COMPLETED" || row.status?.toUpperCase() === "PAID" || row.status?.toUpperCase() === "SUCCESS"
+        const isActivating = activatingId === row.orderId
+
+        return isCompleted ? (
+          <button
+            onClick={() => handleActivateFromTransaction(row, row.accountId)}
+            disabled={isActivating}
+            className={`px-3 py-1 text-sm font-semibold rounded transition ${
+              isActivating
+                ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                : 'bg-green-600 text-white hover:bg-green-700 cursor-pointer'
+            }`}
+          >
+            {isActivating ? 'Activating...' : 'Activate'}
+          </button>
+        ) : (
+          <span className="px-3 py-1 text-sm text-gray-400">—</span>
+        )
+      }
     }
   ]
 
