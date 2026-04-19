@@ -58,10 +58,17 @@ export const handleWhatsAppOAuth = async (req, res) => {
 
     // Exchange code for access token using Meta API
     const tokenUrl = 'https://graph.instagram.com/v18.0/oauth/access_token';
+    
+    // Get the primary frontend URL (first one if multiple are set)
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://replysys.com').split(',')[0].trim();
+    const redirectUri = `${frontendUrl}/dashboard/client/settings`;
+    
+    logger.info(`🔗 Using redirect_uri: ${redirectUri}`);
+    
     const tokenResponse = await axios.post(tokenUrl, {
       client_id: process.env.META_APP_ID,
       client_secret: process.env.META_APP_SECRET,
-      redirect_uri: `${process.env.FRONTEND_URL}/dashboard/client/settings`,
+      redirect_uri: redirectUri,
       code
     });
 
