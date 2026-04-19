@@ -19,6 +19,14 @@ const router = express.Router()
 router.post('/whatsapp/oauth', requireJWT, handleWhatsAppOAuth)
 
 /**
+ * POST /api/integrations/whatsapp/oauth/callback
+ * Handle OAuth redirect callback - exchange code immediately
+ * Requires: JWT authentication
+ * Body: { code, state }
+ */
+router.post('/whatsapp/oauth/callback', requireJWT, handleWhatsAppOAuth)
+
+/**
  * GET /api/integrations/whatsapp/status
  * Get current WhatsApp connection status
  * Requires: JWT authentication
