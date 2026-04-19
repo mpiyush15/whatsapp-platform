@@ -3,11 +3,13 @@ import Subscription from '../models/Subscription.js';
 import PricingPlan from '../models/PricingPlan.js';
 import Payment from '../models/Payment.js';
 import { cashfreeService } from '../services/cashfreeService.js';
+import { handleCashfreeWebhook } from './paymentWebhookController.js';
 import { generateId } from '../utils/idGenerator.js';
 import { emailService } from '../services/emailService.js';
 import { sendSuccess, sendValidationError, sendNotFound, sendForbidden } from '../utils/responseHandler.js';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
+import crypto from 'crypto';
 
 export const getPendingUsers = async (req, res) => {
   try {
@@ -454,6 +456,78 @@ export const syncCashfreeTransactions = async (req, res) => {
 
     logger.info(`✅ Synced ${syncResult.count} transactions from Cashfree`);
 
+    // ✅ NEW: After syncing, check for completed payments that don't have subscriptions yet
+    logger.info('📋 Checking for completed payments that need subscription creation...');
+    const completedPayments = await Payment.find({
+      status: 'completed',
+      subscriptionId: { $exists: false }  // No subscription yet
+    }).limit(50);
+
+    logger.info(`🔍 Found ${completedPayments.length} completed payments without subscriptions`);
+
+    let subscriptionsCreated = 0;
+    for (const payment of completedPayments) {
+      try {
+        logger.info(`📝 Processing payment ${payment.orderId} for subscription creation`);
+
+        // Create the webhook payload
+        const webhookPayload = {
+          data: {
+            order: {
+              order_id: payment.orderId,
+              order_amount: payment.amount,
+              order_currency: 'INR'
+            },
+            payment: {
+              payment_status: 'SUCCESS',
+              cf_payment_id: payment.cfOrderId,
+              payment_amount: payment.amount
+            }
+          }
+        };
+
+        // Convert to string for signature generation
+        const rawBodyString = JSON.stringify(webhookPayload);
+        const rawBuffer = Buffer.from(rawBodyString, 'utf-8');
+
+        // Generate timestamp and signature
+        const timestamp = Math.floor(Date.now() / 1000).toString();
+        const signStr = `${timestamp}.${rawBodyString}`;
+        const signature = crypto
+          .createHmac('sha256', process.env.CASHFREE_WEBHOOK_SECRET || process.env.CASHFREE_CLIENT_SECRET)
+          .update(signStr)
+          .digest('base64');
+
+        logger.info(`🔐 Generated signature for ${payment.orderId}: ${signature.substring(0, 16)}...`);
+
+        // Create mock request with valid signature
+        const mockReq = {
+          body: webhookPayload,
+          rawBody: rawBuffer,  // Pass as Buffer like the middleware does
+          headers: {
+            'x-webhook-signature': signature,
+            'x-webhook-timestamp': timestamp,
+            'content-type': 'application/json'
+          }
+        };
+
+        const mockRes = {
+          json: (data) => data,
+          status: () => mockRes,
+          send: () => mockRes,
+          statusCode: 200
+        };
+
+        // Trigger webhook handler to create subscription
+        await handleCashfreeWebhook(mockReq, mockRes);
+        subscriptionsCreated++;
+
+        logger.info(`✅ Subscription created for payment ${payment.orderId}`);
+      } catch (error) {
+        logger.warn(`⚠️ Failed to create subscription for ${payment.orderId}:`, error.message);
+      }
+    }
+
     // After syncing, fetch all transactions
     const transactions = await Payment.find({})
       .sort({ createdAt: -1 })
@@ -462,9 +536,10 @@ export const syncCashfreeTransactions = async (req, res) => {
 
     return sendSuccess(res, {
       syncResult,
+      subscriptionsCreated,
       transactions,
       total: transactions.length,
-      message: `Successfully synced ${syncResult.count} transactions from Cashfree`
+      message: `Successfully synced ${syncResult.count} transactions. Created ${subscriptionsCreated} subscriptions.`
     }, 'Transactions synced from Cashfree');
   } catch (error) {
     logger.error('❌ Error syncing Cashfree transactions:', error.message);
