@@ -61,7 +61,8 @@ export const handleWhatsAppOAuth = async (req, res) => {
     
     // Get the primary frontend URL (first one if multiple are set)
     const frontendUrl = (process.env.FRONTEND_URL || 'https://replysys.com').split(',')[0].trim();
-    const redirectUri = `${frontendUrl}/dashboard/client/settings`;
+    // Use the redirect_uri registered in Meta Developer Settings
+    const redirectUri = `${frontendUrl}/auth/whatsapp/callback`;
     
     logger.info(`🔗 Using redirect_uri: ${redirectUri}`);
     
