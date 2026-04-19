@@ -4,9 +4,9 @@ import logger from '../utils/logger.js';
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 import {
   handleWhatsAppOAuth,
-  getWhatsAppStatus,
   disconnectWhatsApp
 } from '../controllers/oauthController.js'
+import { getWhatsAppStatus } from '../controllers/whatsappStatusController.js'
 
 const router = express.Router()
 
