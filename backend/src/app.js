@@ -102,17 +102,21 @@ app.use((req, res, next) => {
   });
   
   req.on('end', () => {
-    req.rawBody = data.toString('utf-8');
+    // Store raw body as Buffer (needed for webhook signature verification)
+    req.rawBody = data;
+    
+    // Also store as string for logging
+    const rawBodyString = data.toString('utf-8');
     
     // Now parse the JSON
     try {
       if (req.get('content-type')?.includes('application/json')) {
-        req.body = JSON.parse(req.rawBody);
+        req.body = JSON.parse(rawBodyString);
       } else if (req.get('content-type')?.includes('application/x-www-form-urlencoded')) {
         const qs = require('querystring');
-        req.body = qs.parse(req.rawBody);
+        req.body = qs.parse(rawBodyString);
       } else {
-        req.body = req.rawBody;
+        req.body = data;
       }
     } catch (e) {
       req.body = {};

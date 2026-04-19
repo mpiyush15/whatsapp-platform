@@ -143,8 +143,20 @@ export const cashfreeService = {
         return false;
       }
 
-      // Per Cashfree docs: signature = HMAC-SHA256(timestamp.rawBody, WEBHOOK_SECRET) in base64
-      const signStr = `${timestamp}.${rawBody}`;
+      // ✅ CRITICAL FIX: rawBody must be Buffer, convert to string ONLY for HMAC
+      // Cashfree signature = HMAC-SHA256(timestamp.rawBody, WEBHOOK_SECRET) in base64
+      const rawBodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf-8') : rawBody;
+      const signStr = `${timestamp}.${rawBodyString}`;
+      
+      // DEBUG: Log exact bytes being hashed
+      logger.debug('🔐 Signature verification debug:', {
+        timestamp,
+        rawBodyLength: rawBodyString.length,
+        rawBodyHex: Buffer.from(rawBodyString).toString('hex').substring(0, 100),
+        signStrLength: signStr.length,
+        signStrHex: Buffer.from(signStr).toString('hex').substring(0, 100),
+        secret: CASHFREE_WEBHOOK_SECRET
+      });
       
       const computedSignature = crypto
         .createHmac('sha256', CASHFREE_WEBHOOK_SECRET)
