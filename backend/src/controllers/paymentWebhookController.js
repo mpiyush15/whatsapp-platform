@@ -66,6 +66,12 @@ export const handleCashfreeWebhook = async (req, res) => {
       return sendSuccess(res, { orderId, processed: false, error: 'Payment not found' });
     }
 
+    // 1.5 CHECK IDEMPOTENCY - Don't process if already completed
+    if (payment.status === 'completed') {
+      logger.warn('⚠️ Payment already processed, skipping duplicate webhook:', orderId);
+      return sendSuccess(res, { orderId, processed: true, isDuplicate: true }, 'Payment already processed');
+    }
+
     // 2. Update payment status to completed
     payment.status = 'completed';
     payment.paymentStatus = 'success';
@@ -100,26 +106,40 @@ export const handleCashfreeWebhook = async (req, res) => {
       return sendSuccess(res, { orderId, processed: false, error: 'Account or plan not found' });
     }
 
-    // 5. Create subscription record
+    // 5. Create subscription record WITH ALL REQUIRED FIELDS
     const subscriptionId = `SUB_${accountId}_${Date.now()}`;
+    const startDate = new Date();
+    const billingCycle = payment.billingCycle || 'monthly';
+    
+    // Calculate end date based on billing cycle
+    let endDate = new Date(startDate);
+    if (billingCycle === 'monthly') {
+      endDate.setMonth(endDate.getMonth() + 1);
+    } else if (billingCycle === 'yearly') {
+      endDate.setFullYear(endDate.getFullYear() + 1);
+    }
+
     const subscription = new Subscription({
       subscriptionId,
       accountId,
       planId: plan._id,
       status: 'active',
-      billingCycle: payment.billingCycle || 'monthly',
+      billingCycle,
       pricing: {
         amount: payment.amount,
-        discount: 0
+        discount: 0,
+        finalAmount: payment.amount  // ✅ ADDED: Required field
       },
-      startDate: new Date(),
-      nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+      paymentGateway: 'cashfree',  // ✅ ADDED: Required field
+      startDate,
+      endDate,  // ✅ ADDED: Required field (calculated based on billing cycle)
+      nextBillingDate: endDate,
       paymentMethodId: payment._id,
       autoRenew: true,
       createdAt: new Date()
     });
     await subscription.save();
-    logger.info('✅ Subscription created:', subscriptionId);
+    logger.info('✅ Subscription created:', { subscriptionId, startDate, endDate, paymentGateway: 'cashfree' });
 
     // 5.5 UPDATE ACCOUNT WITH SUBSCRIPTION AND STATUS
     account.subscriptionId = subscription._id;
