@@ -34,10 +34,13 @@ export const handleCashfreeWebhook = async (req, res) => {
     
     if (body.data?.order) {
       orderId = body.data.order.order_id;
+      logger.info('📦 Found data.order:', JSON.stringify(body.data.order, null, 2));
+      logger.info('📦 data.order.payment:', JSON.stringify(body.data.order.payment, null, 2));
       // Cashfree sends payment_status in data.order.payment
       orderStatus = body.data.order.payment?.payment_status || body.data.order.order_status;
     } else if (body.order) {
       orderId = body.order.order_id;
+      logger.info('📦 Found body.order:', JSON.stringify(body.order, null, 2));
       orderStatus = body.order.payment?.payment_status || body.order.order_status;
     } else if (body.order_id) {
       orderId = body.order_id;
@@ -45,6 +48,7 @@ export const handleCashfreeWebhook = async (req, res) => {
     }
 
     logger.info('🔍 Processing webhook:', { orderId, orderStatus, bodyKeys: Object.keys(body) });
+    logger.info('🔍 Detailed extraction - orderStatus value:', orderStatus, '| Type:', typeof orderStatus);
 
     // Cashfree sends "SUCCESS" (not "PAID")
     if (orderStatus !== 'SUCCESS' && orderStatus !== 'PAID') {
@@ -106,6 +110,12 @@ export const handleCashfreeWebhook = async (req, res) => {
     await subscription.save();
     logger.info('✅ Subscription created:', subscriptionId);
 
+    // 5.5 UPDATE ACCOUNT WITH SUBSCRIPTION AND STATUS
+    account.subscriptionId = subscription._id;
+    account.status = 'active';  // Change from "pending" to "active"
+    await account.save();
+    logger.info('✅ Account linked to subscription and status updated to active:', { accountId, status: account.status });
+
     // 6. Generate invoice
     const invoiceNumber = `INV-${accountId}-${Date.now()}`;
     const invoiceId = `INV_${accountId}_${Date.now()}`;
@@ -148,7 +158,28 @@ export const handleCashfreeWebhook = async (req, res) => {
     await invoice.save();
     logger.info('✅ Invoice generated:', invoiceNumber);
 
-    // 7. Update payment with subscription and invoice references
+    // 7. SEND INVOICE EMAIL
+    try {
+      const { emailService } = await import('../services/emailService.js');
+      const invoiceContent = `
+        <h2>Invoice #${invoiceNumber}</h2>
+        <p><strong>Plan:</strong> ${plan.name}</p>
+        <p><strong>Amount:</strong> ₹${invoice.total}</p>
+        <p><strong>Date:</strong> ${invoice.invoiceDate.toLocaleDateString()}</p>
+        <p><strong>Due Date:</strong> ${invoice.dueDate.toLocaleDateString()}</p>
+      `;
+      
+      await emailService.sendEmail({
+        to: account.email,
+        subject: `Invoice ${invoiceNumber} - ${plan.name} Plan`,
+        html: invoiceContent
+      });
+      logger.info('✅ Invoice email sent to:', account.email);
+    } catch (emailError) {
+      logger.warn('⚠️ Failed to send invoice email:', emailError.message);
+    }
+
+    // 8. Update payment with subscription and invoice references
     payment.subscriptionId = subscription._id;
     payment.invoiceId = invoice._id;
     await payment.save();
