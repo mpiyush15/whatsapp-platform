@@ -1,6 +1,7 @@
 import { sendSuccess, sendValidationError, sendNotFound } from '../utils/responseHandler.js';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
+import mongoose from 'mongoose';
 
 export const getSettings = async (req, res) => {
   try {
@@ -26,7 +27,27 @@ export const updateSettings = async (req, res) => {
 
 export const getPhoneNumbers = async (req, res) => {
   try {
-    return sendSuccess(res, { phoneNumbers: [] }, 'Phone numbers retrieved');
+    const accountId = req.account.accountId;
+
+    // Get account to find associated phone numbers
+    const Account = mongoose.model('Account');
+    const PhoneNumber = mongoose.model('PhoneNumber');
+
+    const account = await Account.findOne({ accountId }).select('wabaId phoneNumberId');
+
+    if (!account?.wabaId) {
+      logger.info(`No WhatsApp connected for account ${accountId}`);
+      return sendSuccess(res, { phoneNumbers: [] }, 'No phone numbers connected');
+    }
+
+    // Fetch all phone numbers for this WABA
+    const phoneNumbers = await PhoneNumber.find({ wabaId: account.wabaId }).select(
+      '_id phoneNumberId wabaId displayName displayPhone phone isActive verifiedAt qualityRating messageCount'
+    ).sort({ createdAt: -1 });
+
+    logger.info(`✅ Retrieved ${phoneNumbers.length} phone numbers for account ${accountId}`);
+
+    return sendSuccess(res, { phoneNumbers }, 'Phone numbers retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getPhoneNumbers');
   }

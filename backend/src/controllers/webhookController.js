@@ -42,10 +42,45 @@ export const deleteWebhook = async (req, res) => {
 
 export const handleWebhook = async (req, res) => {
   try {
-    const { event, data } = req.body;
-    logger.info('🪝 Webhook received:', { event });
+    const body = req.body;
+    
+    // Meta WhatsApp sends webhooks in this format:
+    // { object: "whatsapp_business_account", entry: [{ changes: [{ field, value }] }] }
+    
+    if (body.object === 'whatsapp_business_account') {
+      logger.info('✅ WhatsApp webhook received from Meta');
+      logger.info('📋 Full webhook body:', JSON.stringify(body, null, 2));
+      
+      const entries = body.entry || [];
+      for (const entry of entries) {
+        const changes = entry.changes || [];
+        for (const change of changes) {
+          const field = change.field;
+          const value = change.value;
+          
+          logger.info('🔍 Webhook field:', field);
+          logger.info('📦 Webhook value:', JSON.stringify(value, null, 2));
+          
+          // Handle different field types
+          if (field === 'messages') {
+            logger.info('💬 Message event received');
+          } else if (field === 'message_status') {
+            logger.info('📨 Message status change:', value);
+          } else if (field === 'message_template_status_update') {
+            logger.info('📝 Template status update:', value);
+          }
+        }
+      }
+      
+      return sendSuccess(res, { processed: true }, 'WhatsApp webhook processed');
+    }
+    
+    // Fallback for non-Meta webhooks
+    const { event, data } = body;
+    logger.info('🪝 Generic webhook received:', { event });
     return sendSuccess(res, { processed: true }, 'Webhook handled');
   } catch (error) {
+    logger.error('❌ Webhook handler error:', error);
     return handleControllerError(res, error, 'handleWebhook');
   }
 };
