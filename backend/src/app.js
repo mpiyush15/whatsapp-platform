@@ -395,6 +395,11 @@ app.use('/api/jobs', requireJWT, jobRoutes);
 // Mount WhatsApp integration routes (Flow B: Embedded Signup)
 app.use('/api/integrations/whatsapp', requireJWT, whatsappRoutes);
 
+// Mount Live Chat routes (Real-time conversations and messaging)
+app.use('/api/integrations/whatsapp/conversations', requireJWT, liveChatConversationRoutes);
+app.use('/api/integrations/whatsapp/messages', requireJWT, liveChatMessageRoutes);
+app.use('/api/integrations/whatsapp/tags', requireJWT, liveChatTagRoutes);
+
 // Mount business permissions routes (JWT AUTH - for managing business advanced permissions)
 app.use('/api/business/permissions', requireJWT, businessPermissionsRoutes);
 
