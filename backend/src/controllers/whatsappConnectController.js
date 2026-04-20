@@ -46,7 +46,7 @@ export const connectWhatsApp = async (req, res) => {
     try {
       phoneDetailsResponse = await axios.get(phoneDetailsUrl, {
         params: {
-          fields: 'display_phone_number,display_name_address_book,quality_rating,verified_name',
+          fields: 'display_phone_number,quality_rating,verified_name',
           access_token: systemToken
         },
         timeout: 10000
@@ -81,7 +81,6 @@ export const connectWhatsApp = async (req, res) => {
     logger.info('📱 Meta API Phone Response:', {
       phoneNumberId: phone_number_id,
       displayPhone: phoneData.display_phone_number,
-      displayName: phoneData.display_name_address_book,
       qualityRating: phoneData.quality_rating,
       verifiedName: phoneData.verified_name
     });
