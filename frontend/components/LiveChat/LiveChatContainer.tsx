@@ -103,7 +103,8 @@ export default function LiveChatContainer() {
 
       if (response.ok) {
         const result = await response.json()
-        setConversations(result.data?.conversations || [])
+        console.log('📡 Fetched conversations:', result.data)
+        setConversations(result.data || [])
       }
     } catch (err) {
       console.error('Error fetching conversations:', err)
@@ -121,7 +122,7 @@ export default function LiveChatContainer() {
 
       if (response.ok) {
         const result = await response.json()
-        setMessages(result.data?.messages || [])
+        setMessages(result.data || [])
       }
     } catch (err) {
       console.error('Error fetching messages:', err)
