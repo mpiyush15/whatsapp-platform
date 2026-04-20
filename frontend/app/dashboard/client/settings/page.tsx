@@ -103,7 +103,13 @@ function WhatsAppSettingsContent() {
         
         // Update UI with new phone
         if (data.phone) {
+          console.log('📱 Displaying connected phone:', data.phone)
           setConnectedPhones([data.phone])
+          setError(null)
+          // Optional: show success message
+          alert(`✅ WhatsApp connected! Phone: ${data.phone.display_phone_number}`)
+        } else {
+          console.warn('⚠️ No phone data in response:', data)
         }
       } else {
         const err = await response.json()
@@ -185,16 +191,55 @@ function WhatsAppSettingsContent() {
           </div>
         ) : (
           <div>
-            <div className="space-y-3 mb-6">
-              {connectedPhones.map((phone: any) => (
-                <div key={phone.phoneNumberId} className="flex items-center gap-3 p-3 bg-green-50 rounded">
-                  <CheckCircle size={20} className="text-green-600" />
-                  <div>
-                    <p className="font-semibold">{phone.displayPhone}</p>
-                    <p className="text-sm text-gray-600">{phone.displayName}</p>
-                  </div>
-                </div>
-              ))}
+            <div className="mb-6 overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Phone Number</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Display Name</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Quality</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Verification</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {connectedPhones.map((phone: any) => (
+                    <tr key={phone.phoneNumberId} className="border-b border-gray-200 hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-semibold">{phone.displayPhone || phone.display_phone_number || 'N/A'}</td>
+                      <td className="px-4 py-3 text-sm">{phone.displayName || phone.display_name || 'WhatsApp Business'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          phone.qualityRating === 'GREEN' ? 'bg-green-100 text-green-800' :
+                          phone.qualityRating === 'YELLOW' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {phone.qualityRating || 'UNKNOWN'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          phone.verificationStatus === 'VERIFIED' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {phone.verificationStatus || 'UNKNOWN'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          phone.verificationStatus === 'VERIFIED' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {phone.verificationStatus || 'NOT_VERIFIED'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center gap-1 text-green-600">
+                          <CheckCircle size={16} />
+                          Connected
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             <div className="flex gap-3">
