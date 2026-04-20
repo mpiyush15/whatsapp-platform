@@ -51,6 +51,7 @@ export const handleWebhook = async (req, res) => {
     
     if (body.object === 'whatsapp_business_account') {
       logger.info('✅ WhatsApp webhook received from Meta');
+      logger.info(`📦 FULL WEBHOOK BODY:`, JSON.stringify(body, null, 2));
       
       const entries = body.entry || [];
       const Account = mongoose.model('Account');
@@ -60,36 +61,43 @@ export const handleWebhook = async (req, res) => {
         const wabaId = entry.id;
         const changes = entry.changes || [];
         
+        logger.info(`📍 Entry ID (WABA): ${wabaId}`);
+        logger.info(`📍 Changes count: ${changes.length}`);
+        
         for (const change of changes) {
           const field = change.field;
           const value = change.value || {};
           
           logger.info(`🔍 Field: ${field} | WABA: ${wabaId}`);
           logger.info(`📋 Full value payload:`, JSON.stringify(value, null, 2));
+          logger.info(`📋 Value keys:`, Object.keys(value));
           
           // ⭐ Handle account updates - this is when user authorizes WhatsApp
           if (field === 'account_update') {
             logger.info(`🔔 Account Update Event Received for WABA: ${wabaId}`);
             
-            const phoneNumbers = value.phone_numbers || [];
-            logger.info(`📱 Found ${phoneNumbers.length} phone number(s) in account_update`);
-            logger.info(`📋 Phone numbers data:`, JSON.stringify(phoneNumbers, null, 2));
+            // Meta sends account_update with phone number info directly
+            // Structure: { display_phone_number, requested_verified_name, rejection_reason, ... }
+            const displayPhoneNumber = value.display_phone_number;
+            const displayName = value.requested_verified_name || 'WhatsApp Business Account';
             
-            // Save each phone number
-            for (const phoneData of phoneNumbers) {
+            logger.info(`📱 Account Update - Phone: ${displayPhoneNumber}, Name: ${displayName}`);
+            
+            if (displayPhoneNumber) {
               try {
+                // Create phone number entry from account_update data
                 const phoneEntry = {
-                  phoneNumberId: phoneData.phone_number_id || phoneData.id,
+                  phoneNumberId: wabaId, // Use WABA ID as phone number ID (Meta doesn't provide separate ID in account_update)
                   wabaId,
-                  displayName: phoneData.display_name || 'WhatsApp Number',
-                  displayPhone: phoneData.phone_number || phoneData.number || '',
-                  phone: phoneData.phone_number || phoneData.number || '',
+                  displayName,
+                  displayPhone: displayPhoneNumber,
+                  phone: displayPhoneNumber,
                   isActive: true,
                   verifiedAt: new Date(),
                   qualityRating: 'UNKNOWN'
                 };
                 
-                logger.info(`💾 Saving phone: ${phoneEntry.displayPhone} | ID: ${phoneEntry.phoneNumberId}`);
+                logger.info(`💾 Saving phone: ${displayPhoneNumber} | Name: ${displayName}`);
                 
                 const savedPhone = await PhoneNumber.findOneAndUpdate(
                   { phoneNumberId: phoneEntry.phoneNumberId },
@@ -101,6 +109,8 @@ export const handleWebhook = async (req, res) => {
               } catch (phoneError) {
                 logger.error(`❌ Error saving phone:`, phoneError.message);
               }
+            } else {
+              logger.warn(`⚠️ No phone number in account_update`);
             }
             
             // Find account - first try to find from pending OAuth sessions
