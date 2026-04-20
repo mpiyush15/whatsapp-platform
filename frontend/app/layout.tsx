@@ -34,87 +34,69 @@ export default function RootLayout({
     <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <head>
         <ThemeScript />
-        {/* Set WhatsApp Config ID from environment */}
+        {/* Flow B: Embedded Signup - Clean Implementation */}
         <script suppressHydrationWarning>
           {`window.WHATSAPP_CONFIG_ID = '${process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID || '1239299391737840'}';`}
         </script>
-        {/* Meta SDK for Embedded Signup */}
+        
+        {/* Meta SDK for WhatsApp Embedded Signup */}
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               if (typeof window !== 'undefined') {
+                // Initialize Facebook SDK
                 window.fbAsyncInit = function() {
                   FB.init({
-                    appId            : '2094709584392829',
-                    autoLogAppEvents : true,
-                    xfbml            : true,
-                    version          : 'v24.0'
+                    appId: '2094709584392829',
+                    version: 'v24.0'
                   });
                 };
 
+                // Load Facebook SDK
                 (function (d, s, id) {
                   var js, fjs = d.getElementsByTagName(s)[0];
                   if (d.getElementById(id)) return;
-                  js = d.createElement(s); js.id = id;
+                  js = d.createElement(s);
+                  js.id = id;
                   js.src = "https://connect.facebook.net/en_US/sdk.js";
                   fjs.parentNode.insertBefore(js, fjs);
                 }(document, 'script', 'facebook-jssdk'));
 
-                // WhatsApp Embedded Signup Message Listener
+                // Launch WhatsApp Embedded Signup (Flow B)
+                window.launchWhatsAppSignup = function() {
+                  console.log('🚀 Launching WhatsApp Embedded Signup...');
+                  
+                  if (typeof FB === 'undefined') {
+                    console.error('❌ Facebook SDK not loaded yet');
+                    return;
+                  }
+                  
+                  const configId = window.WHATSAPP_CONFIG_ID || '1239299391737840';
+                  console.log('📋 Using WhatsApp Config ID:', configId);
+                  
+                  // Launch Embedded Signup popup
+                  FB.login(function() {}, {
+                    config_id: configId,
+                    response_type: 'code',
+                    override_default_response_type: true,
+                    extras: { 'version': 'v3' }
+                  });
+                };
+
+                // Optional: Listen to postMessage events from popup (Settings page handles FINISH)
                 window.addEventListener('message', (event) => {
                   if (event.origin !== "https://www.facebook.com") return;
                   try {
                     const data = JSON.parse(event.data);
-                    if (data.type === 'WA_EMBEDDED_SIGNUP') {
-                      console.log('✅ WhatsApp Embedded Signup Data Received:', data);
-                      sessionStorage.setItem('wa_signup_data', JSON.stringify(data));
-                      window.dispatchEvent(new CustomEvent('wa_embedded_signup', { detail: data }));
+                    if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH') {
+                      console.log('✅ FINISH event received in layout (relaying to listeners)');
+                      // Settings page listener will handle this directly
                     }
                   } catch (error) {
-                    console.error('❌ Error processing WhatsApp Embedded Signup message:', error);
+                    // Silently ignore parse errors
                   }
                 });
-
-                // Facebook Business Login Callback
-                if (typeof window !== 'undefined') {
-                  window.fbLoginCallback = function(response) {
-                    console.log('📱 Facebook Login Response:', response);
-                    if (response && response.authResponse) {
-                      const code = response.authResponse.code;
-                      console.log('✅ Authorization Code Received:', code.substring(0, 20) + '...');
-                      
-                      sessionStorage.setItem('fb_login_code', code);
-                      sessionStorage.setItem('fb_login_time', new Date().toISOString());
-                      
-                      window.dispatchEvent(new CustomEvent('fb_login_success', { detail: { code } }));
-                      
-                      console.log('🔄 Ready to exchange code for token');
-                    } else {
-                      console.error('❌ User cancelled login or did not fully authorize');
-                      window.dispatchEvent(new CustomEvent('fb_login_error', { detail: { message: 'User cancelled or did not authorize' } }));
-                    }
-                  };
-
-                  // Launch WhatsApp Embedded Signup Flow
-                  window.launchWhatsAppSignup = function() {
-                    console.log('🚀 Launching WhatsApp Embedded Signup...');
-                    if (typeof FB === 'undefined') {
-                      console.error('❌ Facebook SDK not loaded yet');
-                      return;
-                    }
-                    
-                    const configId = window.WHATSAPP_CONFIG_ID || '1239299391737840';
-                    console.log('📋 Using WhatsApp Config ID:', configId);
-                    
-                    FB.login(window.fbLoginCallback, {
-                      config_id: configId,
-                      response_type: 'code',
-                      override_default_response_type: true,
-                      extras: { 'version': 'v3' }
-                    });
-                  };
-                }
               }
             `,
           }}
