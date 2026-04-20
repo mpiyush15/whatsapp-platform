@@ -41,7 +41,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import { startPaymentStatusPoller } from './jobs/paymentStatusPoller.js';
 import jobRoutes from './routes/jobRoutes.js';
 import demoRoutes from './routes/demoRoutes.js';
-import oauthRoutes from './routes/oauthRoutes.js';
+import whatsappRoutes from './routes/whatsappRoutes.js';
 import crmRoutes from './routes/crmRoutes.js';
 import discountRoutes from './routes/discountRoutes.js';
 import externalApiRoutes from './routes/externalApiRoutes.js';
@@ -392,8 +392,8 @@ app.use('/api/admin/payment-reminders', requireJWT, paymentReminderRoutes);
 // Mount job routes (JWT AUTH - for admin)
 app.use('/api/jobs', requireJWT, jobRoutes);
 
-// Mount integration routes (JWT AUTH for OAuth integrations, INTEGRATION TOKEN AUTH for third-party apps)
-app.use('/api/integrations', requireJWT, oauthRoutes);
+// Mount WhatsApp integration routes (Flow B: Embedded Signup)
+app.use('/api/integrations/whatsapp', requireJWT, whatsappRoutes);
 
 // Mount business permissions routes (JWT AUTH - for managing business advanced permissions)
 app.use('/api/business/permissions', requireJWT, businessPermissionsRoutes);

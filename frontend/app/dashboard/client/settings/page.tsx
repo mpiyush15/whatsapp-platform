@@ -1,30 +1,38 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Button } from "@/components/ui/button"
-import { Phone, CheckCircle } from "lucide-react"
+import { Phone, CheckCircle, AlertCircle } from "lucide-react"
 import { authService } from "@/lib/auth"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
-export default function WhatsAppSettings() {
+function WhatsAppSettingsContent() {
   const [connectedPhones, setConnectedPhones] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  // Fetch connected phones on load
   useEffect(() => {
-    // Check if we came back from OAuth callback with a code
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get('oauth_code')
-    
-    if (code) {
-      console.log('🔑 Found oauth_code in URL:', code.substring(0, 20) + '...')
-      exchangeOAuthCode(code)
-      // Remove code from URL
-      window.history.replaceState({}, document.title, window.location.pathname)
-    } else {
-      fetchConnectedPhones()
+    fetchConnectedPhones()
+  }, [])
+
+  // Listen for Embedded Signup FINISH event
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Check if this is a WhatsApp Embedded Signup FINISH event
+      if (event.data?.type === 'WA_EMBEDDED_SIGNUP' && event.data?.event === 'FINISH') {
+        const { waba_id, phone_number_id } = event.data.data
+        console.log('✅ Embedded Signup FINISH event received:', { waba_id, phone_number_id })
+        
+        // Call backend /connect endpoint
+        connectWhatsAppWithData(waba_id, phone_number_id)
+      }
     }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
   }, [])
 
   const fetchConnectedPhones = async () => {
@@ -37,39 +45,52 @@ export default function WhatsAppSettings() {
       if (response.ok) {
         const data = await response.json()
         setConnectedPhones(data.phones || [])
+        setError(null)
       }
     } catch (err) {
       console.error("Error fetching phones:", err)
+      setError("Failed to fetch connected phones")
     } finally {
       setLoading(false)
     }
   }
 
-  const exchangeOAuthCode = async (code: string) => {
+  const connectWhatsAppWithData = async (wabaId: string, phoneNumberId: string) => {
     try {
       setConnecting(true)
-      console.log('💫 Exchanging code for token...')
+      setError(null)
+      
+      console.log('🔗 Connecting WhatsApp:', { wabaId, phoneNumberId })
       
       const token = authService.getToken()
-      const response = await fetch(`${API_URL}/integrations/whatsapp/exchange`, {
+      const response = await fetch(`${API_URL}/integrations/whatsapp/connect`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({
+          waba_id: wabaId,
+          phone_number_id: phoneNumberId
+        })
       })
 
       if (response.ok) {
         const data = await response.json()
-        console.log('✅ Phones received:', data.phones)
-        setConnectedPhones(data.phones || [])
+        console.log('✅ Phone connected successfully:', data)
+        
+        // Update UI with new phone
+        if (data.phone) {
+          setConnectedPhones([data.phone])
+        }
       } else {
         const err = await response.json()
-        console.error('❌ Exchange failed:', err)
+        console.error('❌ Connection failed:', err)
+        setError(err.message || 'Failed to connect WhatsApp')
       }
     } catch (err) {
-      console.error('❌ Error exchanging code:', err)
+      console.error('❌ Error connecting WhatsApp:', err)
+      setError('An error occurred while connecting WhatsApp')
     } finally {
       setConnecting(false)
     }
@@ -79,14 +100,15 @@ export default function WhatsAppSettings() {
     setConnecting(true)
     try {
       if (typeof window !== 'undefined' && typeof window.launchWhatsAppSignup === 'function') {
+        console.log('🚀 Launching WhatsApp Embedded Signup...')
         window.launchWhatsAppSignup()
       } else {
-        alert('Facebook SDK not loaded yet. Please refresh and try again.')
+        setError('Facebook SDK not loaded yet. Please refresh and try again.')
         setConnecting(false)
       }
     } catch (err) {
-      console.error('Error launching OAuth:', err)
-      alert('Failed to launch WhatsApp connection')
+      console.error('Error launching signup:', err)
+      setError('Failed to launch WhatsApp connection')
       setConnecting(false)
     }
   }
@@ -99,15 +121,17 @@ export default function WhatsAppSettings() {
         headers: { Authorization: `Bearer ${token}` }
       })
       setConnectedPhones([])
+      setError(null)
     } catch (err) {
       console.error('Error disconnecting:', err)
+      setError('Failed to disconnect WhatsApp')
     }
   }
 
   return (
     <div className="p-8">
       <h1 className="text-3xl font-bold mb-2">WhatsApp Settings</h1>
-      <p className="text-gray-600 mb-8">Connect and manage your WhatsApp Business numbers</p>
+      <p className="text-gray-600 mb-8">Connect and manage your WhatsApp Business numbers using Flow B (Embedded Signup)</p>
 
       <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
@@ -115,7 +139,18 @@ export default function WhatsAppSettings() {
           <h2 className="text-xl font-semibold">WhatsApp Business Account</h2>
         </div>
 
-        {connectedPhones.length === 0 ? (
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded flex items-start gap-2">
+            <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="text-center py-8">
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        ) : connectedPhones.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-gray-600 mb-4">No WhatsApp numbers connected</p>
             <Button 
@@ -145,7 +180,7 @@ export default function WhatsAppSettings() {
                 onClick={handleConnect}
                 variant="outline"
               >
-                Add Another Number
+                Connect Another Number
               </Button>
               <Button 
                 onClick={handleDisconnect}
@@ -158,5 +193,13 @@ export default function WhatsAppSettings() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function WhatsAppSettings() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading...</div>}>
+      <WhatsAppSettingsContent />
+    </Suspense>
   )
 }
