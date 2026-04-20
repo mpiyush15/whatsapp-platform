@@ -15,10 +15,10 @@ const PhoneNumber = mongoose.model('PhoneNumber');
  * Saves to database
  */
 export const connectWhatsApp = async (req, res) => {
+  const accountId = req.account.accountId;
+  const { waba_id, phone_number_id } = req.body;
+  
   try {
-    const accountId = req.account.accountId;
-    const { waba_id, phone_number_id } = req.body;
-
     // Validate input
     if (!waba_id) {
       return sendValidationError(res, ERRORS.NO_WABA_ID);
@@ -37,18 +37,45 @@ export const connectWhatsApp = async (req, res) => {
 
     // Step 1: Fetch phone details from Meta using system token
     logger.info(`📱 Fetching phone details for ${phone_number_id}...`);
+    logger.info(`📍 System Token Present: ${systemToken ? 'YES' : 'NO'}`);
     
     const phoneDetailsUrl = `${META_API.BASE_URL}${META_API.ENDPOINTS.PHONE_DETAILS(phone_number_id)}`;
-    const phoneDetailsResponse = await axios.get(phoneDetailsUrl, {
-      params: {
-        fields: 'display_phone_number,display_name_address_book,quality_rating,verified_name',
-        access_token: systemToken
-      }
-    });
+    logger.info(`📍 Meta API URL: ${phoneDetailsUrl}`);
+    
+    let phoneDetailsResponse;
+    try {
+      phoneDetailsResponse = await axios.get(phoneDetailsUrl, {
+        params: {
+          fields: 'display_phone_number,display_name_address_book,quality_rating,verified_name',
+          access_token: systemToken
+        },
+        timeout: 10000
+      });
+    } catch (metaError) {
+      logger.error('❌ Meta API call failed:', {
+        url: phoneDetailsUrl,
+        status: metaError.response?.status,
+        statusText: metaError.response?.statusText,
+        errorMessage: metaError.response?.data?.error?.message || metaError.message,
+        errorCode: metaError.code,
+        fullError: JSON.stringify(metaError.response?.data)
+      });
+      throw metaError;
+    }
+
+    if (!phoneDetailsResponse.data) {
+      logger.error('❌ Meta API returned empty response');
+      throw new Error('Meta API returned empty response');
+    }
 
     const phoneData = phoneDetailsResponse.data;
     const displayPhone = phoneData.display_phone_number;
     const displayName = phoneData.display_name_address_book || phoneData.verified_name || 'WhatsApp Number';
+
+    if (!displayPhone) {
+      logger.error('❌ Meta API response missing display_phone_number:', phoneData);
+      throw new Error('Phone details not found in Meta response');
+    }
 
     // Log Meta response for debugging
     logger.info('📱 Meta API Phone Response:', {
