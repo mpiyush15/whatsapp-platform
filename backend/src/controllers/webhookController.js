@@ -115,17 +115,32 @@ export const handleWebhook = async (req, res) => {
               logger.warn(`⚠️ No phone number in account_update`);
             }
             
-            // Find account - first try to find from pending OAuth sessions
+            // Find account - first try to find from recent OAuth initiation
             let accountIdToUpdate = null;
             let account = null;
             
             try {
-              // Check if there's a pending OAuth session
-              accountIdToUpdate = getRecentOAuthSession();
+              // Check for recent OAuth initiation (within last 5 minutes)
+              const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+              
+              const recentOAuth = await Account.findOne({
+                'metaSync.oauthInitiatedAt': { $gte: fiveMinutesAgo },
+                'metaSync.status': 'oauth_in_progress'
+              }).sort({ 'metaSync.oauthInitiatedAt': -1 });
+              
+              if (recentOAuth) {
+                accountIdToUpdate = recentOAuth.accountId;
+                logger.info(`🔗 Found account from recent OAuth: ${accountIdToUpdate}`);
+              } else {
+                // Fallback: Try to find by WABA ID (for manual linking)
+                account = await Account.findOne({ wabaId });
+                if (account) {
+                  accountIdToUpdate = account.accountId;
+                  logger.info(`⏳ Found account by existing WABA ID: ${accountIdToUpdate}`);
+                }
+              }
               
               if (accountIdToUpdate) {
-                logger.info(`🔗 Using pending OAuth session for account: ${accountIdToUpdate}`);
-                
                 // Update account with WABA ID
                 account = await Account.findOneAndUpdate(
                   { accountId: accountIdToUpdate },
@@ -135,22 +150,9 @@ export const handleWebhook = async (req, res) => {
                     whatsappConfig: {
                       wabaId,
                       connectedAt: new Date()
-                    }
-                  },
-                  { new: true }
-                );
-              } else {
-                // Fallback: try to find existing account by WABA ID
-                logger.info(`⏳ No pending OAuth session found, trying to find account by WABA ID`);
-                account = await Account.findOneAndUpdate(
-                  { wabaId },
-                  {
-                    wabaId,
-                    isWhatsAppConnected: true,
-                    whatsappConfig: {
-                      wabaId,
-                      connectedAt: new Date()
-                    }
+                    },
+                    'metaSync.status': 'connected',
+                    'metaSync.oauthInitiatedAt': null
                   },
                   { new: true }
                 );

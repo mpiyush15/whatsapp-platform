@@ -104,16 +104,25 @@ export const disconnectWhatsApp = async (req, res) => {
 /**
  * Record OAuth initiation for account
  * Called when user clicks "Connect WhatsApp" button
- * Used to link webhook response to correct account
+ * Stores in Account document so it persists until webhook arrives
  */
 export const recordOAuthInitiation = async (req, res) => {
   try {
     const accountId = req.account.accountId;
     
+    const Account = mongoose.model('Account');
+    
+    // Store OAuth initiation timestamp in Account
+    await Account.findOneAndUpdate(
+      { accountId },
+      {
+        'metaSync.oauthInitiatedAt': new Date(),
+        'metaSync.status': 'oauth_in_progress'
+      },
+      { new: true }
+    );
+    
     logger.info(`📋 OAuth session initiated for account: ${accountId}`);
-    logger.info(`🔔 Recording OAuth initiation at ${new Date().toISOString()}`);
-    recordSession(accountId);
-    logger.info(`✅ OAuth session recorded successfully`);
     
     return sendSuccess(res, { message: 'OAuth initiation recorded', accountId });
   } catch (error) {

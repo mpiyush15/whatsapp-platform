@@ -1,19 +1,27 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function WhatsAppCallbackPage() {
+function CallbackContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
-    // Webhook will handle the authorization
-    // Just redirect back to Settings
-    console.log('✅ WhatsApp authorization complete - redirecting to Settings');
+    const code = searchParams.get('code');
+    
+    if (!code) {
+      console.log('❌ No auth code in callback');
+      setTimeout(() => router.push('/dashboard/client/settings'), 2000);
+      return;
+    }
+
+    console.log('✅ Auth code received:', code);
+    
     setTimeout(() => {
-      router.push('/dashboard/client/settings?tab=whatsapp&status=authorized');
+      router.push(`/dashboard/client/settings?oauth_code=${code}`);
     }, 1000);
-  }, [router]);
+  }, [searchParams, router]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -25,11 +33,23 @@ export default function WhatsAppCallbackPage() {
             </svg>
           </div>
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Authorization Complete</h1>
-        <p className="text-gray-600">Fetching your WhatsApp numbers...</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">WhatsApp Authorization</h1>
+        <p className="text-gray-600">Processing authorization...</p>
       </div>
     </div>
   );
 }
 
-
+export default function WhatsAppCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Loading...</h1>
+        </div>
+      </div>
+    }>
+      <CallbackContent />
+    </Suspense>
+  );
+}

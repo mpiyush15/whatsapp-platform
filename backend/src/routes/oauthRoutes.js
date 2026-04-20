@@ -1,43 +1,36 @@
 import express from 'express'
 import { requireJWT } from '../middlewares/jwtAuth.js'
-import logger from '../utils/logger.js';
-import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 import {
-  handleWhatsAppOAuth,
+  exchangeCodeForToken,
+  selectPhoneNumber,
+  getConnectedPhones,
   disconnectWhatsApp
 } from '../controllers/oauthController.js'
-import { getWhatsAppStatus } from '../controllers/whatsappStatusController.js'
 
 const router = express.Router()
 
 /**
- * POST /api/integrations/whatsapp/oauth
- * Exchange OAuth code for access token + phone numbers
- * Requires: JWT authentication
- * Body: { code, state }
+ * POST /api/integrations/whatsapp/exchange
+ * Exchange OAuth code for access token + fetch WABAs + phones
+ * Frontend calls this after user authorizes
  */
-router.post('/whatsapp/oauth', requireJWT, handleWhatsAppOAuth)
+router.post('/whatsapp/exchange', requireJWT, exchangeCodeForToken)
 
 /**
- * POST /api/integrations/whatsapp/oauth/callback
- * Handle OAuth redirect callback - exchange code immediately
- * Requires: JWT authentication
- * Body: { code, state }
+ * POST /api/integrations/whatsapp/select-phone
+ * User selects a phone number from the list
  */
-router.post('/whatsapp/oauth/callback', requireJWT, handleWhatsAppOAuth)
+router.post('/whatsapp/select-phone', requireJWT, selectPhoneNumber)
 
 /**
- * GET /api/integrations/whatsapp/status
- * Get current WhatsApp connection status
- * Requires: JWT authentication
- * Returns: List of connected phone numbers
+ * GET /api/integrations/whatsapp/phones
+ * Get all connected phone numbers
  */
-router.get('/whatsapp/status', requireJWT, getWhatsAppStatus)
+router.get('/whatsapp/phones', requireJWT, getConnectedPhones)
 
 /**
  * POST /api/integrations/whatsapp/disconnect
- * Disconnect WhatsApp (mark phones inactive)
- * Requires: JWT authentication
+ * Disconnect WhatsApp
  */
 router.post('/whatsapp/disconnect', requireJWT, disconnectWhatsApp)
 
