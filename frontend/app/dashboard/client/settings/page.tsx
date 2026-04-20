@@ -13,7 +13,18 @@ export default function WhatsAppSettings() {
   const [connecting, setConnecting] = useState(false)
 
   useEffect(() => {
-    fetchConnectedPhones()
+    // Check if we came back from OAuth callback with a code
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('oauth_code')
+    
+    if (code) {
+      console.log('🔑 Found oauth_code in URL:', code.substring(0, 20) + '...')
+      exchangeOAuthCode(code)
+      // Remove code from URL
+      window.history.replaceState({}, document.title, window.location.pathname)
+    } else {
+      fetchConnectedPhones()
+    }
   }, [])
 
   const fetchConnectedPhones = async () => {
@@ -31,6 +42,36 @@ export default function WhatsAppSettings() {
       console.error("Error fetching phones:", err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const exchangeOAuthCode = async (code: string) => {
+    try {
+      setConnecting(true)
+      console.log('💫 Exchanging code for token...')
+      
+      const token = authService.getToken()
+      const response = await fetch(`${API_URL}/integrations/whatsapp/exchange`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('✅ Phones received:', data.phones)
+        setConnectedPhones(data.phones || [])
+      } else {
+        const err = await response.json()
+        console.error('❌ Exchange failed:', err)
+      }
+    } catch (err) {
+      console.error('❌ Error exchanging code:', err)
+    } finally {
+      setConnecting(false)
     }
   }
 
