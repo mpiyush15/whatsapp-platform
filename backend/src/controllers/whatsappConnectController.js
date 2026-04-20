@@ -70,7 +70,7 @@ export const connectWhatsApp = async (req, res) => {
 
     const phoneData = phoneDetailsResponse.data;
     const displayPhone = phoneData.display_phone_number;
-    const displayName = phoneData.display_name_address_book || phoneData.verified_name || 'WhatsApp Number';
+    const displayName = phoneData.verified_name || 'WhatsApp Business Number';
 
     if (!displayPhone) {
       logger.error('❌ Meta API response missing display_phone_number:', phoneData);
