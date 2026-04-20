@@ -46,7 +46,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     console.log('🔐 Dashboard Access Check:', { userType, userRole, pathname });
     
     const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin');
-    const isClientTier = pathname.startsWith('/dashboard/client');
+    const isClientTier = pathname.startsWith('/dashboard/client') || pathname.startsWith('/dashboard/features');
     const isFeaturesTier = pathname.startsWith('/dashboard/features');
     const isDashboardRoot = pathname === '/dashboard';
     
@@ -224,7 +224,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   // Determine which tier folder they're in
   const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin')
-  const isClientTier = pathname.startsWith('/dashboard/client')
+  const isClientTier = pathname.startsWith('/dashboard/client') || pathname.startsWith('/dashboard/features')
 
   // Get dashboard href based on tier
   let dashboardHref = '/dashboard'

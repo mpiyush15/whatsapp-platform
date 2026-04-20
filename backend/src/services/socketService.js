@@ -12,13 +12,21 @@ import { handleControllerError, ValidationError, NotFoundError, UnauthorizedErro
 export const initSocketIO = (server) => {
   
   // ✅ CRITICAL FIX: Configure Socket.io properly for production
-  // Read CORS origins from environment variable
+  // Read CORS origins from environment variable (supports multiple origins)
   const socketCorsOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000')
     .split(',')
     .map(origin => origin.trim())
     .filter(Boolean);
   
   const io = new Server(server, {
+    // ✅ CORS Configuration - Allow frontend to connect
+    cors: {
+      origin: socketCorsOrigins,
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
+      credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization']
+    },
+    
     // ✅ Enable both WebSocket and HTTP polling (with polling as fallback)
     transports: ['websocket', 'polling'],
     

@@ -178,6 +178,9 @@ export const handleWebhook = async (req, res) => {
             
             logger.info(`💬 ${messages.length} message(s) received`);
             
+            const Message = mongoose.model('Message');
+            const Conversation = mongoose.model('Conversation');
+            
             for (const message of messages) {
               const { from, id: messageId, timestamp, type, text, media, interactive, button, image, audio, document, video } = message;
               
@@ -185,16 +188,27 @@ export const handleWebhook = async (req, res) => {
               
               // Extract message content based on type
               let content = '';
+              let mediaUrl = null;
+              let mediaType = null;
+              
               if (type === 'text' && text) {
                 content = text.body;
-              } else if (type === 'image' && media) {
-                content = `[Image: ${media.id}]`;
-              } else if (type === 'document' && media) {
-                content = `[Document: ${media.id}]`;
-              } else if (type === 'audio' && media) {
-                content = `[Audio: ${media.id}]`;
-              } else if (type === 'video' && media) {
-                content = `[Video: ${media.id}]`;
+              } else if (type === 'image' && image) {
+                content = `[Image]`;
+                mediaUrl = image.link;
+                mediaType = 'image';
+              } else if (type === 'document' && document) {
+                content = `[Document: ${document.filename}]`;
+                mediaUrl = document.link;
+                mediaType = 'document';
+              } else if (type === 'audio' && audio) {
+                content = `[Audio]`;
+                mediaUrl = audio.link;
+                mediaType = 'audio';
+              } else if (type === 'video' && video) {
+                content = `[Video]`;
+                mediaUrl = video.link;
+                mediaType = 'video';
               } else if (type === 'button' && button) {
                 content = button.text;
               } else if (type === 'interactive' && interactive) {
@@ -202,6 +216,82 @@ export const handleWebhook = async (req, res) => {
               }
               
               logger.info(`📝 Content: ${content.substring(0, 50)}`);
+              
+              try {
+                // Find account by WABA ID to get accountId
+                const accountRecord = await Account.findOne({ wabaId });
+                if (!accountRecord) {
+                  logger.warn(`⚠️ Could not find account for WABA ${wabaId}`);
+                  continue;
+                }
+                
+                const accountId = accountRecord.accountId;
+                const phoneNumberId = metadata.phone_number_id;
+                const customerPhone = from;
+                const customerName = contacts?.[0]?.profile?.name || 'Customer';
+                
+                // Generate conversationId (unique per account + phone + customer)
+                const conversationId = `${accountId}-${phoneNumberId}-${customerPhone}`;
+                
+                logger.info(`💾 Saving message: ConversationID=${conversationId}, Account=${accountId}`);
+                
+                // Save message to Message collection
+                const savedMessage = await Message.create({
+                  accountId,
+                  phoneNumberId,
+                  conversationId,
+                  waMessageId: messageId,
+                  recipientPhone: customerPhone,
+                  recipientName: customerName,
+                  messageType: type,
+                  direction: 'inbound',
+                  content: { text: content, mediaUrl, mediaType },
+                  status: 'delivered',
+                  sentAt: new Date(timestamp * 1000)
+                });
+                
+                logger.info(`✅ Message saved: ${savedMessage._id}`);
+                
+                // Update or create Conversation
+                const updatedConversation = await Conversation.findOneAndUpdate(
+                  { conversationId },
+                  {
+                    accountId,
+                    phoneNumberId,
+                    conversationId,
+                    userPhone: customerPhone,
+                    userName: customerName,
+                    lastMessageAt: new Date(timestamp * 1000),
+                    lastMessagePreview: content.substring(0, 100),
+                    lastMessageType: type,
+                    unreadCount: (await Conversation.findOne({ conversationId }))?.unreadCount + 1 || 1,
+                    status: 'open',
+                    messageCount: (await Conversation.findOne({ conversationId }))?.messageCount + 1 || 1
+                  },
+                  { upsert: true, new: true }
+                );
+                
+                logger.info(`✅ Conversation updated: ${updatedConversation._id}`);
+                
+                // Emit real-time event for agents
+                if (io) {
+                  io.to(`account:${accountId}`).emit('new_message', {
+                    conversationId,
+                    message: savedMessage,
+                    conversation: updatedConversation
+                  });
+                  
+                  io.to(`account:${accountId}`).emit('conversation_updated', {
+                    conversationId,
+                    conversation: updatedConversation
+                  });
+                }
+                
+                logger.info(`📡 Real-time events emitted for account ${accountId}`);
+                
+              } catch (messageError) {
+                logger.error(`❌ Error saving message:`, messageError.message);
+              }
             }
           }
           

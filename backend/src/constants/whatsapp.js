@@ -85,3 +85,138 @@ export const ERRORS = {
   PHONE_FETCH_FAILED: 'Failed to fetch phone details from Meta',
   PHONE_SAVE_FAILED: 'Failed to save phone number to database'
 };
+
+// ============================================
+// LIVE CHAT CONSTANTS
+// ============================================
+
+// Conversation Status
+export const CONVERSATION_STATUS = {
+  OPEN: 'open',
+  CLOSED: 'closed'
+};
+
+// Message Type
+export const MESSAGE_TYPE = {
+  TEXT: 'text',
+  MEDIA: 'media',
+  IMAGE: 'image',
+  VIDEO: 'video',
+  AUDIO: 'audio',
+  DOCUMENT: 'document',
+  TEMPLATE: 'template',
+  INTERACTIVE: 'interactive'
+};
+
+// Message Status
+export const MESSAGE_STATUS = {
+  QUEUED: 'queued',
+  SENT: 'sent',
+  DELIVERED: 'delivered',
+  READ: 'read',
+  FAILED: 'failed'
+};
+
+// Message Direction
+export const MESSAGE_DIRECTION = {
+  INBOUND: 'inbound',
+  OUTBOUND: 'outbound'
+};
+
+// Agent Status
+export const AGENT_STATUS = {
+  ONLINE: 'online',
+  OFFLINE: 'offline',
+  BUSY: 'busy',
+  AWAY: 'away',
+  ON_BREAK: 'on_break'
+};
+
+// Agent Role
+export const AGENT_ROLE = {
+  AGENT: 'agent',
+  SUPERVISOR: 'supervisor',
+  MANAGER: 'manager'
+};
+
+// Conversation Priority
+export const CONVERSATION_PRIORITY = {
+  LOW: 'low',
+  NORMAL: 'normal',
+  HIGH: 'high',
+  URGENT: 'urgent'
+};
+
+// Conversation Type
+export const CONVERSATION_TYPE = {
+  CUSTOMER: 'customer',
+  SUPPORT: 'support',
+  SALES: 'sales',
+  FEEDBACK: 'feedback'
+};
+
+// Media Type
+export const MEDIA_TYPE = {
+  IMAGE: 'image',
+  VIDEO: 'video',
+  AUDIO: 'audio',
+  DOCUMENT: 'document'
+};
+
+// Live Chat API Endpoints
+export const LIVE_CHAT_ENDPOINTS = {
+  GET_CONVERSATIONS: '/integrations/whatsapp/conversations',
+  GET_CONVERSATION: '/integrations/whatsapp/conversations/:conversationId',
+  GET_MESSAGES: '/integrations/whatsapp/conversations/:conversationId/messages',
+  SEND_MESSAGE: '/integrations/whatsapp/conversations/:conversationId/send',
+  ASSIGN_CONVERSATION: '/integrations/whatsapp/conversations/:conversationId/assign',
+  RESOLVE_CONVERSATION: '/integrations/whatsapp/conversations/:conversationId/resolve',
+  TAG_CONVERSATION: '/integrations/whatsapp/conversations/:conversationId/tag',
+  GET_AGENTS: '/integrations/whatsapp/agents',
+  GET_AGENT_STATUS: '/integrations/whatsapp/agents/:agentId/status'
+};
+
+// Socket.io Events
+export const SOCKET_EVENTS = {
+  // Agent -> Server
+  SEND_MESSAGE: 'send_message',
+  MARK_READ: 'mark_read',
+  START_TYPING: 'start_typing',
+  STOP_TYPING: 'stop_typing',
+  ASSIGN_CONVERSATION: 'assign_conversation',
+  RESOLVE_CONVERSATION: 'resolve_conversation',
+  UPDATE_AGENT_STATUS: 'update_agent_status',
+  
+  // Server -> Agent
+  NEW_MESSAGE: 'new_message',
+  MESSAGE_DELIVERED: 'message_delivered',
+  MESSAGE_READ: 'message_read',
+  CONVERSATION_UPDATED: 'conversation_updated',
+  CUSTOMER_TYPING: 'customer_typing',
+  AGENT_ASSIGNED: 'agent_assigned',
+  CONVERSATION_RESOLVED: 'conversation_resolved',
+  AGENT_STATUS_CHANGED: 'agent_status_changed'
+};
+
+export default {
+  WHATSAPP_FLOW,
+  ACCOUNT_FIELDS,
+  PHONE_FIELDS,
+  SUBSCRIPTION_FIELDS,
+  PAYMENT_STATUS,
+  API_ENDPOINTS,
+  META_API,
+  MESSAGES,
+  ERRORS,
+  CONVERSATION_STATUS,
+  MESSAGE_TYPE,
+  MESSAGE_STATUS,
+  MESSAGE_DIRECTION,
+  AGENT_STATUS,
+  AGENT_ROLE,
+  CONVERSATION_PRIORITY,
+  CONVERSATION_TYPE,
+  MEDIA_TYPE,
+  LIVE_CHAT_ENDPOINTS,
+  SOCKET_EVENTS
+};
