@@ -60,10 +60,12 @@ export const handleWebhook = async (req, res) => {
       const PhoneNumber = mongoose.model('PhoneNumber');
       
       for (const entry of entries) {
-        const wabaId = entry.id;
+        // Extract actual WABA ID from webhook payload (not entry.id which is internal ID)
+        const wabaId = entry.changes?.[0]?.value?.waba_info?.waba_id || entry.id;
         const changes = entry.changes || [];
         
-        logger.info(`📍 Entry ID (WABA): ${wabaId}`);
+        logger.info(`📍 Entry ID (webhook): ${entry.id}`);
+        logger.info(`📍 WABA ID (account): ${wabaId}`);
         logger.info(`📍 Changes count: ${changes.length}`);
         
         for (const change of changes) {
