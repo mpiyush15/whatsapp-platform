@@ -56,6 +56,14 @@ router.get('/', async (req, res) => {
     );
 
     logger.info('✅ Conversations fetched:', result.conversations.length);
+    if (result.conversations.length > 0) {
+      logger.info('📋 Sample conversation:', {
+        id: result.conversations[0]._id,
+        conversationId: result.conversations[0].conversationId,
+        userName: result.conversations[0].userName,
+        userPhone: result.conversations[0].userPhone
+      });
+    }
 
     return res.status(200).json({
       success: true,
