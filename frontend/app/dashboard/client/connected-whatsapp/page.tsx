@@ -5,7 +5,7 @@ import { Phone, CheckCircle, AlertCircle, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { authService } from "@/lib/auth"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050/api"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
 export default function ConnectedWhatsAppPage() {
   const [phones, setPhones] = useState<any[]>([])
@@ -28,10 +28,11 @@ export default function ConnectedWhatsAppPage() {
       })
 
       if (response.ok) {
-        const data = await response.json()
-        setPhones(data.phones || [])
+        const result = await response.json()
+        setPhones(result.data?.phones || [])
       } else {
-        setError("Failed to fetch connected phones")
+        const err = await response.json().catch(() => null)
+        setError(err?.error || "Failed to fetch connected phones")
       }
     } catch (err) {
       console.error("Error fetching phones:", err)

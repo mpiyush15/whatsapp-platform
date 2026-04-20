@@ -65,9 +65,12 @@ function WhatsAppSettingsContent() {
       })
       
       if (response.ok) {
-        const data = await response.json()
-        setConnectedPhones(data.phones || [])
+        const result = await response.json()
+        setConnectedPhones(result.data?.phones || [])
         setError(null)
+      } else {
+        const err = await response.json().catch(() => null)
+        setError(err?.error || 'Failed to fetch connected phones')
       }
     } catch (err) {
       console.error("Error fetching phones:", err)
@@ -98,23 +101,24 @@ function WhatsAppSettingsContent() {
       })
 
       if (response.ok) {
-        const data = await response.json()
-        console.log('✅ Phone connected successfully:', data)
+        const result = await response.json()
+        const phone = result.data?.phone
+        console.log('✅ Phone connected successfully:', result)
         
         // Update UI with new phone
-        if (data.phone) {
-          console.log('📱 Displaying connected phone:', data.phone)
-          setConnectedPhones([data.phone])
+        if (phone) {
+          console.log('📱 Displaying connected phone:', phone)
+          setConnectedPhones([phone])
           setError(null)
-          // Optional: show success message
-          alert(`✅ WhatsApp connected! Phone: ${data.phone.display_phone_number}`)
+          alert(`✅ WhatsApp connected! Phone: ${phone.displayPhone || phone.display_phone_number || phone.phoneNumberId}`)
         } else {
-          console.warn('⚠️ No phone data in response:', data)
+          console.warn('⚠️ No phone data in response:', result)
+          fetchConnectedPhones()
         }
       } else {
         const err = await response.json()
         console.error('❌ Connection failed:', err)
-        setError(err.message || 'Failed to connect WhatsApp')
+        setError(err.error || err.message || 'Failed to connect WhatsApp')
       }
     } catch (err) {
       console.error('❌ Error connecting WhatsApp:', err)
