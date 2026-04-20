@@ -84,6 +84,9 @@ export const routeAccess = {
   '/dashboard/settings/security': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
   '/dashboard/settings/whatsapp-setup': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
   
+  // Client WhatsApp
+  '/dashboard/client/connected-whatsapp': [UserRole.SUPERADMIN, UserRole.ADMIN],
+  
   // SuperAdmin only routes
   '/dashboard/organizations': [UserRole.SUPERADMIN],
   '/dashboard/system-health': [UserRole.SUPERADMIN],
@@ -190,7 +193,12 @@ export const getSidebarItems = (role: UserRole) => {
       label: 'Settings',
       href: '/dashboard/settings',
       icon: 'Settings',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Connected WhatsApp',
+      href: '/dashboard/client/connected-whatsapp',
+      icon: 'MessageSquare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN]
     }
   ]
 

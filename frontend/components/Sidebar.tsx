@@ -38,6 +38,7 @@ export default function Sidebar() {
   const user = authService.getCurrentUser()
   const [isOpen, setIsOpen] = useState(false)
   const [superAdminDropdownOpen, setSuperAdminDropdownOpen] = useState(false)
+  const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(false)
 
   if (!user) return null
 
