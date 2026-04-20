@@ -219,11 +219,21 @@ export const handleWebhook = async (req, res) => {
               
               try {
                 // Find account by WABA ID to get accountId
-                const accountRecord = await Account.findOne({ wabaId });
+                // WABA ID is stored in whatsappConfig.wabaId (nested field)
+                logger.info(`🔍 Searching for account with WABA: ${wabaId}`);
+                
+                const accountRecord = await Account.findOne({ 'whatsappConfig.wabaId': wabaId });
                 if (!accountRecord) {
                   logger.warn(`⚠️ Could not find account for WABA ${wabaId}`);
+                  
+                  // Debug: Show all WABAs in system
+                  const allAccounts = await Account.find({}, { accountId: 1, wabaId: 1 });
+                  logger.warn(`📊 Existing WABAs in system:`, allAccounts.map(a => ({ accountId: a.accountId, wabaId: a.wabaId })));
+                  
                   continue;
                 }
+                
+                logger.info(`✅ Account found: ${accountRecord.accountId}`);
                 
                 const accountId = accountRecord.accountId;
                 const phoneNumberId = metadata.phone_number_id;
@@ -250,7 +260,7 @@ export const handleWebhook = async (req, res) => {
                   sentAt: new Date(timestamp * 1000)
                 });
                 
-                logger.info(`✅ Message saved: ${savedMessage._id}`);
+                logger.info(`✅ Message saved to DB: ${savedMessage._id}`);
                 
                 // Update or create Conversation
                 const updatedConversation = await Conversation.findOneAndUpdate(
