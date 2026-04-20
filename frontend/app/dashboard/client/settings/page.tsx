@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button"
 import { Phone, CheckCircle, AlertCircle } from "lucide-react"
 import { authService } from "@/lib/auth"
 
+// Type declaration for WhatsApp function on window
+declare global {
+  interface Window {
+    launchWhatsAppSignup?: () => void
+  }
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"
 
 function WhatsAppSettingsContent() {
