@@ -287,12 +287,14 @@ export const handleWebhook = async (req, res) => {
                 if (req.app.locals.io) {
                   req.app.locals.io.to(`account:${accountId}`).emit('new_message', {
                     conversationId,
+                    phoneNumberId,
                     message: savedMessage,
                     conversation: updatedConversation
                   });
                   
                   req.app.locals.io.to(`account:${accountId}`).emit('conversation_updated', {
                     conversationId,
+                    phoneNumberId,
                     conversation: updatedConversation
                   });
                 }
