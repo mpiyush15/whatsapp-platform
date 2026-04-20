@@ -77,42 +77,44 @@ export default function RootLayout({
                 });
 
                 // Facebook Business Login Callback
-                window.fbLoginCallback = function(response) {
-                  console.log('📱 Facebook Login Response:', response);
-                  if (response && response.authResponse) {
-                    const code = response.authResponse.code;
-                    console.log('✅ Authorization Code Received:', code.substring(0, 20) + '...');
-                    
-                    sessionStorage.setItem('fb_login_code', code);
-                    sessionStorage.setItem('fb_login_time', new Date().toISOString());
-                    
-                    window.dispatchEvent(new CustomEvent('fb_login_success', { detail: { code } }));
-                    
-                    console.log('🔄 Ready to exchange code for token');
-                  } else {
-                    console.error('❌ User cancelled login or did not fully authorize');
-                    window.dispatchEvent(new CustomEvent('fb_login_error', { detail: { message: 'User cancelled or did not authorize' } }));
-                  }
-                };
+                if (typeof window !== 'undefined') {
+                  window.fbLoginCallback = function(response) {
+                    console.log('📱 Facebook Login Response:', response);
+                    if (response && response.authResponse) {
+                      const code = response.authResponse.code;
+                      console.log('✅ Authorization Code Received:', code.substring(0, 20) + '...');
+                      
+                      sessionStorage.setItem('fb_login_code', code);
+                      sessionStorage.setItem('fb_login_time', new Date().toISOString());
+                      
+                      window.dispatchEvent(new CustomEvent('fb_login_success', { detail: { code } }));
+                      
+                      console.log('🔄 Ready to exchange code for token');
+                    } else {
+                      console.error('❌ User cancelled login or did not fully authorize');
+                      window.dispatchEvent(new CustomEvent('fb_login_error', { detail: { message: 'User cancelled or did not authorize' } }));
+                    }
+                  };
 
-                // Launch WhatsApp Embedded Signup Flow
-                window.launchWhatsAppSignup = function() {
-                  console.log('🚀 Launching WhatsApp Embedded Signup...');
-                  if (typeof FB === 'undefined') {
-                    console.error('❌ Facebook SDK not loaded yet');
-                    return;
-                  }
-                  
-                  const configId = window.WHATSAPP_CONFIG_ID || '1239299391737840';
-                  console.log('📋 Using WhatsApp Config ID:', configId);
-                  
-                  FB.login(window.fbLoginCallback, {
-                    config_id: configId,
-                    response_type: 'code',
-                    override_default_response_type: true,
-                    extras: { 'version': 'v3' }
-                  });
-                };
+                  // Launch WhatsApp Embedded Signup Flow
+                  window.launchWhatsAppSignup = function() {
+                    console.log('🚀 Launching WhatsApp Embedded Signup...');
+                    if (typeof FB === 'undefined') {
+                      console.error('❌ Facebook SDK not loaded yet');
+                      return;
+                    }
+                    
+                    const configId = window.WHATSAPP_CONFIG_ID || '1239299391737840';
+                    console.log('📋 Using WhatsApp Config ID:', configId);
+                    
+                    FB.login(window.fbLoginCallback, {
+                      config_id: configId,
+                      response_type: 'code',
+                      override_default_response_type: true,
+                      extras: { 'version': 'v3' }
+                    });
+                  };
+                }
               }
             `,
           }}
