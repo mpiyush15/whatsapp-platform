@@ -46,6 +46,8 @@ export const handleWebhook = async (req, res) => {
   try {
     const body = req.body;
     
+    logger.info('🔍 FULL WEBHOOK PAYLOAD:', JSON.stringify(body, null, 2));
+    
     // Meta WhatsApp sends webhooks in this format:
     // { object: "whatsapp_business_account", entry: [{ id: "waba_id", changes: [{ field, value }] }] }
     
