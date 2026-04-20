@@ -284,14 +284,14 @@ export const handleWebhook = async (req, res) => {
                 logger.info(`✅ Conversation updated: ${updatedConversation._id}`);
                 
                 // Emit real-time event for agents
-                if (io) {
-                  io.to(`account:${accountId}`).emit('new_message', {
+                if (req.app.locals.io) {
+                  req.app.locals.io.to(`account:${accountId}`).emit('new_message', {
                     conversationId,
                     message: savedMessage,
                     conversation: updatedConversation
                   });
                   
-                  io.to(`account:${accountId}`).emit('conversation_updated', {
+                  req.app.locals.io.to(`account:${accountId}`).emit('conversation_updated', {
                     conversationId,
                     conversation: updatedConversation
                   });
