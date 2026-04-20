@@ -94,53 +94,63 @@ export default function WhatsAppSettings() {
     }
   }
 
-  const handleConnect = async () => {
+  const handleConnect = () => {
     try {
       setConnecting(true)
       setError("")
 
-      if (typeof window.launchWhatsAppSignup === 'undefined') {
+      if (typeof (window as any).launchWhatsAppSignup === 'undefined') {
         setError('Facebook SDK not loaded. Please refresh the page.')
         setConnecting(false)
         return
       }
 
       // Listen for authorization callback
-      const originalCallback = window.fbLoginCallback
-      window.fbLoginCallback = async function (response) {
+      const originalCallback = (window as any).fbLoginCallback
+      (window as any).fbLoginCallback = function (response: any) {
         console.log('✅ Authorization code received:', response?.authResponse?.code)
         
         if (response?.authResponse?.code) {
-          try {
-            const token = authService.getToken()
-            const exchangeResponse = await fetch(`${API_URL}/integrations/whatsapp/exchange`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ code: response.authResponse.code })
-            })
+          const code = response.authResponse.code
+          
+          // Exchange code for token (async operation)
+          const exchangeCode = async () => {
+            try {
+              const token = authService.getToken()
+              const exchangeResponse = await fetch(`${API_URL}/integrations/whatsapp/exchange`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ code })
+              })
 
-            if (exchangeResponse.ok) {
-              const data = await exchangeResponse.json()
-              console.log('✅ Phones fetched:', data.phones)
-              setAvailablePhones(data.phones)
-              setShowPhonePicker(true)
-              setError("")
-            } else {
-              const errorData = await exchangeResponse.json()
-              setError(errorData.message || 'Failed to exchange code')
+              if (exchangeResponse.ok) {
+                const data = await exchangeResponse.json()
+                console.log('✅ Phones fetched:', data.phones)
+                setAvailablePhones(data.phones)
+                setShowPhonePicker(true)
+                setError("")
+              } else {
+                const errorData = await exchangeResponse.json()
+                setError(errorData.message || 'Failed to exchange code')
+              }
+            } catch (err) {
+              setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+            } finally {
+              setConnecting(false)
             }
-          } catch (err) {
-            setError(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
           }
+          
+          exchangeCode()
         }
 
         if (originalCallback) originalCallback.call(this, response)
       }
 
-      window.launchWhatsAppSignup()
+      // Call the function
+      ;(window as any).launchWhatsAppSignup()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect")
       setConnecting(false)

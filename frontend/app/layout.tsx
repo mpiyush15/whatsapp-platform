@@ -43,79 +43,77 @@ export default function RootLayout({
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
-              window.fbAsyncInit = function() {
-                FB.init({
-                  appId            : '2094709584392829',
-                  autoLogAppEvents : true,
-                  xfbml            : true,
-                  version          : 'v24.0'
-                });
-              };
+              if (typeof window !== 'undefined') {
+                window.fbAsyncInit = function() {
+                  FB.init({
+                    appId            : '2094709584392829',
+                    autoLogAppEvents : true,
+                    xfbml            : true,
+                    version          : 'v24.0'
+                  });
+                };
 
-              (function (d, s, id) {
-                var js, fjs = d.getElementsByTagName(s)[0];
-                if (d.getElementById(id)) return;
-                js = d.createElement(s); js.id = id;
-                js.src = "https://connect.facebook.net/en_US/sdk.js";
-                fjs.parentNode.insertBefore(js, fjs);
-              }(document, 'script', 'facebook-jssdk'));
+                (function (d, s, id) {
+                  var js, fjs = d.getElementsByTagName(s)[0];
+                  if (d.getElementById(id)) return;
+                  js = d.createElement(s); js.id = id;
+                  js.src = "https://connect.facebook.net/en_US/sdk.js";
+                  fjs.parentNode.insertBefore(js, fjs);
+                }(document, 'script', 'facebook-jssdk'));
 
-              // WhatsApp Embedded Signup Message Listener
-              window.addEventListener('message', (event) => {
-                if (event.origin !== "https://www.facebook.com") return;
-                try {
-                  const data = JSON.parse(event.data);
-                  if (data.type === 'WA_EMBEDDED_SIGNUP') {
-                    console.log('✅ WhatsApp Embedded Signup Data Received:', data);
-                    // Store session info for Settings page to access
-                    sessionStorage.setItem('wa_signup_data', JSON.stringify(data));
-                    // Dispatch custom event for Settings page to listen
-                    window.dispatchEvent(new CustomEvent('wa_embedded_signup', { detail: data }));
+                // WhatsApp Embedded Signup Message Listener
+                window.addEventListener('message', (event) => {
+                  if (event.origin !== "https://www.facebook.com") return;
+                  try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'WA_EMBEDDED_SIGNUP') {
+                      console.log('✅ WhatsApp Embedded Signup Data Received:', data);
+                      sessionStorage.setItem('wa_signup_data', JSON.stringify(data));
+                      window.dispatchEvent(new CustomEvent('wa_embedded_signup', { detail: data }));
+                    }
+                  } catch (error) {
+                    console.error('❌ Error processing WhatsApp Embedded Signup message:', error);
                   }
-                } catch (error) {
-                  console.error('❌ Error processing WhatsApp Embedded Signup message:', error);
-                }
-              });
-
-              // Facebook Business Login Callback
-              window.fbLoginCallback = function(response) {
-                console.log('📱 Facebook Login Response:', response);
-                if (response.authResponse) {
-                  const code = response.authResponse.code;
-                  console.log('✅ Authorization Code Received:', code.substring(0, 20) + '...');
-                  
-                  // Store code for backend exchange
-                  sessionStorage.setItem('fb_login_code', code);
-                  sessionStorage.setItem('fb_login_time', new Date().toISOString());
-                  
-                  // Dispatch custom event so Settings page can handle it
-                  window.dispatchEvent(new CustomEvent('fb_login_success', { detail: { code } }));
-                  
-                  console.log('🔄 Ready to exchange code for token');
-                } else {
-                  console.error('❌ User cancelled login or did not fully authorize');
-                  window.dispatchEvent(new CustomEvent('fb_login_error', { detail: { message: 'User cancelled or did not authorize' } }));
-                }
-              };
-
-              // Launch WhatsApp Embedded Signup Flow
-              window.launchWhatsAppSignup = function() {
-                console.log('🚀 Launching WhatsApp Embedded Signup...');
-                if (typeof FB === 'undefined') {
-                  console.error('❌ Facebook SDK not loaded yet');
-                  return;
-                }
-                
-                const configId = window.WHATSAPP_CONFIG_ID || '1239299391737840';
-                console.log('📋 Using WhatsApp Config ID:', configId);
-                
-                FB.login(window.fbLoginCallback, {
-                  config_id: configId,
-                  response_type: 'code',
-                  override_default_response_type: true,
-                  extras: { 'version': 'v3' }
                 });
-              };
+
+                // Facebook Business Login Callback
+                window.fbLoginCallback = function(response) {
+                  console.log('📱 Facebook Login Response:', response);
+                  if (response && response.authResponse) {
+                    const code = response.authResponse.code;
+                    console.log('✅ Authorization Code Received:', code.substring(0, 20) + '...');
+                    
+                    sessionStorage.setItem('fb_login_code', code);
+                    sessionStorage.setItem('fb_login_time', new Date().toISOString());
+                    
+                    window.dispatchEvent(new CustomEvent('fb_login_success', { detail: { code } }));
+                    
+                    console.log('🔄 Ready to exchange code for token');
+                  } else {
+                    console.error('❌ User cancelled login or did not fully authorize');
+                    window.dispatchEvent(new CustomEvent('fb_login_error', { detail: { message: 'User cancelled or did not authorize' } }));
+                  }
+                };
+
+                // Launch WhatsApp Embedded Signup Flow
+                window.launchWhatsAppSignup = function() {
+                  console.log('🚀 Launching WhatsApp Embedded Signup...');
+                  if (typeof FB === 'undefined') {
+                    console.error('❌ Facebook SDK not loaded yet');
+                    return;
+                  }
+                  
+                  const configId = window.WHATSAPP_CONFIG_ID || '1239299391737840';
+                  console.log('📋 Using WhatsApp Config ID:', configId);
+                  
+                  FB.login(window.fbLoginCallback, {
+                    config_id: configId,
+                    response_type: 'code',
+                    override_default_response_type: true,
+                    extras: { 'version': 'v3' }
+                  });
+                };
+              }
             `,
           }}
         />
