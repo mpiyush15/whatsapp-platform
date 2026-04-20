@@ -84,17 +84,24 @@ export default function RootLayout({
                   });
                 };
 
-                // Optional: Listen to postMessage events from popup (Settings page handles FINISH)
+                // Listen to postMessage events from popup
                 window.addEventListener('message', (event) => {
                   if (event.origin !== "https://www.facebook.com") return;
-                  try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH') {
-                      console.log('✅ FINISH event received in layout (relaying to listeners)');
-                      // Settings page listener will handle this directly
+                  
+                  // Meta sends postMessage with JSON string data
+                  let parsed = event.data;
+                  if (typeof event.data === 'string') {
+                    try {
+                      parsed = JSON.parse(event.data);
+                    } catch (error) {
+                      return; // Not JSON, ignore
                     }
-                  } catch (error) {
-                    // Silently ignore parse errors
+                  }
+                  
+                  if (parsed?.type === 'WA_EMBEDDED_SIGNUP' && parsed?.event === 'FINISH') {
+                    const { waba_id, phone_number_id } = parsed.data || {};
+                    console.log('✅ FINISH event received in layout:', { waba_id, phone_number_id });
+                    // Settings page listener will capture and handle this
                   }
                 });
               }

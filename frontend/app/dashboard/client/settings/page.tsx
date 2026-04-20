@@ -28,10 +28,25 @@ function WhatsAppSettingsContent() {
   // Listen for Embedded Signup FINISH event
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      // Meta sends postMessage as a JSON string - must parse first
+      let parsed: any = event.data
+      if (typeof event.data === 'string') {
+        try {
+          parsed = JSON.parse(event.data)
+        } catch {
+          return // not a JSON message, ignore
+        }
+      }
+
       // Check if this is a WhatsApp Embedded Signup FINISH event
-      if (event.data?.type === 'WA_EMBEDDED_SIGNUP' && event.data?.event === 'FINISH') {
-        const { waba_id, phone_number_id } = event.data.data
+      if (parsed?.type === 'WA_EMBEDDED_SIGNUP' && parsed?.event === 'FINISH') {
+        const { waba_id, phone_number_id } = parsed.data || {}
         console.log('✅ Embedded Signup FINISH event received:', { waba_id, phone_number_id })
+
+        if (!waba_id || !phone_number_id) {
+          console.error('❌ FINISH event missing waba_id or phone_number_id:', parsed)
+          return
+        }
         
         // Call backend /connect endpoint
         connectWhatsAppWithData(waba_id, phone_number_id)
