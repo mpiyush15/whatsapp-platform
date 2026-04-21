@@ -1521,6 +1521,10 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
 
     logger.info(`📎 Media file received: ${file.originalname} (${mediaType}) | Size: ${file.size} bytes`);
 
+    // Convert file buffer to base64 dataURL for immediate display
+    const base64Data = file.buffer.toString('base64');
+    const dataUrl = `data:${mimeType};base64,${base64Data}`;
+
     // Create message record
     const message = await Message.create({
       accountId,
@@ -1532,7 +1536,7 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
       senderName: agentName,
       messageType: 'media',
       direction: 'outbound',
-      content: { text: caption || '', mediaType, filename: file.originalname },
+      content: { text: caption || '', mediaUrl: dataUrl, mediaType, filename: file.originalname },
       status: 'sent',
       sentAt: new Date(),
       sentByAgentId: agentId,
@@ -1589,14 +1593,14 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
         });
     }
 
-    // Emit real-time event to conversation room with placeholder URL
+    // Emit real-time event to conversation room with dataURL for immediate display
     emitToConversation(accountId, conversation.conversationId, 'new_message', {
       _id: message._id,
       conversationId: conversation.conversationId,
       senderRole: 'agent',
       senderName: agentName,
       text: caption || '',
-      mediaUrl: `media://${file.originalname}`, // Placeholder until WhatsApp returns actual URL
+      mediaUrl: dataUrl, // Base64 dataURL for immediate display
       mediaType: mediaType,
       status: 'sent',
       createdAt: message.sentAt
