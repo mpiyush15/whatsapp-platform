@@ -1317,4 +1317,75 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/conversations/:conversationId/messages/:messageId/reactions
+ * Add or update reaction on a message
+ */
+router.post('/:conversationId/messages/:messageId/reactions', async (req, res) => {
+  try {
+    const { conversationId, messageId } = req.params;
+    const { emoji } = req.body;
+    const accountId = req.account.accountId;
+
+    if (!emoji) {
+      return res.status(400).json({
+        success: false,
+        message: 'Emoji is required',
+        error: 'MISSING_EMOJI'
+      });
+    }
+
+    // Import Message model
+    const Message = mongoose.model('Message');
+
+    // Find message
+    const message = await Message.findOne({
+      _id: messageId,
+      conversationId,
+      accountId
+    });
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found',
+        error: 'NOT_FOUND'
+      });
+    }
+
+    // Initialize reactions array if not exists
+    if (!message.reactions) {
+      message.reactions = [];
+    }
+
+    // Check if reaction already exists
+    const existingReaction = message.reactions.find(r => r.emoji === emoji);
+    if (existingReaction) {
+      existingReaction.addedAt = new Date();
+    } else {
+      message.reactions.push({
+        emoji,
+        addedAt: new Date()
+      });
+    }
+
+    await message.save();
+
+    logger.info(`😊 Reaction added: ${emoji} on message ${messageId}`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Reaction added',
+      data: message
+    });
+  } catch (error) {
+    logger.error('❌ Error adding reaction:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to add reaction',
+      error: error.message
+    });
+  }
+});
+
 export default router;

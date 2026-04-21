@@ -168,20 +168,32 @@ export const getMessages = async (conversationId, accountId, limit = 50, offset 
   const total = await Message.countDocuments({ conversationId, accountId });
 
   // Transform messages to frontend format
-  const transformedMessages = messages.map(msg => ({
-    _id: msg._id,
-    conversationId: msg.conversationId,
-    senderRole: msg.direction === 'outbound' ? 'agent' : 'customer',
-    senderName: msg.direction === 'outbound' ? 'Agent' : (msg.recipientName || 'Customer'),
-    text: msg.content?.text || msg.text || '',
-    mediaUrl: msg.content?.mediaUrl || msg.mediaUrl,
-    mediaType: msg.content?.mediaType || msg.messageType,
-    status: msg.status || 'sent',
-    createdAt: msg.createdAt || msg.sentAt,
-    isRead: msg.isRead || !!msg.readAt,
-    reactions: msg.reactions || [],
-    timestamp: msg.createdAt || msg.sentAt
-  })).reverse();
+  const transformedMessages = messages.map(msg => {
+    let mediaType = msg.content?.mediaType || msg.mediaType;
+    
+    // Normalize mediaType to just the type (image, video, audio, document)
+    if (mediaType) {
+      if (mediaType.includes('image')) mediaType = 'image';
+      else if (mediaType.includes('video')) mediaType = 'video';
+      else if (mediaType.includes('audio')) mediaType = 'audio';
+      else if (mediaType.includes('document') || mediaType.includes('pdf')) mediaType = 'document';
+    }
+    
+    return {
+      _id: msg._id,
+      conversationId: msg.conversationId,
+      senderRole: msg.direction === 'outbound' ? 'agent' : 'customer',
+      senderName: msg.direction === 'outbound' ? 'Agent' : (msg.recipientName || 'Customer'),
+      text: msg.content?.text || msg.text || '',
+      mediaUrl: msg.content?.mediaUrl || msg.mediaUrl,
+      mediaType: mediaType,
+      status: msg.status || 'sent',
+      createdAt: msg.createdAt || msg.sentAt,
+      isRead: msg.isRead || !!msg.readAt,
+      reactions: msg.reactions || [],
+      timestamp: msg.createdAt || msg.sentAt
+    };
+  }).reverse();
 
   return {
     messages: transformedMessages,

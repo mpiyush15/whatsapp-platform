@@ -82,19 +82,49 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
                 {/* Media */}
                 {message.mediaUrl && (
                   <div className="mb-2">
-                    {message.mediaType?.startsWith('image') && (
+                    {(message.mediaType === 'image' || message.mediaType?.startsWith('image')) && (
                       <img 
                         src={message.mediaUrl} 
                         alt="Message" 
-                        className="max-w-full rounded-xl"
+                        className="max-w-full max-h-80 rounded-xl object-cover"
+                        onError={(e) => {
+                          console.error('Failed to load image:', message.mediaUrl);
+                          (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"%3E%3Crect fill="%23f0f0f0" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="14" fill="%23999"%3EImage not available%3C/text%3E%3C/svg%3E';
+                        }}
                       />
                     )}
-                    {message.mediaType?.startsWith('video') && (
+                    {(message.mediaType === 'video' || message.mediaType?.startsWith('video')) && (
                       <video 
                         src={message.mediaUrl} 
                         controls 
-                        className="max-w-full rounded-xl"
+                        className="max-w-full max-h-80 rounded-xl bg-black"
+                        onError={(e) => {
+                          console.error('Failed to load video:', message.mediaUrl);
+                        }}
                       />
+                    )}
+                    {(message.mediaType === 'audio' || message.mediaType?.startsWith('audio')) && (
+                      <audio 
+                        src={message.mediaUrl} 
+                        controls 
+                        className="w-full rounded-xl"
+                        onError={(e) => {
+                          console.error('Failed to load audio:', message.mediaUrl);
+                        }}
+                      />
+                    )}
+                    {(message.mediaType === 'document' || message.mediaType?.startsWith('document') || message.mediaType?.startsWith('application')) && (
+                      <div className="bg-gray-200 p-3 rounded-xl flex items-center gap-2">
+                        <span className="text-2xl">📄</span>
+                        <a 
+                          href={message.mediaUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 underline text-sm font-medium hover:text-blue-800"
+                        >
+                          Download Document
+                        </a>
+                      </div>
                     )}
                   </div>
                 )}

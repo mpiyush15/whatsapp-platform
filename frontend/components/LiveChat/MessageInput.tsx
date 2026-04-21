@@ -17,7 +17,15 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout>()
 
-  const emojiList = "😀😃😄😁😆😅🤣😂🙂🙃😉😊😇🥰😍🤩😘😗😚😙😜😛🤪😌😔😑😐😶🥱😏😒😞😟😕🙁☹️😲😳🥺😦😧😨😰😥😢😭😱😖😣😩😫🥱😤😡😠🤬😈👿💀💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾❤️🧡💛💚💙💜🖤🤍🤎💔💕💞💓💗💖💘💝💟👍👎👊👏🙌👐🤝🤜🤛✌️🤞🫰🤟🤘🤙"
+  // Use array of emoji objects instead of string for better rendering
+  const emojiList = [
+    "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍", 
+    "🤩", "😘", "😗", "😚", "😙", "😜", "😛", "🤪", "😌", "😔", "😑", "😐", "😶", "🥱", "😏", 
+    "😒", "😞", "😟", "😕", "🙁", "😲", "😳", "🥺", "😦", "😧", "😨", "😰", "😥", "😢", "😭", 
+    "😱", "😖", "😣", "😩", "😫", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "💩", "🤡", "👹", 
+    "👺", "👻", "👽", "👾", "🤖", "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾", "❤️", 
+    "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "💕", "👍", "❤️", "😂", "😮", "😢", "😡"
+  ]
 
   const handleSend = async () => {
     if (!text.trim() && !selectedFile) return
@@ -144,11 +152,12 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
           {showEmoji && (
             <div className="absolute bottom-full right-0 mb-2 bg-white border border-gray-300 rounded-lg shadow-lg p-3 w-72 max-h-56 overflow-y-auto z-50">
               <div className="grid grid-cols-8 gap-1">
-                {emojiList.split('').map((emoji, idx) => (
+                {emojiList.map((emoji, idx) => (
                   <button
                     key={idx}
                     onClick={() => insertEmoji(emoji)}
                     className="text-2xl hover:bg-gray-100 p-1 rounded transition active:scale-125"
+                    title={`Emoji ${idx}`}
                   >
                     {emoji}
                   </button>

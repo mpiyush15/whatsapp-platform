@@ -339,6 +339,9 @@ export const handleWebhook = async (req, res) => {
                 if (req.app.locals.io) {
                   const conversationRoomName = `conversation:${conversationId}`;
                   
+                  // Use S3 URL if available, otherwise WhatsApp link
+                  const finalMediaUrl = s3Url || mediaUrl;
+                  
                   // Emit to specific conversation room (where agents are viewing this conversation)
                   req.app.locals.io.to(conversationRoomName).emit('new_message', {
                     _id: savedMessage._id,
@@ -346,7 +349,7 @@ export const handleWebhook = async (req, res) => {
                     senderRole: 'customer',
                     senderName: customerName,
                     text: content,
-                    mediaUrl: mediaUrl,
+                    mediaUrl: finalMediaUrl,
                     mediaType: mediaType,
                     status: 'delivered',
                     createdAt: new Date(timestamp * 1000)

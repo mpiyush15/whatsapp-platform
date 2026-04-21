@@ -17,6 +17,7 @@ interface Conversation {
   unreadCount: number
   status: 'open' | 'closed'
   assignedAgentId?: string
+  isOnline?: boolean
 }
 
 interface Message {
@@ -29,6 +30,8 @@ interface Message {
   mediaType?: string
   status: 'sent' | 'delivered' | 'read' | 'failed'
   createdAt: Date
+  reactions?: { emoji: string; count: number }[]
+  isRead?: boolean
 }
 
 export default function LiveChatContainer() {

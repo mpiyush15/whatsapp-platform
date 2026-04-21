@@ -244,16 +244,39 @@ export const initSocketIO = (server) => {
     /**
      * ✅ Add Message Reaction
      */
-    socket.on('add_reaction', (data) => {
-      const { conversationId, messageId, emoji } = data;
-      if (conversationId && messageId) {
-        io.to(`conversation:${conversationId}`).emit('message_reaction', {
-          messageId,
-          emoji,
-          userId: socket.accountId,
-          userName: socket.email
-        });
-        logger.info(`😊 Reaction added to ${messageId}: ${emoji}`);
+    socket.on('add_reaction', async (data) => {
+      try {
+        const { conversationId, messageId, emoji } = data;
+        if (conversationId && messageId && emoji) {
+          // Save reaction to database
+          const message = await Message.findById(messageId);
+          if (message) {
+            if (!message.reactions) {
+              message.reactions = [];
+            }
+            const existing = message.reactions.find(r => r.emoji === emoji);
+            if (existing) {
+              existing.addedAt = new Date();
+            } else {
+              message.reactions.push({
+                emoji,
+                addedAt: new Date()
+              });
+            }
+            await message.save();
+          }
+
+          // Broadcast to conversation room
+          io.to(`conversation:${conversationId}`).emit('message_reaction', {
+            messageId,
+            emoji,
+            userId: socket.accountId,
+            userName: socket.email
+          });
+          logger.info(`😊 Reaction added to ${messageId}: ${emoji}`);
+        }
+      } catch (err) {
+        logger.error('❌ Error adding reaction:', err.message);
       }
     });
 
