@@ -213,31 +213,23 @@ export const handleWebhook = async (req, res) => {
                 } else if (type === 'image' && image) {
                   content = `[Image]`;
                   mediaType = 'image';
-                  // Get media URL from Meta API using image ID
-                  if (image.id && accountRecord?.whatsappConfig?.accessToken) {
-                    mediaUrl = await fetchMediaUrl(image.id, accountRecord.whatsappConfig.accessToken);
-                  }
+                  // WhatsApp provides URL directly in webhook
+                  mediaUrl = image.url || image.link;
                 } else if (type === 'document' && document) {
                   content = `[Document: ${document.filename}]`;
                   mediaType = 'document';
-                  // Get media URL from Meta API using document ID
-                  if (document.id && accountRecord?.whatsappConfig?.accessToken) {
-                    mediaUrl = await fetchMediaUrl(document.id, accountRecord.whatsappConfig.accessToken);
-                  }
+                  // WhatsApp provides URL directly in webhook
+                  mediaUrl = document.url || document.link;
                 } else if (type === 'audio' && audio) {
                   content = `[Audio]`;
                   mediaType = 'audio';
-                  // Get media URL from Meta API using audio ID
-                  if (audio.id && accountRecord?.whatsappConfig?.accessToken) {
-                    mediaUrl = await fetchMediaUrl(audio.id, accountRecord.whatsappConfig.accessToken);
-                  }
+                  // WhatsApp provides URL directly in webhook
+                  mediaUrl = audio.url || audio.link;
                 } else if (type === 'video' && video) {
                   content = `[Video]`;
                   mediaType = 'video';
-                  // Get media URL from Meta API using video ID
-                  if (video.id && accountRecord?.whatsappConfig?.accessToken) {
-                    mediaUrl = await fetchMediaUrl(video.id, accountRecord.whatsappConfig.accessToken);
-                  }
+                  // WhatsApp provides URL directly in webhook
+                  mediaUrl = video.url || video.link;
                 } else if (type === 'button' && button) {
                   content = button.text;
                 } else if (type === 'interactive' && interactive) {
