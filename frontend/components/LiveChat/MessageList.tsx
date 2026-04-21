@@ -132,15 +132,40 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
                       />
                     )}
                     {(message.mediaType === 'document' || message.mediaType?.startsWith('document') || message.mediaType?.startsWith('application')) && (
-                      <div className="bg-gray-200 p-3 rounded-xl flex items-center gap-2">
-                        <span className="text-2xl">📄</span>
+                      <div className="flex flex-col gap-2">
+                        {/* PDF Preview */}
+                        {message.mediaUrl?.includes('.pdf') || message.mediaUrl?.startsWith('data:application/pdf') ? (
+                          <div className="w-full rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
+                            <iframe
+                              src={getProxiedMediaUrl(message.mediaUrl)}
+                              className="w-full h-64 rounded-xl"
+                              title="PDF Preview"
+                              onError={(e) => {
+                                console.error('Failed to load PDF:', message.mediaUrl);
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="bg-gray-100 p-4 rounded-xl border border-gray-200">
+                            <div className="flex items-center gap-3">
+                              <span className="text-3xl">📄</span>
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-900">Document</p>
+                                <p className="text-xs text-gray-600">Click to download</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Download Link */}
                         <a 
                           href={getProxiedMediaUrl(message.mediaUrl)} 
+                          download
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="text-blue-600 underline text-sm font-medium hover:text-blue-800"
+                          className="text-center px-3 py-2 bg-blue-50 border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-100 rounded-lg transition"
                         >
-                          Download Document
+                          ⬇️ Download File
                         </a>
                       </div>
                     )}
