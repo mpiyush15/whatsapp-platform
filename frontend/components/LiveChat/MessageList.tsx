@@ -24,17 +24,38 @@ interface Props {
   socket: Socket | null
   isTyping?: boolean
   conversationId?: string
+  onLoadMore?: () => void
+  loadingMore?: boolean
+  hasMore?: boolean
 }
 
-export default function MessageList({ messages, socket, isTyping, conversationId }: Props) {
+export default function MessageList({ messages, socket, isTyping, conversationId, onLoadMore, loadingMore, hasMore }: Props) {
   const endRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [openReactionPickerId, setOpenReactionPickerId] = useState<string | null>(null)
   const reactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '😡']
 
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    endRef.current?.scrollIntoView({ behavior: 'auto' }) // Instant scroll, no animation
   }, [messages, isTyping])
+
+  // Load more messages when user scrolls near top
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      // If scrolled within 500px from top and there are more messages, load them
+      if (container.scrollTop < 500 && hasMore && !loadingMore) {
+        onLoadMore?.()
+      }
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [hasMore, loadingMore, onLoadMore])
 
   // Helper to proxy WhatsApp media URLs through our backend
   const getProxiedMediaUrl = (mediaUrl: string | undefined): string | undefined => {
@@ -75,7 +96,13 @@ export default function MessageList({ messages, socket, isTyping, conversationId
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 md:space-y-3 scroll-smooth bg-gray-50">
+    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 md:space-y-3 scroll-smooth bg-gray-50">
+      {/* Loading indicator when fetching older messages */}
+      {loadingMore && (
+        <div className="flex justify-center py-2">
+          <div className="text-sm text-gray-500">Loading older messages...</div>
+        </div>
+      )}
       {messages.length === 0 ? (
         <div className="flex items-center justify-center h-full text-gray-500">
           <div className="text-center">

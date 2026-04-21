@@ -39,6 +39,9 @@ interface Props {
   onSendMessage: (text: string, mediaUrl?: string, mediaType?: string) => void
   socket: Socket | null
   onBack?: () => void
+  onLoadMore?: () => void
+  loadingMore?: boolean
+  hasMore?: boolean
 }
 
 export default function ChatArea({ 
@@ -46,7 +49,10 @@ export default function ChatArea({
   messages, 
   onSendMessage,
   socket,
-  onBack
+  onBack,
+  onLoadMore,
+  loadingMore,
+  hasMore
 }: Props) {
   const [showProfile, setShowProfile] = useState(false)
 
@@ -95,7 +101,14 @@ export default function ChatArea({
       <div className="flex-1 flex overflow-hidden">
         {/* Messages Area - Full width on mobile */}
         <div className="flex-1 flex flex-col min-w-0">
-          <MessageList messages={messages} socket={socket} conversationId={conversation.conversationId} />
+          <MessageList 
+            messages={messages} 
+            socket={socket} 
+            conversationId={conversation.conversationId}
+            onLoadMore={onLoadMore}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
+          />
           <MessageInput onSendMessage={onSendMessage} onTyping={(isTyping) => {
             socket?.emit('typing', { conversationId: conversation._id, isTyping })
           }} />

@@ -39,8 +39,11 @@ export default function LiveChatContainer() {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [socket, setSocket] = useState<Socket | null>(null)
   const socketRef = useRef<Socket | null>(null)
+  const messageOffsetRef = useRef(0)
 
   // Initialize Socket.io connection
   useEffect(() => {
@@ -207,25 +210,51 @@ export default function LiveChatContainer() {
     }
   }
 
-  const fetchMessages = async (conversationId: string) => {
+  const fetchMessages = async (conversationId: string, limit = 50, offset = 0) => {
     try {
       const token = authService.getToken()
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${conversationId}/messages`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${conversationId}/messages?limit=${limit}&offset=${offset}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
 
       if (response.ok) {
         const result = await response.json()
-        setMessages(result.data || [])
+        
+        if (offset === 0) {
+          // First load: show last 50 messages
+          setMessages(result.data || [])
+          messageOffsetRef.current = limit
+        } else {
+          // Prepend older messages
+          setMessages(prev => [...(result.data || []), ...prev])
+          messageOffsetRef.current += limit
+        }
+        
+        // Check if there are more messages
+        setHasMore(result.pagination?.hasMore || false)
       }
     } catch (err) {
       console.error('Error fetching messages:', err)
     }
   }
 
+  const fetchMoreMessages = async (conversationId: string) => {
+    if (loadingMore || !hasMore) return
+    
+    try {
+      setLoadingMore(true)
+      await fetchMessages(conversationId, 50, messageOffsetRef.current)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   const handleSelectConversation = async (conversation: Conversation) => {
     setSelectedConversation(conversation)
-    await fetchMessages(conversation.conversationId)
+    messageOffsetRef.current = 0
+    setHasMore(false)
+    await fetchMessages(conversation.conversationId, 50, 0) // Load last 50 messages
     
     // Mark all messages as read and clear unread count
     if (socket && conversation.unreadCount > 0) {
@@ -380,6 +409,9 @@ export default function LiveChatContainer() {
           onSendMessage={handleSendMessage}
           socket={socket}
           onBack={() => setSelectedConversation(null)}
+          onLoadMore={() => fetchMoreMessages(selectedConversation.conversationId)}
+          loadingMore={loadingMore}
+          hasMore={hasMore}
         />
       ) : (
         <div className="hidden md:flex md:flex-1 items-center justify-center bg-stone-50">
