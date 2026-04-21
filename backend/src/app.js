@@ -96,6 +96,12 @@ app.use(cors({
 // ✅ CRITICAL: Custom body parser that captures raw body AND parses JSON
 // IMPORTANT: This middleware runs ONCE per request and sets up per-request data collection
 app.use((req, res, next) => {
+  // Skip processing for multipart/form-data (let multer handle it)
+  const contentType = req.get('content-type') || '';
+  if (contentType.includes('multipart/form-data')) {
+    return next();
+  }
+  
   // Each request gets its own data buffer (per-request scope)
   let requestData = Buffer.alloc(0);
   const chunks = [];

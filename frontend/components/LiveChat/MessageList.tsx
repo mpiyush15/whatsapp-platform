@@ -34,6 +34,24 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
 
+  // Helper to proxy WhatsApp media URLs through our backend
+  const getProxiedMediaUrl = (mediaUrl: string | undefined): string | undefined => {
+    if (!mediaUrl) return undefined
+    
+    // If it's already a proxy URL or data URL, return as-is
+    if (mediaUrl.startsWith('/media/') || mediaUrl.startsWith('data:') || mediaUrl.startsWith('media://')) {
+      return mediaUrl
+    }
+    
+    // If it's a WhatsApp URL, proxy through our media endpoint
+    if (mediaUrl.includes('graph.facebook.com') || mediaUrl.includes('scontent')) {
+      const encodedUrl = encodeURIComponent(mediaUrl)
+      return `${process.env.NEXT_PUBLIC_API_URL}/media/proxy?url=${encodedUrl}`
+    }
+    
+    return mediaUrl
+  }
+
   const getStatusIcon = (status: string) => {
     switch(status) {
       case 'sent':
@@ -84,7 +102,7 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
                   <div className="mb-2">
                     {(message.mediaType === 'image' || message.mediaType?.startsWith('image')) && (
                       <img 
-                        src={message.mediaUrl} 
+                        src={getProxiedMediaUrl(message.mediaUrl)} 
                         alt="Message" 
                         className="max-w-full max-h-80 rounded-xl object-cover"
                         onError={(e) => {
@@ -95,7 +113,7 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
                     )}
                     {(message.mediaType === 'video' || message.mediaType?.startsWith('video')) && (
                       <video 
-                        src={message.mediaUrl} 
+                        src={getProxiedMediaUrl(message.mediaUrl)} 
                         controls 
                         className="max-w-full max-h-80 rounded-xl bg-black"
                         onError={(e) => {
@@ -105,7 +123,7 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
                     )}
                     {(message.mediaType === 'audio' || message.mediaType?.startsWith('audio')) && (
                       <audio 
-                        src={message.mediaUrl} 
+                        src={getProxiedMediaUrl(message.mediaUrl)} 
                         controls 
                         className="w-full rounded-xl"
                         onError={(e) => {
@@ -117,7 +135,7 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
                       <div className="bg-gray-200 p-3 rounded-xl flex items-center gap-2">
                         <span className="text-2xl">📄</span>
                         <a 
-                          href={message.mediaUrl} 
+                          href={getProxiedMediaUrl(message.mediaUrl)} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-blue-600 underline text-sm font-medium hover:text-blue-800"

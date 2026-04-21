@@ -6,12 +6,12 @@ const router = express.Router();
 
 /**
  * Media Proxy Endpoint
- * Fetches media from S3 and serves it through backend
+ * Fetches media from S3 OR WhatsApp and serves it through backend
  * This solves CORS issues and allows better control over media access
  */
 router.get('/proxy', authenticate, async (req, res) => {
   try {
-    const { url } = req.query;
+    const { url, token } = req.query;
 
     if (!url) {
       return res.status(400).json({ error: 'Media URL required' });
@@ -22,13 +22,26 @@ router.get('/proxy', authenticate, async (req, res) => {
 
     console.log('📥 Fetching media:', decodedUrl.substring(0, 100) + '...');
 
-    // Fetch from S3 with timeout
+    // Check if this is a WhatsApp media URL (contains graph.facebook.com)
+    const isWhatsAppMedia = decodedUrl.includes('graph.facebook.com') || decodedUrl.includes('scontent');
+    
+    // Build request headers
+    const headers = {
+      'User-Agent': 'Replysys-Media-Proxy/1.0'
+    };
+    
+    // Add authorization if it's WhatsApp media and token provided
+    if (isWhatsAppMedia && token) {
+      const decodedToken = decodeURIComponent(token);
+      headers['Authorization'] = `Bearer ${decodedToken}`;
+      console.log('🔐 Using WhatsApp Bearer token for media fetch');
+    }
+
+    // Fetch from URL with timeout
     const response = await axios.get(decodedUrl, {
       responseType: 'arraybuffer',
       timeout: 30000,
-      headers: {
-        'User-Agent': 'Replysys-Media-Proxy/1.0'
-      }
+      headers: headers
     });
 
     // Extract content type and file size
