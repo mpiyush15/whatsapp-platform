@@ -1,10 +1,12 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import conversationService from '../services/conversationService.js';
 import internalNoteService from '../services/internalNoteService.js';
 import tagService from '../services/tagService.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
 import Conversation from '../models/Conversation.js';
+import Message from '../models/Message.js';
 import Contact from '../models/Contact.js';
 import logger from '../utils/logger.js';
 
@@ -1172,7 +1174,7 @@ router.post('/:conversationId/send-message', async (req, res) => {
     }
 
     // Import Message model
-    const Message = mongoose.model('Message');
+    // Message already imported at top
 
     // If replying to a message, verify it exists
     let replyToMessageId = null;
@@ -1357,8 +1359,7 @@ router.post('/:conversationId/messages/:messageId/reactions', async (req, res) =
       });
     }
 
-    // Import Message model
-    const Message = mongoose.model('Message');
+    // Message model already imported at top
 
     // Find message
     const message = await Message.findOne({

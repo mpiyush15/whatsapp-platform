@@ -184,7 +184,7 @@ export const handleWebhook = async (req, res) => {
             logger.info(`💬 ${messages.length} message(s) received`);
             
             // Message imported at top
-            // Conversation imported at top
+            const Conversation = mongoose.model('Conversation');
             
             for (const message of messages) {
               const { from, id: messageId, timestamp, type, text, media, interactive, button, image, audio, document, video } = message;
