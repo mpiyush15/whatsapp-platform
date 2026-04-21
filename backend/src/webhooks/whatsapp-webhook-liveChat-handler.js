@@ -27,31 +27,21 @@ export const handleIncomingMessageWithRealtime = async (
       return null;
     }
 
-    // Emit real-time event to all agents in account
-    emitToAccount(accountId, 'message_received', {
-      messageId: processedMessage._id,
-      conversationId: processedMessage.conversationId,
-      contactId: contact._id,
-      contactName: contact.name,
-      contactPhone: contact.phone,
-      content: processedMessage.content?.text || processedMessage.content || '',
-      messageType: processedMessage.messageType,
-      timestamp: processedMessage.createdAt
-    });
-
-    // Also emit to specific conversation room
-    emitToConversation(accountId, processedMessage.conversationId, 'message_received', {
-      conversationId: processedMessage.conversationId,
-      message: {
-        _id: processedMessage._id?.toString(),
-        conversationId: processedMessage.conversationId?.toString(),
-        content: processedMessage.content?.text || processedMessage.content || '',
-        messageType: processedMessage.messageType || 'text',
-        direction: processedMessage.direction,
-        status: processedMessage.status,
-        createdAt: processedMessage.createdAt,
-        senderType: processedMessage.direction === 'inbound' ? 'customer' : 'agent'
-      }
+    // Emit real-time event to specific conversation room
+    // ✅ Using 'new_message' to match frontend listener
+    // ✅ Flat structure to match frontend Message type
+    emitToConversation(accountId, processedMessage.conversationId, 'new_message', {
+      _id: processedMessage._id?.toString(),
+      conversationId: processedMessage.conversationId?.toString(),
+      senderRole: processedMessage.direction === 'inbound' ? 'customer' : 'agent',
+      senderName: contact?.name || 'Customer',
+      text: processedMessage.content?.text || processedMessage.content || '',
+      mediaUrl: processedMessage.content?.mediaUrl,
+      mediaType: processedMessage.content?.mediaType,
+      status: processedMessage.status,
+      createdAt: processedMessage.createdAt,
+      replyTo: processedMessage.replyTo,
+      reactions: processedMessage.reactions || []
     });
 
     return processedMessage;
@@ -82,14 +72,7 @@ export const handleMessageDeliveryStatusWithRealtime = async (
       return null;
     }
 
-    // Emit real-time event
-    emitToAccount(accountId, 'message_delivered', {
-      messageId: message._id,
-      conversationId: message.conversationId,
-      status: message.status,
-      timestamp: new Date()
-    });
-
+    // Emit real-time event to specific conversation
     emitToConversation(accountId, message.conversationId, 'message_status_updated', {
       messageId: message._id,
       status: message.status,
@@ -124,15 +107,11 @@ export const handleMessageReadStatusWithRealtime = async (
     }
 
     // Emit real-time event
-    emitToAccount(accountId, 'message_read', {
+    // Emit real-time event to specific conversation
+    emitToConversation(accountId, message.conversationId, 'message_read', {
       messageId: message._id,
       conversationId: message.conversationId,
       readBy: 'customer', // Customer read the message
-      timestamp: new Date()
-    });
-
-    emitToConversation(accountId, message.conversationId, 'message_read_by_customer', {
-      messageId: message._id,
       timestamp: new Date()
     });
 

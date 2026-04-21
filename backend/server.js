@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import dotenv from 'dotenv';
 import { initSocketIO } from './src/services/socketService.js';
 import { setupSocketIOHandlers } from './src/services/liveChat-socketHandler.js';
+import { initializeSocketIO } from './src/services/liveChat-socketService.js';
 
 // Load environment variables
 dotenv.config();
@@ -16,6 +17,9 @@ const httpServer = createServer(app);
 
 // Initialize Socket.io
 const io = initSocketIO(httpServer);
+
+// Initialize Socket.IO in liveChat service (for emitToConversation, emitToAccount, etc)
+initializeSocketIO(io);
 
 // Setup Socket.IO handlers for live chat
 setupSocketIOHandlers(io);

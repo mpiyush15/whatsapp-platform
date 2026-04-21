@@ -47,23 +47,28 @@ export const setupSocketIOHandlers = (io) => {
       socket.join(`account:${accountId}`);
     });
 
-    socket.on('join_conversation', (accountId, conversationId) => {
-      logger.info(`📍 Agent ${socket.id} joined conversation: ${conversationId}`);
-      socket.join(`account:${accountId}`);
-      socket.join(`account:${accountId}:conversation:${conversationId}`);
+    socket.on('join_conversation', (data) => {
+      // Handle both old format (accountId, conversationId) and new format (object with conversationId)
+      const conversationId = typeof data === 'string' ? data : (data?.conversationId || data);
+      const room = `conversation:${conversationId}`;
+      logger.info(`📍 Agent ${socket.id} joined conversation room: ${room}`);
+      socket.join(room);
     });
 
-    socket.on('leave_conversation', (accountId, conversationId) => {
-      logger.info(`📍 Agent ${socket.id} left conversation: ${conversationId}`);
-      socket.leave(`account:${accountId}:conversation:${conversationId}`);
+    socket.on('leave_conversation', (data) => {
+      const conversationId = typeof data === 'string' ? data : (data?.conversationId || data);
+      const room = `conversation:${conversationId}`;
+      logger.info(`📍 Agent ${socket.id} left conversation room: ${room}`);
+      socket.leave(room);
     });
 
     // Handle typing indicators
     socket.on('typing_start', (data) => {
-      const { accountId, conversationId, agentId, agentName } = data;
+      const { conversationId, agentId, agentName } = data;
+      const room = `conversation:${conversationId}`;
 
       socket
-        .to(`account:${accountId}:conversation:${conversationId}`)
+        .to(room)
         .emit('agent_typing', {
           conversationId,
           agentId,
@@ -73,10 +78,11 @@ export const setupSocketIOHandlers = (io) => {
     });
 
     socket.on('typing_stop', (data) => {
-      const { accountId, conversationId, agentId } = data;
+      const { conversationId, agentId } = data;
+      const room = `conversation:${conversationId}`;
 
       socket
-        .to(`account:${accountId}:conversation:${conversationId}`)
+        .to(room)
         .emit('agent_typing_stop', {
           conversationId,
           agentId,
@@ -86,13 +92,16 @@ export const setupSocketIOHandlers = (io) => {
 
     // Handle agent status changes
     socket.on('agent_status_change', (data) => {
-      const { accountId, agentId, status } = data;
+      const { agentId, status, conversationId } = data;
 
-      io.to(`account:${accountId}`).emit('agent_status_changed', {
-        agentId,
-        status, // available, busy, away, offline
-        timestamp: new Date()
-      });
+      if (conversationId) {
+        const room = `conversation:${conversationId}`;
+        io.to(room).emit('agent_status_changed', {
+          agentId,
+          status, // available, busy, away, offline
+          timestamp: new Date()
+        });
+      }
     });
 
     // Handle conversation opened (agent viewing)
@@ -142,7 +151,7 @@ export const setupSocketIOHandlers = (io) => {
 export const emitToConversation = (accountId, conversationId, eventName, data) => {
   try {
     const io = getSocketIO();
-    const room = `account:${accountId}:conversation:${conversationId}`;
+    const room = `conversation:${conversationId}`;
 
     io.to(room).emit(eventName, {
       ...data,

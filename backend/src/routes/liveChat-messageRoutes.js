@@ -334,11 +334,15 @@ router.patch('/:messageId/status', async (req, res) => {
       eventName = 'message_read';
     }
 
-    emitToAccount(accountId, eventName, {
-      messageId,
-      status,
-      timestamp: new Date()
-    });
+    // Emit to conversation room so agents see updates
+    if (message.conversationId) {
+      emitToConversation(accountId, message.conversationId, eventName, {
+        messageId,
+        conversationId: message.conversationId,
+        status,
+        timestamp: new Date()
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -380,11 +384,14 @@ router.post('/:messageId/mark-read', async (req, res) => {
     );
 
     // Emit real-time event
-    emitToAccount(accountId, 'message_read_by_agent', {
-      messageId,
-      readBy: agentId,
-      timestamp: message.updatedAt
-    });
+    if (message.conversationId) {
+      emitToConversation(accountId, message.conversationId, 'message_read_by_agent', {
+        messageId,
+        conversationId: message.conversationId,
+        readBy: agentId,
+        timestamp: message.updatedAt
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -436,12 +443,15 @@ router.post('/:messageId/reaction', async (req, res) => {
     );
 
     // Emit real-time event
-    emitToAccount(accountId, 'reaction_added', {
-      messageId,
-      emoji,
-      addedBy: agentId,
-      timestamp: new Date()
-    });
+    if (message.conversationId) {
+      emitToConversation(accountId, message.conversationId, 'message_reaction', {
+        messageId,
+        conversationId: message.conversationId,
+        emoji,
+        addedBy: agentId,
+        timestamp: new Date()
+      });
+    }
 
     return res.status(200).json({
       success: true,

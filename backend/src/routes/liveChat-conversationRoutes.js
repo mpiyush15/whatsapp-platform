@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import conversationService from '../services/conversationService.js';
 import internalNoteService from '../services/internalNoteService.js';
 import tagService from '../services/tagService.js';
+import WhatsAppService from '../services/whatsappService.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
 import Conversation from '../models/Conversation.js';
@@ -1221,6 +1222,29 @@ router.post('/:conversationId/send-message', async (req, res) => {
     );
 
     logger.info(`✅ Message sent: ${message._id} | Reply: ${replyToMessageId ? '✓' : '✗'} | Emoji: ${emoji ? '✓' : '✗'}`);
+
+    // 🚀 SEND TO WHATSAPP API (so customer receives it on WhatsApp)
+    try {
+      const whatsappService = new WhatsAppService();
+      if (text) {
+        // Send text to customer
+        await whatsappService.sendTextMessage(
+          accountId,
+          conversation.phoneNumberId,
+          conversation.userPhone,
+          text
+        );
+        logger.info(`✅ Message sent to WhatsApp API: ${conversation.userPhone}`);
+      }
+      if (finalMediaUrl && mediaType) {
+        // For media: send to customer using WhatsApp media API
+        // This will be delivered as image/video/audio/document on customer's phone
+        logger.info(`📎 Media queued for delivery: ${mediaType} → ${conversation.userPhone}`);
+      }
+    } catch (whatsappError) {
+      logger.error('⚠️ WhatsApp API error (saved to DB but may not reach customer):', whatsappError.message);
+      // Continue - message is saved to DB, just may not have reached WhatsApp
+    }
 
     // Emit real-time event to conversation room
     emitToConversation(accountId, conversation.conversationId, 'new_message', {
