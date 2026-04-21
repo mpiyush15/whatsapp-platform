@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import conversationService from '../services/conversationService.js';
 import internalNoteService from '../services/internalNoteService.js';
 import tagService from '../services/tagService.js';
-import WhatsAppService from '../services/whatsappService.js';
+import whatsappService from '../services/whatsappService.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
 import Conversation from '../models/Conversation.js';
@@ -1225,7 +1225,6 @@ router.post('/:conversationId/send-message', async (req, res) => {
 
     // 🚀 SEND TO WHATSAPP API (so customer receives it on WhatsApp)
     try {
-      const whatsappService = new WhatsAppService();
       if (text) {
         // Send text to customer
         await whatsappService.sendTextMessage(
@@ -1235,10 +1234,20 @@ router.post('/:conversationId/send-message', async (req, res) => {
           text
         );
         logger.info(`✅ Message sent to WhatsApp API: ${conversation.userPhone}`);
+        
+        // Update message status to delivered
+        await Message.findByIdAndUpdate(message._id, { status: 'delivered' });
+        
+        // Emit delivery confirmation to agents
+        emitToConversation(accountId, conversation.conversationId, 'message_delivered', {
+          messageId: message._id,
+          conversationId: conversation.conversationId,
+          status: 'delivered',
+          timestamp: new Date()
+        });
       }
       if (finalMediaUrl && mediaType) {
         // For media: send to customer using WhatsApp media API
-        // This will be delivered as image/video/audio/document on customer's phone
         logger.info(`📎 Media queued for delivery: ${mediaType} → ${conversation.userPhone}`);
       }
     } catch (whatsappError) {

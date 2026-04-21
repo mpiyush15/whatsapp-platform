@@ -108,6 +108,18 @@ export default function LiveChatContainer() {
       }
     })
 
+    // Listen for message delivered status (double tick)
+    newSocket.on('message_delivered', (data) => {
+      console.log('✓✓ Message delivered:', data)
+      if (selectedConversation && data.conversationId === selectedConversation.conversationId) {
+        setMessages(prev => prev.map(msg =>
+          msg._id === data.messageId
+            ? { ...msg, status: 'delivered' }
+            : msg
+        ))
+      }
+    })
+
     // Listen for agent status changes (online/offline)
     newSocket.on('agent_status', (data) => {
       console.log('🟢 Agent status:', data)
