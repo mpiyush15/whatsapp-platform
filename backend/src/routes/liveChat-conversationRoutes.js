@@ -27,6 +27,14 @@ const upload = multer({
 // ✅ All routes require JWT authentication
 router.use(requireJWT);
 
+// Logging middleware for debugging
+router.use((req, res, next) => {
+  if (req.path.includes('send-media')) {
+    logger.info(`📡 ${req.method} ${req.path} | Content-Type: ${req.headers['content-type']}`);
+  }
+  next();
+});
+
 /**
  * GET /api/conversations
  * List conversations with filters, search, pagination
@@ -1467,7 +1475,15 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
     const agentName = req.user.name || 'Agent';
     const file = req.file;
 
+    logger.info(`🔍 send-media endpoint hit:`);
+    logger.info(`  - conversationId: ${conversationId}`);
+    logger.info(`  - file: ${file ? 'YES' : 'NO'}`);
+    logger.info(`  - file size: ${file ? file.size : 0} bytes`);
+    logger.info(`  - file mimetype: ${file ? file.mimetype : 'N/A'}`);
+    logger.info(`  - caption: ${caption || '(none)'}`);
+
     if (!file) {
+      logger.error(`❌ No file received in request`);
       return res.status(400).json({
         success: false,
         message: 'No file provided',

@@ -250,9 +250,17 @@ export default function LiveChatContainer() {
 
       // If there's media (file was selected)
       if (mediaUrl && mediaType) {
-        // Convert data URL to blob directly (without fetch)
+        console.log(`📤 Preparing to send ${mediaType}...`);
+        
+        // Convert data URL to blob directly
         const arr = mediaUrl.split(',');
         const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+        
+        if (!arr[1]) {
+          console.error('❌ Invalid data URL - no base64 data');
+          return;
+        }
+        
         const bstr = atob(arr[1]);
         const n = bstr.length;
         const u8arr = new Uint8Array(n);
@@ -261,18 +269,29 @@ export default function LiveChatContainer() {
         }
         const blob = new Blob([u8arr], { type: mime });
         
+        console.log(`✅ Blob created: ${(blob.size / 1024).toFixed(2)}KB, MIME: ${mime}`);
+        
+        if (blob.size === 0) {
+          console.error('❌ Blob is empty!');
+          return;
+        }
+        
         // Determine filename from mediaType
         const extension = mediaType === 'image' ? 'jpg' : mediaType === 'video' ? 'mp4' : mediaType === 'audio' ? 'mp3' : 'pdf';
-        const file = new File([blob], `media.${extension}`, { type: mime });
+        const filename = `media_${Date.now()}.${extension}`;
+        const file = new File([blob], filename, { type: mime });
 
-        // Send as multipart/form-data for file upload
+        console.log(`✅ File created: ${filename} (${(file.size / 1024).toFixed(2)}KB)`);
+
+        // Create FormData
         const formData = new FormData();
         formData.append('file', file);
         if (text && text.trim()) {
           formData.append('caption', text);
+          console.log(`✅ Caption added: "${text}"`);
         }
 
-        console.log(`📤 Sending ${mediaType} file (${(file.size / 1024).toFixed(2)}KB)...`);
+        console.log(`📤 Sending to /send-media endpoint...`);
 
         const uploadResponse = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${selectedConversation.conversationId}/send-media`,
@@ -286,12 +305,15 @@ export default function LiveChatContainer() {
           }
         );
 
+        const responseText = await uploadResponse.text();
+        console.log(`📥 Response status: ${uploadResponse.status}`);
+        console.log(`📥 Response: ${responseText}`);
+
         if (uploadResponse.ok) {
           console.log('✅ Media message sent successfully');
           // Message will come via socket listener 'new_message' event
         } else {
-          const errorData = await uploadResponse.json().catch(() => ({}));
-          console.error('❌ Failed to send media message:', errorData);
+          console.error('❌ Failed to send media message:', responseText);
         }
       } else {
         // Send text-only message
