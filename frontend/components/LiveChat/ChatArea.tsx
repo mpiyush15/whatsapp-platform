@@ -51,9 +51,9 @@ export default function ChatArea({
   const [showProfile, setShowProfile] = useState(false)
 
   return (
-    <div className="flex-1 flex flex-col h-screen bg-gradient-to-b from-blue-50 to-white">
+    <div className="flex-1 flex flex-col h-[calc(100vh-0px)] bg-gradient-to-b from-blue-50 to-white overflow-hidden">
       {/* WhatsApp-style Header */}
-      <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-4 flex items-center justify-between shadow-md sticky top-0 z-10">
+      <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-4 flex items-center justify-between shadow-md sticky top-0 z-10 flex-shrink-0">
         <div className="flex items-center gap-3 flex-1">
           {onBack && (
             <button onClick={onBack} className="md:hidden p-1">

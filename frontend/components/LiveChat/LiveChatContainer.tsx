@@ -349,7 +349,7 @@ export default function LiveChatContainer() {
   }
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+    <div className="flex h-[calc(100vh-0px)] bg-white overflow-hidden">
       {/* Sidebar - Conversations (Hidden on mobile, visible on desktop) */}
       <div className="hidden md:flex md:w-80 border-r border-gray-200 flex-col flex-shrink-0">
         <ConversationList 
@@ -362,7 +362,7 @@ export default function LiveChatContainer() {
 
       {/* Mobile Conversation List - Visible when no conversation selected */}
       {!selectedConversation && (
-        <div className="md:hidden w-full">
+        <div className="md:hidden w-full h-full overflow-hidden">
           <ConversationList 
             conversations={conversations}
             selectedConversation={selectedConversation}
