@@ -56,7 +56,7 @@ export default function LiveChatPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-[calc(100vh-80px)] bg-gray-50 overflow-hidden">
       <LiveChatContainer />
     </div>
   );

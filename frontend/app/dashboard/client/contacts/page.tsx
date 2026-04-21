@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Users, Plus, Upload, Download, Edit, Trash2, X, Tag, Mail, Phone as PhoneIcon, User, Building2, MapPin, MessageCircle, ChevronUp, ChevronDown } from "lucide-react"
+import { Users, Plus, Upload, Download, Edit, Trash2, X, Tag, Mail, Phone as PhoneIcon, User, Building2, MapPin, MessageCircle, ChevronUp, ChevronDown, Save, Check, Clock, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ErrorToast } from "@/components/ErrorToast"
 import { ContactType } from "@/lib/enums"
@@ -51,6 +51,25 @@ interface ContactDetail extends Contact {
   score?: number
 }
 
+interface Segment {
+  _id: string
+  name: string
+  description?: string
+  filters: any
+  stats: { contactCount: number }
+  isPinned: boolean
+  createdAt: string
+}
+
+interface TimelineEntry {
+  _id: string
+  type: string
+  description: string
+  actor: { type: string; name: string }
+  timestamp: Date
+  details: any
+}
+
 type SortKey = 'name' | 'type' | 'lastMessageAt' | 'createdAt' | 'messageCount'
 
 export default function ContactsPage() {
@@ -64,6 +83,25 @@ export default function ContactsPage() {
   const [importPreview, setImportPreview] = useState<any[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const router = useRouter()
+  
+  // Segment state
+  const [segments, setSegments] = useState<Segment[]>([])
+  const [showSegmentModal, setShowSegmentModal] = useState(false)
+  const [segmentName, setSegmentName] = useState("")
+  const [segmentDescription, setSegmentDescription] = useState("")
+  const [isLoadingSegments, setIsLoadingSegments] = useState(false)
+
+  // Bulk action state
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set())
+  const [showBulkTagModal, setShowBulkTagModal] = useState(false)
+  const [bulkTag, setBulkTag] = useState("")
+  const [bulkActionLoading, setIsLoadingBulkAction] = useState(false)
+
+  // Timeline state
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([])
+  const [timelineLoading, setTimelineLoading] = useState(false)
+  const [showTimelineTab, setShowTimelineTab] = useState(false)
+
   const [formData, setFormData] = useState({
     name: '',
     whatsappNumber: '',
@@ -96,6 +134,256 @@ export default function ContactsPage() {
     }
   }
 
+  // ============== SEGMENT FUNCTIONS ==============
+  const fetchSegments = async () => {
+    try {
+      setIsLoadingSegments(true)
+      const response = await fetch(`${API_URL}/segments`, {
+        headers: getHeaders(),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSegments(data.segments || [])
+      }
+    } catch (error) {
+      console.error("Error fetching segments:", error)
+    } finally {
+      setIsLoadingSegments(false)
+    }
+  }
+
+  const saveSegmentFromCurrentFilters = async () => {
+    if (!segmentName.trim()) {
+      alert("Please enter segment name")
+      return
+    }
+
+    try {
+      setIsLoadingSegments(true)
+      const filters = {
+        type: filterType === 'all' ? [] : [filterType],
+        city: filterCity ? [filterCity] : [],
+        businessName: filterBusinessName ? [filterBusinessName] : [],
+        searchText: searchQuery
+      }
+
+      const response = await fetch(`${API_URL}/segments`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          name: segmentName,
+          description: segmentDescription,
+          filters
+        })
+      })
+
+      if (response.ok) {
+        alert(`Segment "${segmentName}" created successfully!`)
+        setSegmentName("")
+        setSegmentDescription("")
+        setShowSegmentModal(false)
+        fetchSegments()
+      } else {
+        const error = await response.json()
+        alert(error.message || "Failed to create segment")
+      }
+    } catch (error) {
+      console.error("Error saving segment:", error)
+      alert("Failed to save segment")
+    } finally {
+      setIsLoadingSegments(false)
+    }
+  }
+
+  const applySegment = async (segment: Segment) => {
+    // Apply segment filters
+    const f = segment.filters
+    if (f.type && f.type.length > 0) {
+      setFilterType(f.type[0] as ContactType)
+    }
+    if (f.city && f.city.length > 0) {
+      setFilterCity(f.city[0])
+    }
+    if (f.businessName && f.businessName.length > 0) {
+      setFilterBusinessName(f.businessName[0])
+    }
+  }
+
+  const deleteSegment = async (segmentId: string) => {
+    if (!confirm("Delete this segment?")) return
+
+    try {
+      const response = await fetch(`${API_URL}/segments/${segmentId}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      })
+
+      if (response.ok) {
+        fetchSegments()
+      }
+    } catch (error) {
+      console.error("Error deleting segment:", error)
+    }
+  }
+
+  // ============== BULK ACTION FUNCTIONS ==============
+  const handleSelectContact = (contactId: string) => {
+    const newSelected = new Set(selectedContactIds)
+    if (newSelected.has(contactId)) {
+      newSelected.delete(contactId)
+    } else {
+      newSelected.add(contactId)
+    }
+    setSelectedContactIds(newSelected)
+  }
+
+  const handleSelectAll = () => {
+    if (selectedContactIds.size === contacts.length) {
+      setSelectedContactIds(new Set())
+    } else {
+      setSelectedContactIds(new Set(contacts.map(c => c._id)))
+    }
+  }
+
+  const bulkAddTag = async () => {
+    if (!bulkTag.trim()) {
+      alert("Enter tag name")
+      return
+    }
+
+    try {
+      setIsLoadingBulkAction(true)
+      const response = await fetch(`${API_URL}/contacts/bulk-update`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          contactIds: Array.from(selectedContactIds),
+          action: 'add_tag',
+          payload: { tag: bulkTag }
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        alert(`Tagged ${result.updated} contacts`)
+        setBulkTag("")
+        setShowBulkTagModal(false)
+        setSelectedContactIds(new Set())
+        fetchContacts()
+      } else {
+        alert("Failed to tag contacts")
+      }
+    } catch (error) {
+      console.error("Error bulk tagging:", error)
+      alert("Failed to tag contacts")
+    } finally {
+      setIsLoadingBulkAction(false)
+    }
+  }
+
+  const bulkRemoveTag = async (tag: string) => {
+    if (selectedContactIds.size === 0) return
+
+    try {
+      setIsLoadingBulkAction(true)
+      const response = await fetch(`${API_URL}/contacts/bulk-update`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          contactIds: Array.from(selectedContactIds),
+          action: 'remove_tag',
+          payload: { tag }
+        })
+      })
+
+      if (response.ok) {
+        fetchContacts()
+        setSelectedContactIds(new Set())
+      }
+    } catch (error) {
+      console.error("Error removing tags:", error)
+    } finally {
+      setIsLoadingBulkAction(false)
+    }
+  }
+
+  const bulkDelete = async () => {
+    if (!confirm(`Delete ${selectedContactIds.size} contacts?`)) return
+
+    try {
+      setIsLoadingBulkAction(true)
+      const response = await fetch(`${API_URL}/contacts/bulk-update`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          contactIds: Array.from(selectedContactIds),
+          action: 'delete'
+        })
+      })
+
+      if (response.ok) {
+        alert(`Deleted ${selectedContactIds.size} contacts`)
+        fetchContacts()
+        setSelectedContactIds(new Set())
+      }
+    } catch (error) {
+      console.error("Error deleting contacts:", error)
+    } finally {
+      setIsLoadingBulkAction(false)
+    }
+  }
+
+  // ============== TIMELINE FUNCTIONS ==============
+  const fetchContactTimeline = async (contactId: string) => {
+    try {
+      setTimelineLoading(true)
+      const response = await fetch(`${API_URL}/contacts/${contactId}/timeline`, {
+        headers: getHeaders(),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setTimeline(data.timeline || [])
+      }
+    } catch (error) {
+      console.error("Error fetching timeline:", error)
+    } finally {
+      setTimelineLoading(false)
+    }
+  }
+
+  // Auto-sync contact from live chat
+  const autoSyncContactFromChat = async (phoneNumber: string) => {
+    try {
+      // Check if contact already exists
+      const exists = contacts.some(c => 
+        c.whatsappNumber === phoneNumber || c.phone === phoneNumber
+      )
+      
+      if (exists) return // Already synced
+      
+      // Auto-add contact from live chat
+      const response = await fetch(`${API_URL}/contacts`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          name: `Chat ${phoneNumber}`,
+          whatsappNumber: phoneNumber,
+          phone: phoneNumber,
+          type: ContactType.CUSTOMER,
+          tags: ['auto-synced'],
+        }),
+      })
+      
+      if (response.ok) {
+        // Refresh contacts list
+        fetchContacts()
+      }
+    } catch (error) {
+      console.error("Error auto-syncing contact:", error)
+    }
+  }
+
   // Fetch contacts
   const fetchContacts = async () => {
     try {
@@ -105,15 +393,16 @@ export default function ContactsPage() {
       })
       if (response.ok) {
         const data = await response.json()
-        setContacts(data.contacts || [])
+        const contacts = data.contacts || data.data || []
+        setContacts(contacts)
         
         // Calculate stats
-        const total = data.pagination?.total || data.contacts.length
-        const optedIn = data.contacts.filter((c: Contact) => c.isOptedIn).length
-        const active = data.contacts.filter((c: Contact) => c.lastMessageAt).length
+        const total = data.pagination?.total || contacts.length
+        const optedIn = contacts.filter((c: Contact) => c.isOptedIn).length
+        const active = contacts.filter((c: Contact) => c.lastMessageAt).length
         const now = new Date()
         const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
-        const newThisMonth = data.contacts.filter((c: Contact) => 
+        const newThisMonth = contacts.filter((c: Contact) => 
           new Date(c.createdAt) > monthAgo
         ).length
         
@@ -177,6 +466,71 @@ export default function ContactsPage() {
     } catch (error) {
       console.error("Error deleting contact:", error)
       alert("Failed to delete contact")
+    }
+  }
+
+  // Fetch contacts from incoming chats
+  const fetchContactsFromChats = async () => {
+    try {
+      setIsImporting(true)
+      
+      const response = await fetch(`${API_URL}/contacts/fetch-from-chats`, {
+        method: 'GET',
+        headers: getHeaders(),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        const newContacts = result.contacts || []
+        if (newContacts.length === 0) {
+          alert('No new contacts found in incoming chats')
+          return
+        }
+
+        // Show preview of fetched contacts
+        setImportPreview(newContacts)
+        setShowImportModal(true)
+        // Flag to indicate these are from chats, not from file
+        ;(window as any).fetchedFromChats = true
+      } else {
+        alert(result.message || 'Failed to fetch contacts from chats')
+      }
+    } catch (error) {
+      console.error('Error fetching from chats:', error)
+      alert('Failed to fetch contacts from chats')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  // Save fetched contacts from chats
+  const saveFetchedContacts = async () => {
+    if (importPreview.length === 0) return
+
+    try {
+      setIsImporting(true)
+
+      const response = await fetch(`${API_URL}/contacts/import`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ contacts: importPreview }),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        alert(`Successfully imported ${result.imported} contacts from chats! ${result.failed > 0 ? `${result.failed} failed.` : ''}`)
+        fetchContacts()
+        closeImportModal()
+      } else {
+        alert(result.message || 'Import failed')
+      }
+    } catch (error) {
+      console.error('Import error:', error)
+      alert('Failed to import contacts')
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -396,15 +750,88 @@ export default function ContactsPage() {
 
   useEffect(() => {
     fetchContacts()
+    fetchSegments()
 
-    // Listen for new messages to refresh contacts list
+    // Listen for new messages to refresh contacts list in real-time
     const handleNewMessage = (data: any) => {
-      // Refresh contacts when new message arrives
+      console.log('🔔 Contacts Page - new_message event:', data)
+      // Auto-sync phone number from live chat
+      if (data?.sender) {
+        autoSyncContactFromChat(data.sender)
+      }
+      if (data?.message?.sender) {
+        autoSyncContactFromChat(data.message.sender)
+      }
+      if (data?.phoneNumber) {
+        autoSyncContactFromChat(data.phoneNumber)
+      }
+      if (data?.message?.senderPhone) {
+        autoSyncContactFromChat(data.message.senderPhone)
+      }
+      // Refresh contacts when new message arrives from live chat
       fetchContacts()
     }
 
     const handleConversationUpdate = (data: any) => {
-      // Refresh contacts when conversation updates
+      console.log('🔔 Contacts Page - conversation_update:', data)
+      // Auto-sync phone number from conversation
+      if (data?.phoneNumber) {
+        autoSyncContactFromChat(data.phoneNumber)
+      }
+      if (data?.phone) {
+        autoSyncContactFromChat(data.phone)
+      }
+      if (data?.senderPhone) {
+        autoSyncContactFromChat(data.senderPhone)
+      }
+      // Refresh contacts when conversation updates from live chat
+      fetchContacts()
+    }
+
+    const handleMessageSent = (data: any) => {
+      console.log('🔔 Contacts Page - message_sent:', data)
+      // Auto-sync phone number when sending message
+      if (data?.receiver) {
+        autoSyncContactFromChat(data.receiver)
+      }
+      if (data?.phoneNumber) {
+        autoSyncContactFromChat(data.phoneNumber)
+      }
+      // When message is sent from live chat, update contacts
+      fetchContacts()
+    }
+
+    const handleMessageReceived = (data: any) => {
+      console.log('🔔 Contacts Page - message_received:', data)
+      // Auto-sync phone number when receiving message
+      if (data?.sender) {
+        autoSyncContactFromChat(data.sender)
+      }
+      if (data?.message?.sender) {
+        autoSyncContactFromChat(data.message.sender)
+      }
+      if (data?.phoneNumber) {
+        autoSyncContactFromChat(data.phoneNumber)
+      }
+      if (data?.message?.senderPhone) {
+        autoSyncContactFromChat(data.message.senderPhone)
+      }
+      // When message is received in live chat, update contacts
+      fetchContacts()
+    }
+
+    const handleIncomingMessage = (data: any) => {
+      console.log('🔔 Contacts Page - incoming_message:', data)
+      // Auto-sync phone number from incoming message
+      if (data?.from) {
+        autoSyncContactFromChat(data.from)
+      }
+      if (data?.sender) {
+        autoSyncContactFromChat(data.sender)
+      }
+      if (data?.phoneNumber) {
+        autoSyncContactFromChat(data.phoneNumber)
+      }
       fetchContacts()
     }
 
@@ -413,17 +840,27 @@ export default function ContactsPage() {
     if (socket) {
       socket.on('new_message', handleNewMessage)
       socket.on('conversation_update', handleConversationUpdate)
+      socket.on('conversation_updated', handleConversationUpdate)
+      socket.on('message_sent', handleMessageSent)
+      socket.on('message_received', handleMessageReceived)
+      socket.on('incoming_message', handleIncomingMessage)
 
       // Cleanup listeners on unmount
       return () => {
         socket.off('new_message', handleNewMessage)
         socket.off('conversation_update', handleConversationUpdate)
+        socket.off('conversation_updated', handleConversationUpdate)
+        socket.off('message_sent', handleMessageSent)
+        socket.off('message_received', handleMessageReceived)
+        socket.off('incoming_message', handleIncomingMessage)
       }
     }
   }, [])
 
   // Filter and sort contacts using useMemo for performance
   const filteredAndSortedContacts = useMemo(() => {
+    if (!contacts || !Array.isArray(contacts)) return []
+    
     let filtered = contacts.filter((contact) => {
       const matchesSearch = contact.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         contact.phone?.includes(searchQuery) ||
@@ -517,6 +954,10 @@ export default function ContactsPage() {
           <p className="text-gray-600 mt-1">Manage and organize your WhatsApp contacts</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchContactsFromChats} disabled={isImporting}>
+            <MessageCircle className="h-4 w-4 mr-2" />
+            {isImporting ? 'Fetching...' : 'From Chats'}
+          </Button>
           <Button variant="outline" onClick={() => setShowImportModal(true)}>
             <Upload className="h-4 w-4 mr-2" />
             Import
@@ -552,6 +993,49 @@ export default function ContactsPage() {
         </div>
       </div>
 
+      {/* SEGMENTS SECTION */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-900">Saved Segments</h3>
+          <button
+            onClick={() => setShowSegmentModal(true)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <Save className="h-4 w-4" />
+            Save Current
+          </button>
+        </div>
+
+        {/* Segments horizontal scroll */}
+        {isLoadingSegments ? (
+          <p className="text-sm text-gray-500">Loading segments...</p>
+        ) : segments.length === 0 ? (
+          <p className="text-sm text-gray-500">No saved segments yet</p>
+        ) : (
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {segments.map((segment) => (
+              <button
+                key={segment._id}
+                onClick={() => applySegment(segment)}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg text-sm font-medium text-gray-900 whitespace-nowrap flex items-center gap-2 transition-colors"
+              >
+                {segment.name}
+                <span className="text-xs text-gray-500">({segment.stats?.contactCount || 0})</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    deleteSegment(segment._id)
+                  }}
+                  className="ml-1 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Main Table Component */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <ContactsTable 
@@ -560,8 +1044,91 @@ export default function ContactsPage() {
           onEdit={openEditModal}
           onDelete={deleteContact}
           onView={(contact) => openContactChat(contact)}
+          selectedIds={selectedContactIds}
+          onSelectContact={handleSelectContact}
+          onSelectAll={handleSelectAll}
         />
       </div>
+
+      {/* Bulk Actions Sticky Bar */}
+      {selectedContactIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg p-4">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <p className="font-medium text-gray-900">
+                {selectedContactIds.size} contact{selectedContactIds.size !== 1 ? 's' : ''} selected
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowBulkTagModal(true)}
+                className="px-4 py-2 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-colors text-sm"
+              >
+                Add Tag
+              </button>
+              <button
+                onClick={bulkDelete}
+                disabled={bulkActionLoading}
+                className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors text-sm disabled:opacity-50"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setSelectedContactIds(new Set())}
+                className="px-4 py-2 bg-gray-200 text-gray-900 font-medium rounded-lg hover:bg-gray-300 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Tag Modal */}
+      {showBulkTagModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">Add Tag to {selectedContactIds.size} Contacts</h2>
+              <button 
+                onClick={() => setShowBulkTagModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <input
+                type="text"
+                value={bulkTag}
+                onChange={(e) => setBulkTag(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && bulkAddTag()}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                placeholder="Enter tag name"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2 p-6 border-t justify-end">
+              <Button 
+                variant="outline"
+                onClick={() => setShowBulkTagModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={bulkAddTag}
+                disabled={bulkActionLoading || !bulkTag.trim()}
+                className="bg-gray-900 hover:bg-gray-800 text-white"
+              >
+                {bulkActionLoading ? 'Adding...' : 'Add Tag'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Modal */}
       {showAddModal && (
@@ -718,46 +1285,62 @@ export default function ContactsPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white">
-              <h2 className="text-xl font-semibold text-gray-900">Import Contacts from CSV</h2>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {(window as any).fetchedFromChats ? 'Import Contacts from Chats' : 'Import Contacts from CSV'}
+              </h2>
               <button onClick={closeImportModal} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
             
             <div className="p-6 space-y-4">
-              {/* Instructions */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 className="font-semibold text-blue-900 mb-2">📋 CSV Format Instructions</h3>
-                <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                  <li>Required columns: <strong>Name</strong>, <strong>WhatsApp Number</strong></li>
-                  <li>Optional columns: Phone, Email, Type, Tags</li>
-                  <li>WhatsApp Number should include country code (e.g., 919876543210)</li>
-                  <li>Type can be: customer, lead, or other</li>
-                  <li>Separate multiple tags with semicolons (e.g., Premium;VIP)</li>
-                </ul>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="mt-3"
-                  onClick={downloadTemplate}
-                >
-                  <Download className="h-3 w-3 mr-1" />
-                  Download Sample Template
-                </Button>
-              </div>
+              {/* CSV Instructions - Show only for CSV import */}
+              {!(window as any).fetchedFromChats && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-blue-900 mb-2">📋 CSV Format Instructions</h3>
+                  <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
+                    <li>Required columns: <strong>Name</strong>, <strong>WhatsApp Number</strong></li>
+                    <li>Optional columns: Phone, Email, Type, Tags</li>
+                    <li>WhatsApp Number should include country code (e.g., 919876543210)</li>
+                    <li>Type can be: customer, lead, or other</li>
+                    <li>Separate multiple tags with semicolons (e.g., Premium;VIP)</li>
+                  </ul>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-3"
+                    onClick={downloadTemplate}
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Download Sample Template
+                  </Button>
+                </div>
+              )}
 
-              {/* File Upload */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select CSV File
-                </label>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileSelect}
-                  className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-2"
-                />
-              </div>
+              {/* File Upload - Show only for CSV import */}
+              {!(window as any).fetchedFromChats && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select CSV File
+                  </label>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileSelect}
+                    className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none p-2"
+                  />
+                </div>
+              )}
+
+              {/* Fetched from Chats Info */}
+              {(window as any).fetchedFromChats && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-green-900 mb-2">✅ Contacts from Incoming Chats</h3>
+                  <p className="text-sm text-green-800">
+                    Found <strong>{importPreview.length} new contact{importPreview.length !== 1 ? 's' : ''}</strong> from your WhatsApp conversations. These contacts will be added automatically with their phone numbers from your chats.
+                  </p>
+                </div>
+              )}
 
               {/* Preview */}
               {importPreview.length > 0 && (
@@ -810,8 +1393,8 @@ export default function ContactsPage() {
               </Button>
               <Button 
                 className="bg-green-600 hover:bg-green-700" 
-                onClick={importContacts}
-                disabled={!importFile || isImporting}
+                onClick={(window as any).fetchedFromChats ? saveFetchedContacts : importContacts}
+                disabled={((window as any).fetchedFromChats ? importPreview.length === 0 : !importFile) || isImporting}
               >
                 {isImporting ? (
                   <>
@@ -821,7 +1404,7 @@ export default function ContactsPage() {
                 ) : (
                   <>
                     <Upload className="h-4 w-4 mr-2" />
-                    Import Contacts
+                    {(window as any).fetchedFromChats ? 'Save Contacts' : 'Import Contacts'}
                   </>
                 )}
               </Button>
@@ -989,6 +1572,76 @@ export default function ContactsPage() {
               >
                 <Edit className="h-4 w-4 mr-2" />
                 Edit
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Segment Modal */}
+      {showSegmentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">Save Current Filters as Segment</h2>
+              <button 
+                onClick={() => setShowSegmentModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Segment Name *</label>
+                <input
+                  type="text"
+                  value={segmentName}
+                  onChange={(e) => setSegmentName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  placeholder="e.g., Premium Customers"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+                <textarea
+                  value={segmentDescription}
+                  onChange={(e) => setSegmentDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  placeholder="e.g., High-value customers from Delhi"
+                  rows={3}
+                />
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+                <p className="font-medium mb-2">Current filters being saved:</p>
+                <ul className="space-y-1 text-xs">
+                  {filterType !== 'all' && <li>• Type: {filterType}</li>}
+                  {filterCity && <li>• City: {filterCity}</li>}
+                  {filterBusinessName && <li>• Business: {filterBusinessName}</li>}
+                  {searchQuery && <li>• Search: {searchQuery}</li>}
+                  {filterType === 'all' && !filterCity && !filterBusinessName && !searchQuery && (
+                    <li className="text-gray-400">No filters applied</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex gap-2 p-6 border-t justify-end">
+              <Button 
+                variant="outline"
+                onClick={() => setShowSegmentModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={saveSegmentFromCurrentFilters}
+                disabled={isLoadingSegments || !segmentName.trim()}
+                className="bg-gray-900 hover:bg-gray-800 text-white"
+              >
+                {isLoadingSegments ? 'Saving...' : 'Save Segment'}
               </Button>
             </div>
           </div>

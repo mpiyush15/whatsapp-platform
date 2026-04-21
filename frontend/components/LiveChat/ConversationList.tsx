@@ -48,34 +48,34 @@ export default function ConversationList({
   }, [conversations, search, filter])
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-gray-50">
       {/* Compact Header with inline search */}
-      <div className="px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-10 flex items-center justify-between gap-3">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex-shrink-0">Messages</h1>
+      <div className="px-3 py-2 bg-white border-b border-gray-200 sticky top-0 z-10 flex items-center justify-between gap-2">
+        <h1 className="text-lg font-bold text-gray-900 flex-shrink-0">Messages</h1>
         
         {/* Inline Search */}
         <div className="relative flex-1 max-w-xs">
-          <Search size={18} className="absolute left-3 top-2.5 text-gray-400" />
+          <Search size={16} className="absolute left-2.5 top-2 text-gray-400" />
           <input
             type="text"
             placeholder="Search..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-gray-50 text-gray-900 placeholder-gray-400 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+            className="w-full pl-8 pr-3 py-1.5 bg-gray-100 text-gray-900 placeholder-gray-500 border-0 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 text-xs"
           />
         </div>
       </div>
 
       {/* Filter Buttons */}
-      <div className="px-4 py-3 flex gap-2 overflow-x-auto bg-gray-50 border-b border-gray-200 scrollbar-hide">
+      <div className="px-3 py-2 flex gap-1.5 overflow-x-auto bg-white border-b border-gray-200 scrollbar-hide">
         {(['all', 'unread', 'open', 'closed'] as const).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-xs md:text-sm whitespace-nowrap transition-all font-medium ${
+            className={`px-2.5 py-1 rounded-full text-xs whitespace-nowrap transition-all font-medium ${
               filter === f
-                ? 'bg-green-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
             }`}
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -101,16 +101,16 @@ export default function ConversationList({
             <div
               key={conversation.conversationId}
               onClick={() => onSelectConversation(conversation)}
-              className={`p-3 md:p-4 border-b border-gray-100 cursor-pointer transition-colors active:bg-green-100 md:hover:bg-green-50 ${
+              className={`px-3 py-2 border-b border-gray-100 cursor-pointer transition-colors active:bg-gray-100 md:hover:bg-gray-100 ${
                 selectedConversation?.conversationId === conversation.conversationId
-                  ? 'bg-green-50 md:border-l-4 md:border-l-green-600'
-                  : ''
+                  ? 'bg-gray-100 md:border-l-4 md:border-l-green-600'
+                  : 'bg-white'
               }`}
             >
-              <div className="flex items-start justify-between mb-1">
-                <div className="flex-1 flex items-center gap-2 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <div className="relative flex-shrink-0">
-                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-semibold">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-semibold text-sm">
                       {(conversation.userName || conversation.userPhone)[0]?.toUpperCase()}
                     </div>
                     {conversation.isOnline && (
@@ -118,33 +118,25 @@ export default function ConversationList({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm text-gray-900 truncate">
-                      {conversation.userName || conversation.userPhone}
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-sm text-gray-900 truncate">
+                        {conversation.userName || conversation.userPhone}
+                      </p>
+                      <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
+                        {new Date(conversation.lastMessageAt).toLocaleTimeString([], { 
+                          hour: '2-digit', 
+                          minute: '2-digit' 
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 truncate">
+                      {conversation.lastMessagePreview}
                     </p>
-                    <p className="text-xs text-gray-500 truncate">{conversation.userPhone}</p>
                   </div>
                 </div>
                 {conversation.unreadCount > 0 && (
-                  <span className="ml-2 bg-green-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center flex-shrink-0">
+                  <span className="bg-green-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center flex-shrink-0">
                     {conversation.unreadCount}
-                  </span>
-                )}
-              </div>
-              
-              <p className="text-sm text-gray-600 truncate ml-12">
-                {conversation.lastMessagePreview}
-              </p>
-              
-              <div className="flex items-center justify-between mt-2 ml-12">
-                <span className="text-xs text-gray-500">
-                  {new Date(conversation.lastMessageAt).toLocaleTimeString([], { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-                  })}
-                </span>
-                {conversation.isOnline && (
-                  <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">
-                    Online
                   </span>
                 )}
               </div>

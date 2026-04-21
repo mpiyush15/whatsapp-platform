@@ -349,7 +349,7 @@ export default function LiveChatContainer() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-0px)] bg-white overflow-hidden">
+    <div className="flex h-full w-full bg-white overflow-hidden">
       {/* Sidebar - Conversations (Hidden on mobile, visible on desktop) */}
       <div className="hidden md:flex md:w-80 border-r border-gray-200 flex-col flex-shrink-0">
         <ConversationList 
@@ -382,10 +382,11 @@ export default function LiveChatContainer() {
           onBack={() => setSelectedConversation(null)}
         />
       ) : (
-        <div className="hidden md:flex md:flex-1 items-center justify-center bg-gradient-to-br from-green-50 to-blue-50">
+        <div className="hidden md:flex md:flex-1 items-center justify-center bg-stone-50">
           <div className="text-center">
             <MessageCircle size={64} className="mx-auto mb-4 text-gray-300" />
-            <p className="text-gray-600 text-lg font-medium">Select a conversation to start</p>
+            <p className="text-gray-900 text-2xl font-bold">Welcome to Replysys</p>
+            <p className="text-gray-600 text-lg font-medium mt-2">Start chatting with your customers</p>
           </div>
         </div>
       )}

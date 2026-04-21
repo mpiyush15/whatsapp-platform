@@ -1,108 +1,233 @@
-'use client';
+"use client"
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { authService } from '@/lib/auth';
+import { useState, useEffect } from "react"
+import { MessageCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { ContactType } from "@/lib/enums"
+import { authService } from "@/lib/auth"
+import { getSocket } from "@/lib/socket"
+import { ContactsTable } from "@/components/tables/ContactsTable"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
+interface Contact {
+  _id: string
+  name: string
+  phone: string
+  whatsappNumber: string
+  email?: string
+  businessName?: string
+  city?: string
+  type: ContactType
+  tags?: string[]
+  lastMessageAt?: string
+  messageCount: number
+  isOptedIn: boolean
+  createdAt: string
+}
+
+interface Stats {
+  total: number
+  active: number
+  newThisMonth: number
+  optedIn: number
+}
 
 export default function ContactsPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [stats, setStats] = useState<Stats>({ total: 0, active: 0, newThisMonth: 0, optedIn: 0 })
+  const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    const initPage = async () => {
-      const currentUser = authService.getCurrentUser();
-      const token = authService.getToken();
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050/api"
 
-      if (!token) {
-        router.push('/login');
-        return;
-      }
-
-      setUser(currentUser);
-
-      try {
-        const response = await fetch(`${API_URL}/contacts`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setContacts(data.data?.contacts || []);
-        }
-      } catch (error) {
-        console.error('Error fetching contacts:', error);
-      }
-
-      setLoading(false);
-    };
-
-    initPage();
-  }, [router]);
-
-  if (loading) {
-    return <div className="p-6 text-gray-600">Loading...</div>;
+  const getHeaders = () => {
+    const token = authService.getToken()
+    return {
+      "Content-Type": "application/json",
+      ...(token && { "Authorization": `Bearer ${token}` })
+    }
   }
+
+  // Fetch all contacts
+  const fetchContacts = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch(`${API_URL}/contacts?limit=100`, {
+        headers: getHeaders(),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        const contactsList = data.contacts || data.data || []
+        setContacts(contactsList)
+        
+        // Calculate stats
+        const total = data.pagination?.total || contactsList.length
+        const optedIn = contactsList.filter((c: Contact) => c.isOptedIn).length
+        const active = contactsList.filter((c: Contact) => c.lastMessageAt).length
+        const now = new Date()
+        const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
+        const newThisMonth = contactsList.filter((c: Contact) => 
+          new Date(c.createdAt) > monthAgo
+        ).length
+        
+        setStats({ total, active, newThisMonth, optedIn })
+      }
+    } catch (error) {
+      console.error("Error fetching contacts:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Auto-sync contact from incoming message
+  const autoSyncContact = async (phoneNumber: string) => {
+    if (!phoneNumber) return
+    
+    // Check if already exists
+    const exists = contacts.some(c => 
+      c.whatsappNumber === phoneNumber || c.phone === phoneNumber
+    )
+    
+    if (exists) return
+    
+    try {
+      console.log(`✅ Auto-syncing contact: ${phoneNumber}`)
+      const response = await fetch(`${API_URL}/contacts`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          name: `Chat ${phoneNumber}`,
+          whatsappNumber: phoneNumber,
+          phone: phoneNumber,
+          type: ContactType.CUSTOMER,
+          tags: ['auto-synced'],
+          isOptedIn: true
+        })
+      })
+      
+      if (response.ok) {
+        fetchContacts()
+      }
+    } catch (error) {
+      console.error("Error syncing contact:", error)
+    }
+  }
+
+  // Listen for live chat messages
+  useEffect(() => {
+    fetchContacts()
+
+    const handleNewMessage = (data: any) => {
+      console.log('📨 new_message:', data)
+      
+      // Extract phone from different possible locations
+      let phone = data?.senderPhone || 
+                  data?.sender ||
+                  data?.message?.senderPhone ||
+                  data?.message?.sender ||
+                  data?.phoneNumber
+      
+      if (phone) {
+        autoSyncContact(phone)
+      }
+    }
+
+    const handleConversationUpdate = (data: any) => {
+      console.log('🔄 conversation_update:', data)
+      
+      let phone = data?.senderPhone || 
+                  data?.phoneNumber ||
+                  data?.phone ||
+                  data?.sender
+      
+      if (phone) {
+        autoSyncContact(phone)
+      }
+    }
+
+    const handleMessageReceived = (data: any) => {
+      console.log('📥 message_received:', data)
+      
+      let phone = data?.senderPhone ||
+                  data?.sender ||
+                  data?.message?.senderPhone ||
+                  data?.message?.sender ||
+                  data?.phoneNumber
+      
+      if (phone) {
+        autoSyncContact(phone)
+      }
+    }
+
+    // Subscribe to socket events
+    const socket = getSocket()
+    if (socket) {
+      socket.on('new_message', handleNewMessage)
+      socket.on('conversation_update', handleConversationUpdate)
+      socket.on('message_received', handleMessageReceived)
+
+      return () => {
+        socket.off('new_message', handleNewMessage)
+        socket.off('conversation_update', handleConversationUpdate)
+        socket.off('message_received', handleMessageReceived)
+      }
+    }
+  }, [])
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Contacts</h1>
-          <p className="text-gray-600 mt-2">
-            {user?.type === 'company' 
-              ? `Manage contacts for ${user?.name}`
-              : 'Manage your customer contacts'
-            }
-          </p>
+          <p className="text-gray-600 mt-1">Auto-synced from your WhatsApp chats</p>
         </div>
-        <button className="px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition font-medium">
-          Add Contact
-        </button>
+        <Button 
+          onClick={fetchContacts}
+          disabled={isLoading}
+          className="bg-green-600 hover:bg-green-700"
+        >
+          <MessageCircle className="h-4 w-4 mr-2" />
+          {isLoading ? "Syncing..." : "Refresh"}
+        </Button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+          <p className="text-xs font-semibold text-blue-600 uppercase">Total</p>
+          <p className="text-2xl font-bold text-blue-900 mt-1">{stats.total}</p>
+        </div>
+        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+          <p className="text-xs font-semibold text-green-600 uppercase">Active</p>
+          <p className="text-2xl font-bold text-green-900 mt-1">{stats.active}</p>
+        </div>
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+          <p className="text-xs font-semibold text-purple-600 uppercase">Opted In</p>
+          <p className="text-2xl font-bold text-purple-900 mt-1">{stats.optedIn}</p>
+        </div>
+        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
+          <p className="text-xs font-semibold text-orange-600 uppercase">New</p>
+          <p className="text-2xl font-bold text-orange-900 mt-1">{stats.newThisMonth}</p>
+        </div>
       </div>
 
       {/* Contacts Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {contacts.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <p>No contacts yet</p>
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead className="border-b border-gray-200 bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Name</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Phone</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Status</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {contacts.map((contact) => (
-                <tr key={contact._id} className="border-b border-gray-200 hover:bg-gray-50">
-                  <td className="px-6 py-3 text-gray-900">{contact.name}</td>
-                  <td className="px-6 py-3 text-gray-600">{contact.phone}</td>
-                  <td className="px-6 py-3">
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
-                      Active
-                    </span>
-                  </td>
-                  <td className="px-6 py-3">
-                    <button className="text-gray-600 hover:text-gray-900 text-sm font-medium">Edit</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <ContactsTable 
+          contacts={contacts}
+          isLoading={isLoading}
+          onEdit={() => {}}
+          onDelete={() => {}}
+          onView={() => {}}
+        />
+      </div>
+
+      {/* Info Message */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p className="text-sm text-blue-900">
+          <strong>💡 How it works:</strong> Any contact you chat with in Live Chat will automatically appear here with the tag "auto-synced"
+        </p>
       </div>
     </div>
-  );
+  )
 }

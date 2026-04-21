@@ -104,18 +104,18 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
   }
 
   return (
-    <div className="bg-white border-t border-gray-200 p-2 md:p-4 space-y-2">
+    <div className="bg-gray-50 px-3 py-2 space-y-1 sticky bottom-0 z-10 flex-shrink-0">
       {filePreview && selectedFile && (
         <div className="relative inline-block">
           {selectedFile.type.startsWith('image/') && (
-            <img src={filePreview} alt="Preview" className="h-20 w-20 rounded object-cover shadow-md" />
+            <img src={filePreview} alt="Preview" className="h-14 w-14 rounded object-cover shadow-md" />
           )}
           {selectedFile.type.startsWith('video/') && (
-            <video src={filePreview} className="h-20 w-20 rounded object-cover shadow-md" />
+            <video src={filePreview} className="h-14 w-14 rounded object-cover shadow-md" />
           )}
           {!selectedFile.type.startsWith('image/') && !selectedFile.type.startsWith('video/') && (
-            <div className="h-20 w-20 bg-gray-100 rounded flex items-center justify-center shadow-md">
-              <FileIcon size={40} className="text-gray-500" />
+            <div className="h-14 w-14 bg-gray-200 rounded flex items-center justify-center shadow-md">
+              <FileIcon size={32} className="text-gray-500" />
             </div>
           )}
           <button
@@ -130,14 +130,14 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-1.5">
         <div className="relative flex-shrink-0">
           <button 
             onClick={() => setShowMediaMenu(!showMediaMenu)}
-            className="flex-shrink-0 p-2 hover:bg-green-50 rounded-full text-green-600 transition active:bg-green-100"
+            className="flex-shrink-0 p-1.5 hover:bg-gray-300 rounded-full text-gray-600 transition active:bg-gray-400"
             disabled={loading}
           >
-            <Plus size={22} />
+            <Plus size={20} />
           </button>
 
           {showMediaMenu && (
@@ -215,17 +215,17 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
           }}
           placeholder="Type a message..."
           rows={1}
-          className="flex-1 px-4 py-3 md:py-2 bg-gray-50 border-0 rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-green-500 focus:bg-white max-h-24 text-sm md:text-base transition"
+          className="flex-1 px-3 py-2 bg-white rounded-xl resize-none focus:outline-none focus:ring-1 focus:ring-gray-300 max-h-24 text-sm transition"
           disabled={loading}
         />
 
         <div className="relative flex-shrink-0">
           <button 
             onClick={() => setShowEmoji(!showEmoji)}
-            className="p-2 hover:bg-green-50 rounded-full text-green-600 transition active:bg-green-100"
+            className="p-1.5 hover:bg-gray-300 rounded-full text-gray-600 transition active:bg-gray-400"
             disabled={loading}
           >
-            <Smile size={22} />
+            <Smile size={20} />
           </button>
 
           {showEmoji && (
@@ -249,13 +249,11 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
         <button
           onClick={handleSend}
           disabled={(!text.trim() && !selectedFile) || loading}
-          className="flex-shrink-0 p-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 rounded-full text-white transition-colors duration-200"
+          className="flex-shrink-0 p-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 rounded-full text-white transition-colors duration-200"
         >
-          {loading ? <Loader size={20} className="animate-spin" /> : <Send size={20} />}
+          {loading ? <Loader size={18} className="animate-spin" /> : <Send size={18} />}
         </button>
       </div>
-
-      <p className="text-xs text-gray-400 px-2 hidden md:block">Enter to send • Shift+Enter for new line</p>
     </div>
   )
 }

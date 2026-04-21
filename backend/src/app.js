@@ -19,6 +19,7 @@ import webhookRoutes from './routes/webhookRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import conversationRoutes from './routes/conversationRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
+import segmentRoutes from './routes/segmentRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import accountRoutes from './routes/accountRoutes.js';
 import templateRoutes from './routes/templateRoutes.js';
@@ -343,6 +344,7 @@ app.use('/api/chatbots', requireJWT, requireSubscription, chatbotRoutes);
 app.use('/api/messages', requireJWT, requireSubscription, messageRoutes);
 app.use('/api/conversations', requireJWT, requireSubscription, conversationRoutes);
 app.use('/api/contacts', requireJWT, requireSubscription, contactRoutes);
+app.use('/api/segments', requireJWT, requireSubscription, segmentRoutes);
 app.use('/api/broadcasts', requireJWT, requireSubscription, broadcastRoutes);
 app.use('/api/campaigns', requireJWT, requireSubscription, campaignRoutes);
 app.use('/api/notifications', requireJWT, notificationRoutes); // Notifications accessible without subscription

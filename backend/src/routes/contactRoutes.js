@@ -12,14 +12,21 @@ const router = express.Router();
  * Handles contact management
  */
 
+// Specific GET routes (must come before /:id routes)
+router.get('/fetch-from-chats', contactController.fetchContactsFromChats);
+router.get('/by-phone/:whatsappNumber', contactController.getContactByPhone);
+
 // CRUD operations
 router.get('/', contactController.getContacts);
-router.get('/by-phone/:whatsappNumber', contactController.getContactByPhone);
 router.post('/', contactLimiter, validators.validateCreateContact, contactController.createContact);
 router.put('/:id', validators.validateUpdateContact, contactController.updateContact);
 router.delete('/:id', validators.validateObjectId, contactController.deleteContact);
 
 // Bulk operations
 router.post('/import', contactLimiter, contactController.importContacts);
+router.post('/bulk-update', validators.validateObjectId, contactController.bulkUpdateContacts);
+
+// Timeline (activity log) - must come before /:id routes
+router.get('/:id/timeline', validators.validateObjectId, contactController.getContactTimeline);
 
 export default router;

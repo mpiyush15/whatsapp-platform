@@ -162,14 +162,16 @@ const validateCustom = (customRules) => {
 export { createValidator, validateCustom, validationRules };
 
 export default {
-  validateSendMessage: [],
-  validateSendTemplateMessage: [],
-  validateCreateContact: [],
-  validateUpdateContact: [],
-  validateCreateBroadcast: [],
-  validateCreateTemplate: [],
-  validateGetConversations: [],
-  validateObjectId: [],
+  validateSendMessage: (req, res, next) => next(),
+  validateSendTemplateMessage: (req, res, next) => next(),
+  validateCreateContact: (req, res, next) => next(),
+  validateUpdateContact: (req, res, next) => next(),
+  validateCreateBroadcast: (req, res, next) => next(),
+  validateCreateTemplate: (req, res, next) => next(),
+  validateGetConversations: (req, res, next) => next(),
+  validateObjectId: (req, res, next) => next(),
+  validateCreateSegment: (req, res, next) => next(),
+  validateUpdateSegment: (req, res, next) => next(),
   createValidator,
   validateCustom,
   validationRules

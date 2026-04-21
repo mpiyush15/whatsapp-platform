@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, MapPin, Building2, Mail, Phone } from 'lucide-react';
+import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, MapPin, Building2, Mail, Phone, Check } from 'lucide-react';
 import { ContactType } from '@/lib/enums';
 
 interface Contact {
@@ -26,6 +26,9 @@ interface ContactsTableProps {
   onEdit?: (contact: Contact) => void;
   onDelete?: (contact: Contact) => void;
   isLoading?: boolean;
+  selectedIds?: Set<string>;
+  onSelectContact?: (contactId: string) => void;
+  onSelectAll?: () => void;
 }
 
 type SortKey = 'name' | 'city' | 'businessName' | 'messageCount' | 'type' | 'createdAt';
@@ -37,6 +40,9 @@ export function ContactsTable({
   onEdit,
   onDelete,
   isLoading = false,
+  selectedIds = new Set(),
+  onSelectContact,
+  onSelectAll,
 }: ContactsTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('createdAt');
@@ -45,6 +51,8 @@ export function ContactsTable({
 
   // Filter and sort contacts
   const filteredAndSorted = useMemo(() => {
+    if (!contacts || !Array.isArray(contacts)) return []
+    
     let filtered = contacts.filter((contact) => {
       const matchesSearch = 
         contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -124,6 +132,17 @@ export function ContactsTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+              {/* Checkbox column */}
+              {onSelectContact && (
+                <th className="px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={contacts.length > 0 && selectedIds.size === contacts.length}
+                    onChange={onSelectAll}
+                    className="w-4 h-4 border border-gray-300 rounded cursor-pointer"
+                  />
+                </th>
+              )}
               <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
                 <button
                   onClick={() => handleSort('name')}
@@ -175,13 +194,13 @@ export function ContactsTable({
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={onSelectContact ? 8 : 7} className="px-6 py-8 text-center text-gray-500">
                   Loading contacts...
                 </td>
               </tr>
             ) : filteredAndSorted.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={onSelectContact ? 8 : 7} className="px-6 py-8 text-center text-gray-500">
                   No contacts found
                 </td>
               </tr>
@@ -191,6 +210,17 @@ export function ContactsTable({
                   key={contact._id}
                   className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
+                  {/* Checkbox column */}
+                  {onSelectContact && (
+                    <td className="px-4 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(contact._id)}
+                        onChange={() => onSelectContact(contact._id)}
+                        className="w-4 h-4 border border-gray-300 rounded cursor-pointer"
+                      />
+                    </td>
+                  )}
                   <td className="px-6 py-4">
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">{contact.name}</p>

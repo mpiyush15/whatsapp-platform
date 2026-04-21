@@ -51,42 +51,42 @@ export default function ChatArea({
   const [showProfile, setShowProfile] = useState(false)
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-0px)] bg-gradient-to-b from-blue-50 to-white overflow-hidden">
-      {/* WhatsApp-style Header */}
-      <div className="bg-gradient-to-r from-green-600 to-green-700 text-white p-4 flex items-center justify-between shadow-md sticky top-0 z-10 flex-shrink-0">
-        <div className="flex items-center gap-3 flex-1">
+    <div className="flex-1 flex flex-col h-full bg-gray-50 overflow-hidden">
+      {/* WhatsApp-style Header - Compact */}
+      <div className="bg-white border-b border-gray-200 text-gray-900 px-3 py-2 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           {onBack && (
-            <button onClick={onBack} className="md:hidden p-1">
-              <ArrowLeft size={24} />
+            <button onClick={onBack} className="md:hidden p-0.5 flex-shrink-0 hover:bg-gray-100 rounded">
+              <ArrowLeft size={18} className="text-gray-700" />
             </button>
           )}
-          <div className="relative">
-            <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center flex-shrink-0">
-              <MessageCircle size={24} className="text-white" />
+          <div className="relative flex-shrink-0">
+            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+              <MessageCircle size={16} className="text-green-600" />
             </div>
             {conversation.isOnline && (
-              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-300 border-2 border-white rounded-full"></div>
+              <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border-2 border-white rounded-full"></div>
             )}
           </div>
-          <div className="min-w-0">
-            <h2 className="font-bold text-white truncate">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold text-gray-900 truncate text-sm">
               {conversation.userName || 'Customer'}
             </h2>
-            <p className="text-xs text-green-100">
-              {conversation.isOnline ? 'Online now' : conversation.userPhone}
+            <p className="text-xs text-gray-500 truncate">
+              {conversation.isOnline ? '🟢 Online' : conversation.userPhone}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          <button className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition">
-            <Phone size={20} className="text-white" />
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button className="p-1 hover:bg-gray-100 rounded-full transition">
+            <Phone size={16} className="text-gray-600" />
           </button>
           <button 
             onClick={() => setShowProfile(!showProfile)}
-            className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition"
+            className="p-1 hover:bg-gray-100 rounded-full transition"
           >
-            <MoreVertical size={20} className="text-white" />
+            <MoreVertical size={16} className="text-gray-600" />
           </button>
         </div>
       </div>
@@ -95,7 +95,7 @@ export default function ChatArea({
       <div className="flex-1 flex overflow-hidden">
         {/* Messages Area - Full width on mobile */}
         <div className="flex-1 flex flex-col min-w-0">
-          <MessageList messages={messages} socket={socket} />
+          <MessageList messages={messages} socket={socket} conversationId={conversation.conversationId} />
           <MessageInput onSendMessage={onSendMessage} onTyping={(isTyping) => {
             socket?.emit('typing', { conversationId: conversation._id, isTyping })
           }} />
