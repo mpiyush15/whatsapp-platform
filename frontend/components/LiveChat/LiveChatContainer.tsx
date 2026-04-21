@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { io, Socket } from "socket.io-client"
+import { MessageCircle } from "lucide-react"
 import ConversationList from "./ConversationList"
 import ChatArea from "./ChatArea"
 import { authService } from "@/lib/auth"
@@ -69,6 +70,53 @@ export default function LiveChatContainer() {
       console.log('✍️ Customer typing:', data)
     })
 
+    // Listen for agent typing indicator
+    newSocket.on('agent_typing', (data) => {
+      console.log('✍️ Agent typing:', data)
+      // Update UI to show agent typing
+    })
+
+    // Listen for message reactions
+    newSocket.on('message_reaction', (data) => {
+      console.log('😊 Message reaction:', data)
+      if (selectedConversation && data.conversationId === selectedConversation.conversationId) {
+        setMessages(prev => prev.map(msg => 
+          msg._id === data.messageId
+            ? {
+                ...msg,
+                reactions: [
+                  ...(msg.reactions || []).filter(r => r.emoji !== data.emoji),
+                  { emoji: data.emoji, count: (msg.reactions?.find(r => r.emoji === data.emoji)?.count || 0) + 1 }
+                ]
+              }
+            : msg
+        ))
+      }
+    })
+
+    // Listen for read receipts
+    newSocket.on('message_read', (data) => {
+      console.log('✓ Message read:', data)
+      if (selectedConversation && data.conversationId === selectedConversation.conversationId) {
+        setMessages(prev => prev.map(msg =>
+          msg._id === data.messageId
+            ? { ...msg, isRead: true, readAt: data.readAt }
+            : msg
+        ))
+      }
+    })
+
+    // Listen for agent status changes (online/offline)
+    newSocket.on('agent_status', (data) => {
+      console.log('🟢 Agent status:', data)
+      // Update conversation list with online status
+      if (data.status === 'online') {
+        setConversations(prev => prev.map(conv =>
+          conv._id === data.conversationId ? { ...conv, isOnline: true } : conv
+        ))
+      }
+    })
+
     // Listen for conversation updated
     newSocket.on('conversation_updated', (data) => {
       setConversations(prev => prev.map(conv => 
@@ -85,6 +133,25 @@ export default function LiveChatContainer() {
 
     return () => {
       newSocket.disconnect()
+    }
+  }, [])
+
+  // ✅ Join/Leave conversation rooms when selection changes
+  useEffect(() => {
+    if (!socketRef.current || !selectedConversation) return
+
+    socketRef.current.emit('join_conversation', {
+      conversationId: selectedConversation._id
+    })
+    console.log(`Joined room: ${selectedConversation._id}`)
+
+    return () => {
+      if (socketRef.current && selectedConversation) {
+        socketRef.current.emit('leave_conversation', {
+          conversationId: selectedConversation._id
+        })
+        console.log(`Left room: ${selectedConversation._id}`)
+      }
     }
   }, [selectedConversation])
 
@@ -133,10 +200,19 @@ export default function LiveChatContainer() {
     setSelectedConversation(conversation)
     await fetchMessages(conversation.conversationId)
     
-    // Emit event to mark as read
-    if (socket) {
-      socket.emit('mark_read', { conversationId: conversation.conversationId })
+    // Mark all messages as read and clear unread count
+    if (socket && conversation.unreadCount > 0) {
+      socket.emit('mark_conversation_read', { 
+        conversationId: conversation.conversationId 
+      })
     }
+    
+    // Update conversation unread count to 0
+    setConversations(prev => prev.map(conv => 
+      conv.conversationId === conversation.conversationId 
+        ? { ...conv, unreadCount: 0 }
+        : conv
+    ))
   }
 
   const handleSendMessage = async (text: string, mediaUrl?: string, mediaType?: string) => {
@@ -180,9 +256,9 @@ export default function LiveChatContainer() {
   }
 
   return (
-    <div className="flex h-screen bg-white">
-      {/* Sidebar - Conversations */}
-      <div className="w-80 border-r border-gray-200 flex flex-col">
+    <div className="flex h-screen bg-white overflow-hidden">
+      {/* Sidebar - Conversations (Hidden on mobile, visible on desktop) */}
+      <div className="hidden md:flex md:w-80 border-r border-gray-200 flex-col flex-shrink-0">
         <ConversationList 
           conversations={conversations}
           selectedConversation={selectedConversation}
@@ -191,18 +267,32 @@ export default function LiveChatContainer() {
         />
       </div>
 
-      {/* Main Chat Area */}
+      {/* Mobile Conversation List - Visible when no conversation selected */}
+      {!selectedConversation && (
+        <div className="md:hidden w-full">
+          <ConversationList 
+            conversations={conversations}
+            selectedConversation={selectedConversation}
+            onSelectConversation={handleSelectConversation}
+            loading={loading}
+          />
+        </div>
+      )}
+
+      {/* Main Chat Area (Full width on mobile) */}
       {selectedConversation ? (
         <ChatArea 
           conversation={selectedConversation}
           messages={messages}
           onSendMessage={handleSendMessage}
           socket={socket}
+          onBack={() => setSelectedConversation(null)}
         />
       ) : (
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="hidden md:flex md:flex-1 items-center justify-center bg-gradient-to-br from-green-50 to-blue-50">
           <div className="text-center">
-            <p className="text-gray-600 text-lg">Select a conversation to start chatting</p>
+            <MessageCircle size={64} className="mx-auto mb-4 text-gray-300" />
+            <p className="text-gray-600 text-lg font-medium">Select a conversation to start</p>
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { Server } from 'socket.io';
 import { JWT_SECRET } from '../config/jwt.js';
 import Conversation from '../models/Conversation.js';
+import Message from '../models/Message.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -207,6 +208,129 @@ export const initSocketIO = (server) => {
           }
         }
       }
+    });
+
+    /**
+     * ✅ Typing Indicator
+     */
+    socket.on('typing', (data) => {
+      const { conversationId, isTyping } = data;
+      if (conversationId) {
+        socket.to(`conversation:${conversationId}`).emit('agent_typing', {
+          conversationId,
+          isTyping,
+          agentId: socket.accountId
+        });
+        logger.info(`✍️ Agent ${socket.email} typing in ${conversationId}: ${isTyping}`);
+      }
+    });
+
+    /**
+     * ✅ Mark Message as Read
+     */
+    socket.on('mark_read', (data) => {
+      const { conversationId, messageId } = data;
+      if (conversationId) {
+        io.to(`conversation:${conversationId}`).emit('message_read', {
+          messageId,
+          conversationId,
+          readBy: socket.email,
+          readAt: new Date()
+        });
+        logger.info(`✓ Message marked read: ${messageId}`);
+      }
+    });
+
+    /**
+     * ✅ Add Message Reaction
+     */
+    socket.on('add_reaction', (data) => {
+      const { conversationId, messageId, emoji } = data;
+      if (conversationId && messageId) {
+        io.to(`conversation:${conversationId}`).emit('message_reaction', {
+          messageId,
+          emoji,
+          userId: socket.accountId,
+          userName: socket.email
+        });
+        logger.info(`😊 Reaction added to ${messageId}: ${emoji}`);
+      }
+    });
+
+    /**
+     * ✅ Send Online Status
+     */
+    socket.on('user_online', (data) => {
+      const { accountId } = data;
+      if (accountId && String(accountId) === String(socket.accountId)) {
+        io.to(`account:${accountId}`).emit('agent_status', {
+          userId: socket.accountId,
+          status: 'online',
+          email: socket.email
+        });
+        logger.info(`🟢 ${socket.email} went online`);
+      }
+    });
+
+    /**
+     * ✅ Mark Conversation as Read - Update DB
+     */
+    socket.on('mark_conversation_read', async (data) => {
+      try {
+        const { conversationId } = data;
+        const accountId = socket.accountId;
+
+        if (!conversationId || !accountId) {
+          logger.error('❌ mark_conversation_read: Missing conversationId or accountId');
+          return;
+        }
+
+        // Update conversation: set unreadCount to 0
+        await Conversation.findOneAndUpdate(
+          { _id: conversationId, accountId },
+          { unreadCount: 0 },
+          { new: true }
+        );
+
+        // Mark all unread messages in conversation as read
+        await Message.updateMany(
+          { 
+            conversationId: conversationId,
+            isRead: { $ne: true }
+          },
+          { 
+            isRead: true,
+            readAt: new Date()
+          }
+        );
+
+        logger.info(`✓ Conversation ${conversationId} marked as read in DB`);
+
+        // Broadcast updated conversation to all agents in account
+        io.to(`account:${accountId}`).emit('conversation_updated', {
+          conversationId,
+          unreadCount: 0
+        });
+
+      } catch (err) {
+        logger.error('❌ Error marking conversation as read:', err.message);
+      }
+    });
+
+    /**
+     * ✅ Disconnect handler - broadcast offline status
+     */
+    socket.on('disconnect', () => {
+      const accountId = socket.accountId;
+      if (accountId) {
+        io.to(`account:${accountId}`).emit('agent_status', {
+          userId: socket.accountId,
+          status: 'offline',
+          email: socket.email
+        });
+        logger.info(`🔴 ${socket.email} went offline`);
+      }
+      userConversations.delete(socket.id);
     });
 
     /**

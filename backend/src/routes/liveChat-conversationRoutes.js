@@ -306,6 +306,49 @@ router.get('/:conversationId', async (req, res) => {
 });
 
 /**
+ * GET /api/conversations/:conversationId/messages
+ * Get messages for a specific conversation
+ */
+router.get('/:conversationId/messages', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+    const accountId = req.account.accountId;
+
+    // Import message service
+    const messageService = (await import('../services/messageService.js')).default;
+
+    // Get messages for this conversation
+    const result = await messageService.getMessages(
+      conversationId,
+      accountId,
+      Math.min(parseInt(limit) || 50, 100),
+      parseInt(offset) || 0
+    );
+
+    logger.info(`📨 Fetched ${result.messages.length} messages for conversation ${conversationId}`);
+
+    return res.status(200).json({
+      success: true,
+      data: result.messages,
+      pagination: {
+        total: result.total,
+        limit: parseInt(limit) || 50,
+        offset: parseInt(offset) || 0,
+        hasMore: result.hasMore
+      }
+    });
+  } catch (error) {
+    logger.error('❌ Error getting messages:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get messages',
+      error: error.message
+    });
+  }
+});
+
+/**
  * PATCH /api/conversations/:conversationId
  * Update conversation (priority, notes, status, tags, userName)
  */
@@ -1053,6 +1096,133 @@ router.post('/sync-all-contacts', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to bulk sync contacts',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/conversations/:conversationId/send-message
+ * Send text message to conversation
+ */
+router.post('/:conversationId/send-message', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { text, mediaUrl, mediaType } = req.body;
+    const accountId = req.account.accountId;
+    const agentId = req.user._id;
+    const agentName = req.user.name || 'Agent';
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message text cannot be empty',
+        error: 'EMPTY_MESSAGE'
+      });
+    }
+
+    // Get conversation
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      accountId
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found',
+        error: 'NOT_FOUND'
+      });
+    }
+
+    // Import s3Service for media upload
+    const { uploadToS3 } = await import('../services/s3Service.js');
+    
+    // Handle media upload to S3 if mediaUrl is provided
+    let finalMediaUrl = mediaUrl;
+    if (mediaUrl && mediaUrl.startsWith('data:')) {
+      try {
+        // Convert dataURL to buffer
+        const matches = mediaUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const mimeType = matches[1];
+          const base64Data = matches[2];
+          const buffer = Buffer.from(base64Data, 'base64');
+          
+          // Upload to S3
+          const s3Result = await uploadToS3(
+            buffer,
+            accountId,
+            mediaType || 'media',
+            mimeType,
+            `message-${Date.now()}`
+          );
+          
+          finalMediaUrl = s3Result.s3Url;
+          logger.info(`✅ Media uploaded to S3: ${finalMediaUrl}`);
+        }
+      } catch (err) {
+        logger.error('❌ Error uploading media to S3:', err.message);
+        // Continue with dataURL if S3 fails
+      }
+    }
+
+    // Import Message model
+    const Message = mongoose.model('Message');
+
+    // Create message
+    const message = await Message.create({
+      accountId,
+      conversationId: conversation.conversationId,
+      phoneNumberId: conversation.phoneNumberId,
+      recipientPhone: conversation.userPhone,
+      recipientName: conversation.userName,
+      senderRole: 'agent',
+      senderName: agentName,
+      messageType: 'text',
+      direction: 'outbound',
+      content: { text, mediaUrl: finalMediaUrl, mediaType },
+      status: 'sent',
+      sentAt: new Date(),
+      sentByAgentId: agentId
+    });
+
+    // Update conversation
+    await Conversation.findOneAndUpdate(
+      { _id: conversationId },
+      {
+        lastMessageAt: new Date(),
+        lastMessagePreview: text.substring(0, 100),
+        lastMessageType: 'text',
+        messageCount: conversation.messageCount + 1
+      }
+    );
+
+    logger.info(`✅ Message sent: ${message._id}`);
+
+    // Emit real-time event to conversation room
+    emitToConversation(accountId, conversation.conversationId, 'new_message', {
+      _id: message._id,
+      conversationId: conversation.conversationId,
+      senderRole: 'agent',
+      senderName: agentName,
+      text,
+      mediaUrl: finalMediaUrl,
+      mediaType,
+      status: 'sent',
+      createdAt: message.sentAt
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Message sent successfully',
+      data: message
+    });
+  } catch (error) {
+    logger.error('❌ Error sending message:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send message',
       error: error.message
     });
   }

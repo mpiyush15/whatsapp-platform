@@ -167,8 +167,24 @@ export const getMessages = async (conversationId, accountId, limit = 50, offset 
 
   const total = await Message.countDocuments({ conversationId, accountId });
 
+  // Transform messages to frontend format
+  const transformedMessages = messages.map(msg => ({
+    _id: msg._id,
+    conversationId: msg.conversationId,
+    senderRole: msg.direction === 'outbound' ? 'agent' : 'customer',
+    senderName: msg.direction === 'outbound' ? 'Agent' : (msg.recipientName || 'Customer'),
+    text: msg.content?.text || msg.text || '',
+    mediaUrl: msg.content?.mediaUrl || msg.mediaUrl,
+    mediaType: msg.content?.mediaType || msg.messageType,
+    status: msg.status || 'sent',
+    createdAt: msg.createdAt || msg.sentAt,
+    isRead: msg.isRead || !!msg.readAt,
+    reactions: msg.reactions || [],
+    timestamp: msg.createdAt || msg.sentAt
+  })).reverse();
+
   return {
-    messages: messages.reverse(),
+    messages: transformedMessages,
     total,
     hasMore: offset + limit < total
   };

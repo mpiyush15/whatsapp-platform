@@ -3,6 +3,7 @@ import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import { getRecentOAuthSession } from '../utils/oauthSessionStore.js';
 import mongoose from 'mongoose';
+import { downloadMediaFromWhatsApp, uploadToS3 } from '../services/s3Service.js';
 
 export const registerWebhook = async (req, res) => {
   try {
@@ -190,6 +191,38 @@ export const handleWebhook = async (req, res) => {
               let content = '';
               let mediaUrl = null;
               let mediaType = null;
+              let s3Url = null;
+              
+              // Helper function to download and save media to S3
+              const handleMediaMessage = async (mediaId, mimeType, filename, type) => {
+                try {
+                  // Find account first to get accountId
+                  const accountRecord = await mongoose.model('Account').findOne({ 'whatsappConfig.wabaId': wabaId });
+                  if (!accountRecord) throw new Error('Account not found');
+                  
+                  // Get WhatsApp access token
+                  const whatsappConfig = accountRecord.whatsappConfig;
+                  if (!whatsappConfig?.accessToken) throw new Error('No access token');
+                  
+                  // Download media from WhatsApp
+                  const mediaData = await downloadMediaFromWhatsApp(mediaId, whatsappConfig.accessToken);
+                  
+                  // Upload to S3
+                  const s3Result = await uploadToS3(
+                    mediaData.buffer,
+                    accountRecord.accountId,
+                    type,
+                    mediaData.mimeType,
+                    mediaData.filename
+                  );
+                  
+                  logger.info(`✅ Media saved to S3: ${s3Result.s3Url}`);
+                  return s3Result.s3Url;
+                } catch (err) {
+                  logger.error(`❌ Error handling media: ${err.message}`);
+                  return null;
+                }
+              };
               
               if (type === 'text' && text) {
                 content = text.body;
@@ -197,18 +230,34 @@ export const handleWebhook = async (req, res) => {
                 content = `[Image]`;
                 mediaUrl = image.link;
                 mediaType = 'image';
+                // Download and save image to S3
+                if (image.id) {
+                  s3Url = await handleMediaMessage(image.id, image.mime_type, 'image', 'image');
+                }
               } else if (type === 'document' && document) {
                 content = `[Document: ${document.filename}]`;
                 mediaUrl = document.link;
                 mediaType = 'document';
+                // Download and save document to S3
+                if (document.id) {
+                  s3Url = await handleMediaMessage(document.id, document.mime_type, document.filename, 'document');
+                }
               } else if (type === 'audio' && audio) {
                 content = `[Audio]`;
                 mediaUrl = audio.link;
                 mediaType = 'audio';
+                // Download and save audio to S3
+                if (audio.id) {
+                  s3Url = await handleMediaMessage(audio.id, audio.mime_type, 'audio.mp3', 'audio');
+                }
               } else if (type === 'video' && video) {
                 content = `[Video]`;
                 mediaUrl = video.link;
                 mediaType = 'video';
+                // Download and save video to S3
+                if (video.id) {
+                  s3Url = await handleMediaMessage(video.id, video.mime_type, 'video.mp4', 'video');
+                }
               } else if (type === 'button' && button) {
                 content = button.text;
               } else if (type === 'interactive' && interactive) {
@@ -245,6 +294,9 @@ export const handleWebhook = async (req, res) => {
                 
                 logger.info(`💾 Saving message: ConversationID=${conversationId}, Account=${accountId}`);
                 
+                // Use S3 URL if available, otherwise use WhatsApp link
+                const finalMediaUrl = s3Url || mediaUrl;
+                
                 // Save message to Message collection
                 const savedMessage = await Message.create({
                   accountId,
@@ -255,7 +307,7 @@ export const handleWebhook = async (req, res) => {
                   recipientName: customerName,
                   messageType: type,
                   direction: 'inbound',
-                  content: { text: content, mediaUrl, mediaType },
+                  content: { text: content, mediaUrl: finalMediaUrl, mediaType },
                   status: 'delivered',
                   sentAt: new Date(timestamp * 1000)
                 });
@@ -283,20 +335,32 @@ export const handleWebhook = async (req, res) => {
                 
                 logger.info(`✅ Conversation updated: ${updatedConversation._id}`);
                 
-                // Emit real-time event for agents
+                // Emit real-time event for agents to specific conversation room
                 if (req.app.locals.io) {
-                  req.app.locals.io.to(`account:${accountId}`).emit('new_message', {
-                    conversationId,
-                    phoneNumberId,
-                    message: savedMessage,
-                    conversation: updatedConversation
+                  const conversationRoomName = `conversation:${conversationId}`;
+                  
+                  // Emit to specific conversation room (where agents are viewing this conversation)
+                  req.app.locals.io.to(conversationRoomName).emit('new_message', {
+                    _id: savedMessage._id,
+                    conversationId: conversationId,
+                    senderRole: 'customer',
+                    senderName: customerName,
+                    text: content,
+                    mediaUrl: mediaUrl,
+                    mediaType: mediaType,
+                    status: 'delivered',
+                    createdAt: new Date(timestamp * 1000)
                   });
                   
+                  // Also emit account-wide to update conversation list
                   req.app.locals.io.to(`account:${accountId}`).emit('conversation_updated', {
                     conversationId,
                     phoneNumberId,
-                    conversation: updatedConversation
+                    lastMessagePreview: content.substring(0, 100),
+                    lastMessageAt: new Date(timestamp * 1000)
                   });
+                  
+                  logger.info(`📡 Events emitted to room: ${conversationRoomName}`);
                 }
                 
                 logger.info(`📡 Real-time events emitted for account ${accountId}`);

@@ -118,6 +118,13 @@ const messageSchema = new mongoose.Schema({
     },
     readAt: Date
   }],
+
+  // Simple read status flag
+  isRead: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
   
   // Threading support - reply to another message
   replyTo: {
