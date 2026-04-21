@@ -4,6 +4,7 @@ import { handleControllerError } from '../utils/errorHandler.js';
 import { getRecentOAuthSession } from '../utils/oauthSessionStore.js';
 import mongoose from 'mongoose';
 import axios from 'axios';
+import { uploadToS3 } from '../services/s3Service.js';
 import Account from '../models/Account.js';
 import PhoneNumber from '../models/PhoneNumber.js';
 import Message from '../models/Message.js';
@@ -249,45 +250,77 @@ export const handleWebhook = async (req, res) => {
                 
                 logger.info(`📝 Content: ${content.substring(0, 50)}`);
                 
-                // 🔑 CRITICAL FIX: Download media from WhatsApp's temporary URL and convert to base64
-                if (mediaUrl && mediaId && accountRecord.whatsappConfig?.accessToken) {
+                // � CRITICAL FIX: Follow exact documented flow
+                // Step 1: Extract mediaId
+                // Step 2: Get media URL from Meta API (with token)
+                // Step 3: Download file with auth
+                // Step 4: Upload to S3
+                // Step 5: Save S3 URL in DB (NEVER temp URL)
+                
+                if (mediaId && accountRecord.whatsappAccessToken) {
                   try {
-                    logger.info(`🔄 Downloading media from WhatsApp (${mediaType})...`);
+                    logger.info(`🔄 MEDIA DOWNLOAD FLOW START`);
+                    logger.info(`📍 mediaId: ${mediaId}`);
+                    logger.info(`🔑 accessToken exists: YES`);
                     
-                    // Download from WhatsApp temporary URL
-                    const mediaResponse = await axios.get(mediaUrl, {
+                    // Step 1+2: Get media URL from Meta API
+                    logger.info(`📡 Calling Meta API to get media URL...`);
+                    const metaResponse = await axios.get(
+                      `https://graph.facebook.com/v19.0/${mediaId}`,
+                      {
+                        headers: {
+                          Authorization: `Bearer ${accountRecord.whatsappAccessToken}`,
+                        },
+                        timeout: 30000
+                      }
+                    );
+                    
+                    const metaMediaUrl = metaResponse.data.url;
+                    logger.info(`✅ Got media URL from Meta API`);
+                    
+                    // Step 3: Download file with auth
+                    logger.info(`📥 Downloading file with auth...`);
+                    const mediaResponse = await axios.get(metaMediaUrl, {
                       headers: {
-                        Authorization: `Bearer ${accountRecord.whatsappConfig.accessToken}`,
+                        Authorization: `Bearer ${accountRecord.whatsappAccessToken}`,
                       },
                       responseType: 'arraybuffer',
                       timeout: 30000
                     });
                     
                     const buffer = Buffer.from(mediaResponse.data);
-                    logger.info(`✅ Downloaded ${(buffer.length / 1024).toFixed(2)}KB from WhatsApp`);
+                    logger.info(`✅ Downloaded ${(buffer.length / 1024).toFixed(2)}KB`);
                     
                     if (buffer.length === 0) {
-                      logger.error(`❌ Downloaded buffer is empty!`);
-                      throw new Error('Empty buffer from WhatsApp');
+                      throw new Error('Downloaded buffer is empty');
                     }
                     
-                    // Convert to base64 dataURL (like sending does)
-                    const base64Data = buffer.toString('base64');
-                    const dataUrl = `data:${mimeType};base64,${base64Data}`;
+                    // Step 4: Upload to S3
+                    logger.info(`☁️  Uploading to S3...`);
+                    const { s3Url, s3Key } = await uploadToS3(
+                      buffer,
+                      accountRecord.accountId,
+                      mediaType,
+                      mimeType,
+                      filename
+                    );
                     
-                    // Replace temporary URL with permanent dataURL
-                    mediaUrl = dataUrl;
-                    logger.info(`✅ Converted to permanent base64 dataURL`);
+                    logger.info(`✅ Uploaded to S3: ${s3Key}`);
+                    
+                    // Step 5: Save S3 URL (NEVER temp URL)
+                    mediaUrl = s3Url;
+                    logger.info(`🎯 Using S3 URL (permanent)`);
+                    logger.info(`🔄 MEDIA DOWNLOAD FLOW COMPLETE`);
+                    
                   } catch (mediaError) {
-                    logger.error(`⚠️  Failed to download media from WhatsApp:`, mediaError.message);
+                    logger.error(`❌ Media download failed:`, mediaError.message);
                     if (mediaError.response?.status) {
-                      logger.error(`📋 HTTP ${mediaError.response.status}: ${mediaError.response.statusText}`);
+                      logger.error(`  HTTP ${mediaError.response.status}`);
                     }
-                    logger.info(`⏱️  Falling back to temporary WhatsApp URL (will expire in ~5 mins)`);
-                    // Keep the temporary URL as fallback
+                    logger.warn(`⚠️  Falling back to temp URL (will fail in ~5 mins)`);
                   }
                 } else {
-                  logger.warn(`⚠️  Cannot download media - Missing: mediaUrl=${!!mediaUrl}, mediaId=${!!mediaId}, accessToken=${!!accountRecord.whatsappConfig?.accessToken}`);
+                  logger.warn(`⚠️  Cannot download - mediaId=${!!mediaId}, token=${!!accountRecord.whatsappAccessToken}`);
                 }
                 
                 const accountId = accountRecord.accountId;
