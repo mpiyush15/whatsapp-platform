@@ -308,12 +308,17 @@ export const initSocketIO = (server) => {
           return;
         }
 
-        // Update conversation: set unreadCount to 0
-        await Conversation.findOneAndUpdate(
-          { _id: conversationId, accountId },
+        // Query by conversationId (string) not _id (ObjectId)
+        const conversation = await Conversation.findOneAndUpdate(
+          { conversationId, accountId },
           { unreadCount: 0 },
           { new: true }
         );
+
+        if (!conversation) {
+          logger.warn(`⚠️ Conversation not found: ${conversationId}`);
+          return;
+        }
 
         // Mark all unread messages in conversation as read
         await Message.updateMany(

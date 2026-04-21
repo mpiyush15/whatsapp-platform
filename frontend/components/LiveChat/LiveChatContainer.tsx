@@ -57,6 +57,7 @@ export default function LiveChatContainer() {
     // Listen for new messages
     newSocket.on('new_message', (data: Message) => {
       console.log('📨 New message:', data)
+      console.log('🎬 Message details - Type:', data.mediaType, 'URL:', data.mediaUrl?.substring(0, 80))
       if (selectedConversation && data.conversationId === selectedConversation.conversationId) {
         setMessages(prev => [...prev, data])
       }
@@ -144,16 +145,16 @@ export default function LiveChatContainer() {
     if (!socketRef.current || !selectedConversation) return
 
     socketRef.current.emit('join_conversation', {
-      conversationId: selectedConversation._id
+      conversationId: selectedConversation.conversationId
     })
-    console.log(`Joined room: ${selectedConversation._id}`)
+    console.log(`Joined room: ${selectedConversation.conversationId}`)
 
     return () => {
       if (socketRef.current && selectedConversation) {
         socketRef.current.emit('leave_conversation', {
-          conversationId: selectedConversation._id
+          conversationId: selectedConversation.conversationId
         })
-        console.log(`Left room: ${selectedConversation._id}`)
+        console.log(`Left room: ${selectedConversation.conversationId}`)
       }
     }
   }, [selectedConversation])
@@ -186,7 +187,7 @@ export default function LiveChatContainer() {
   const fetchMessages = async (conversationId: string) => {
     try {
       const token = authService.getToken()
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/integrations/whatsapp/conversations/${conversationId}/messages`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${conversationId}/messages`, {
         headers: { Authorization: `Bearer ${token}` }
       })
 
@@ -223,7 +224,7 @@ export default function LiveChatContainer() {
 
     try {
       const token = authService.getToken()
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/integrations/whatsapp/conversations/${selectedConversation.conversationId}/send`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${selectedConversation.conversationId}/send-message`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

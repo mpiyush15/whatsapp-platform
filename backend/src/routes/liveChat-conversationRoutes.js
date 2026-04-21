@@ -1108,22 +1108,26 @@ router.post('/sync-all-contacts', async (req, res) => {
 router.post('/:conversationId/send-message', async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const { text, mediaUrl, mediaType } = req.body;
+    const { text, mediaUrl, mediaType, replyToId, emoji } = req.body;
     const accountId = req.account.accountId;
     const agentId = req.user._id;
     const agentName = req.user.name || 'Agent';
 
+    // If emoji reaction only (no text)
     if (!text || !text.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Message text cannot be empty',
-        error: 'EMPTY_MESSAGE'
-      });
+      // If it's just a reaction/emoji, allow it
+      if (!emoji) {
+        return res.status(400).json({
+          success: false,
+          message: 'Message text or emoji cannot be empty',
+          error: 'EMPTY_MESSAGE'
+        });
+      }
     }
 
-    // Get conversation
+    // Get conversation by conversationId (string) not _id
     const conversation = await Conversation.findOne({
-      _id: conversationId,
+      conversationId: conversationId,
       accountId
     });
 
@@ -1170,6 +1174,20 @@ router.post('/:conversationId/send-message', async (req, res) => {
     // Import Message model
     const Message = mongoose.model('Message');
 
+    // If replying to a message, verify it exists
+    let replyToMessageId = null;
+    if (replyToId) {
+      const replyToMessage = await Message.findOne({ _id: replyToId, conversationId });
+      if (!replyToMessage) {
+        return res.status(404).json({
+          success: false,
+          message: 'Message to reply to not found',
+          error: 'REPLY_TO_NOT_FOUND'
+        });
+      }
+      replyToMessageId = replyToId;
+    }
+
     // Create message
     const message = await Message.create({
       accountId,
@@ -1179,26 +1197,28 @@ router.post('/:conversationId/send-message', async (req, res) => {
       recipientName: conversation.userName,
       senderRole: 'agent',
       senderName: agentName,
-      messageType: 'text',
+      messageType: mediaType ? 'media' : 'text',
       direction: 'outbound',
-      content: { text, mediaUrl: finalMediaUrl, mediaType },
+      content: { text: text || '', mediaUrl: finalMediaUrl, mediaType, emoji },
       status: 'sent',
       sentAt: new Date(),
-      sentByAgentId: agentId
+      sentByAgentId: agentId,
+      replyTo: replyToMessageId,
+      reactions: []
     });
 
     // Update conversation
     await Conversation.findOneAndUpdate(
-      { _id: conversationId },
+      { conversationId: conversation.conversationId, accountId },
       {
         lastMessageAt: new Date(),
-        lastMessagePreview: text.substring(0, 100),
-        lastMessageType: 'text',
+        lastMessagePreview: text ? text.substring(0, 100) : `📎 ${mediaType || 'Media'}`,
+        lastMessageType: mediaType ? 'media' : 'text',
         messageCount: conversation.messageCount + 1
       }
     );
 
-    logger.info(`✅ Message sent: ${message._id}`);
+    logger.info(`✅ Message sent: ${message._id} | Reply: ${replyToMessageId ? '✓' : '✗'} | Emoji: ${emoji ? '✓' : '✗'}`);
 
     // Emit real-time event to conversation room
     emitToConversation(accountId, conversation.conversationId, 'new_message', {
@@ -1206,9 +1226,11 @@ router.post('/:conversationId/send-message', async (req, res) => {
       conversationId: conversation.conversationId,
       senderRole: 'agent',
       senderName: agentName,
-      text,
+      text: text || '',
       mediaUrl: finalMediaUrl,
       mediaType,
+      emoji,
+      replyTo: replyToMessageId,
       status: 'sent',
       createdAt: message.sentAt
     });
