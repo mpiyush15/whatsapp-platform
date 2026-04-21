@@ -118,8 +118,8 @@ export const initSocketIO = (server) => {
       }
 
       try {
-        // ✅ FIX #2: Query database to verify conversation ownership
-        const conversation = await Conversation.findById(conversationId).select('accountId _id').lean();
+        // ✅ Query by conversationId (string) not _id (ObjectId)
+        const conversation = await Conversation.findOne({ conversationId }).select('accountId _id').lean();
         
         if (!conversation) {
           logger.error('❌ Unauthorized join_conversation attempt:', {
