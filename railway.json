@@ -1,19 +1,10 @@
 {
   "build": {
-    "builder": "nixpacks",
-    "buildCommand": "cd backend && npm install"
+    "builder": "nixpacks"
   },
   "deploy": {
     "startCommand": "cd backend && npm start",
     "restartPolicyType": "always",
-    "restartPolicyMaxRetries": 3,
-    "workingDirectory": "/app",
-    "env": {
-      "NODE_ENV": "production",
-      "MONGODB_URI": "${{DATABASE_URL}}",
-      "PORT": "5050",
-      "NEXT_PUBLIC_API_URL": "${{NEXT_PUBLIC_API_URL}}",
-      "NEXT_PUBLIC_SOCKET_URL": "${{NEXT_PUBLIC_SOCKET_URL}}"
-    }
+    "restartPolicyMaxRetries": 3
   }
 }
