@@ -1223,25 +1223,37 @@ router.post('/:conversationId/send-message', async (req, res) => {
 
     logger.info(`✅ Message sent: ${message._id} | Reply: ${replyToMessageId ? '✓' : '✗'} | Emoji: ${emoji ? '✓' : '✗'}`);
 
-    // 🚀 Mark as delivered after brief delay (simulates WhatsApp delivery)
-    setTimeout(async () => {
-      try {
-        // Update message status to delivered
-        await Message.findByIdAndUpdate(message._id, { status: 'delivered' });
-        
-        // Emit delivery confirmation to agents
-        emitToConversation(accountId, conversation.conversationId, 'message_delivered', {
-          messageId: message._id,
-          conversationId: conversation.conversationId,
-          status: 'delivered',
-          timestamp: new Date()
+    // 🚀 SEND TO WHATSAPP API IN BACKGROUND (non-blocking)
+    if (text && conversation.phoneNumberId && conversation.userPhone) {
+      // Don't await this - let it run in background
+      whatsappService
+        .sendTextMessage(
+          accountId,
+          conversation.phoneNumberId,
+          conversation.userPhone,
+          text
+        )
+        .then(() => {
+          logger.info(`✅ Message delivered to WhatsApp: ${conversation.userPhone}`);
+          
+          // Update message to delivered
+          Message.findByIdAndUpdate(message._id, { status: 'delivered' }).catch(err => {
+            logger.error('Error updating message status:', err.message);
+          });
+          
+          // Emit delivery confirmation
+          emitToConversation(accountId, conversation.conversationId, 'message_delivered', {
+            messageId: message._id,
+            conversationId: conversation.conversationId,
+            status: 'delivered',
+            timestamp: new Date()
+          });
+        })
+        .catch(err => {
+          logger.error('⚠️ WhatsApp API error:', err.message);
+          // Message stays as 'sent' in UI - customer may still receive it
         });
-        
-        logger.info(`✅ Message marked as delivered: ${message._id}`);
-      } catch (err) {
-        logger.error('⚠️ Error marking message as delivered:', err.message);
-      }
-    }, 200); // 200ms delay to show delivery
+    }
 
     // Emit real-time event to conversation room
     emitToConversation(accountId, conversation.conversationId, 'new_message', {
