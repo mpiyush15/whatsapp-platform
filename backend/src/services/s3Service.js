@@ -165,15 +165,22 @@ export const uploadToS3 = async (buffer, accountId, mediaType, mimeType, origina
       Key: s3Key,
       Body: buffer,
       ContentType: mimeType,
-      // Note: ACL removed - use bucket policy instead for public access
+      // Allow CORS access from any origin (needed for browser to load signed URLs)
+      CacheControl: 'max-age=31536000', // 1 year cache
     });
     
     await s3Client.send(command);
     
-    // Generate public URL (if bucket is public) or signed URL
-    const s3Url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${s3Key}`;
+    // Generate signed URL for 24 hours (covers typical message lifetime)
+    // This ensures private buckets work correctly
+    const getCommand = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: s3Key,
+    });
     
-    logger.info(`✅ Uploaded to S3: ${s3Url}`);
+    const s3Url = await getSignedUrl(s3Client, getCommand, { expiresIn: 86400 }); // 24 hours
+    
+    logger.info(`✅ Uploaded to S3: ${s3Key} (signed URL valid 24h)`);
     
     return {
       s3Key,

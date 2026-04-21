@@ -3,6 +3,7 @@ import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import { getRecentOAuthSession } from '../utils/oauthSessionStore.js';
 import mongoose from 'mongoose';
+import axios from 'axios';
 import { downloadMediaFromWhatsApp, uploadToS3 } from '../services/s3Service.js';
 import { fetchMediaUrl } from '../services/metaMediaService.js';
 import Account from '../models/Account.js';
@@ -207,28 +208,40 @@ export const handleWebhook = async (req, res) => {
                 let content = '';
                 let mediaUrl = null;
                 let mediaType = null;
+                let mediaId = null;
+                let mimeType = null;
+                let filename = null;
                 
                 if (type === 'text' && text) {
                   content = text.body;
                 } else if (type === 'image' && image) {
                   content = '';
                   mediaType = 'image';
-                  // WhatsApp provides URL directly in webhook
+                  mediaId = image.id;
+                  mimeType = image.mime_type || 'image/jpeg';
+                  // Store temporary URL - will download to S3 below
                   mediaUrl = image.url || image.link;
                 } else if (type === 'document' && document) {
                   content = '';
                   mediaType = 'document';
-                  // WhatsApp provides URL directly in webhook
+                  mediaId = document.id;
+                  mimeType = document.mime_type || 'application/pdf';
+                  filename = document.filename;
+                  // Store temporary URL - will download to S3 below
                   mediaUrl = document.url || document.link;
                 } else if (type === 'audio' && audio) {
                   content = '';
                   mediaType = 'audio';
-                  // WhatsApp provides URL directly in webhook
+                  mediaId = audio.id;
+                  mimeType = audio.mime_type || 'audio/aac';
+                  // Store temporary URL - will download to S3 below
                   mediaUrl = audio.url || audio.link;
                 } else if (type === 'video' && video) {
                   content = '';
                   mediaType = 'video';
-                  // WhatsApp provides URL directly in webhook
+                  mediaId = video.id;
+                  mimeType = video.mime_type || 'video/mp4';
+                  // Store temporary URL - will download to S3 below
                   mediaUrl = video.url || video.link;
                 } else if (type === 'button' && button) {
                   content = button.text;
@@ -237,6 +250,44 @@ export const handleWebhook = async (req, res) => {
                 }
                 
                 logger.info(`📝 Content: ${content.substring(0, 50)}`);
+                
+                // 🔑 CRITICAL FIX: Download media from WhatsApp's temporary URL and save to S3
+                if (mediaUrl && mediaId && accountRecord.whatsappConfig?.accessToken) {
+                  try {
+                    logger.info(`🔄 Downloading media from WhatsApp (${mediaType})...`);
+                    
+                    // Download from WhatsApp temporary URL
+                    const mediaResponse = await axios.get(mediaUrl, {
+                      headers: {
+                        Authorization: `Bearer ${accountRecord.whatsappConfig.accessToken}`,
+                      },
+                      responseType: 'arraybuffer',
+                      timeout: 30000
+                    });
+                    
+                    const buffer = Buffer.from(mediaResponse.data);
+                    logger.info(`✅ Downloaded ${(buffer.length / 1024).toFixed(2)}KB from WhatsApp`);
+                    
+                    // Upload to S3
+                    const { s3Url, s3Key } = await uploadToS3(
+                      buffer,
+                      accountRecord.accountId,
+                      mediaType,
+                      mimeType,
+                      filename
+                    );
+                    
+                    logger.info(`☁️  Media uploaded to S3: ${s3Key}`);
+                    
+                    // Replace temporary URL with permanent S3 URL
+                    mediaUrl = s3Url;
+                    logger.info(`✅ Using permanent S3 URL for media`);
+                  } catch (mediaError) {
+                    logger.error(`⚠️  Failed to download/upload media to S3:`, mediaError.message);
+                    logger.info(`⏱️  Falling back to temporary WhatsApp URL (will expire in ~5 mins)`);
+                    // Keep the temporary URL as fallback
+                  }
+                }
                 
                 const accountId = accountRecord.accountId;
                 const phoneNumberId = metadata.phone_number_id;
