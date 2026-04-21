@@ -195,13 +195,14 @@ export const handleWebhook = async (req, res) => {
                 // Find account by WABA ID FIRST (needed for media URL fetching)
                 logger.info(`🔍 Searching for account with WABA: ${wabaId}`);
                 
-                const accountRecord = await Account.findOne({ 'whatsappConfig.wabaId': wabaId });
+                const accountRecord = await Account.findOne({ 'whatsappConfig.wabaId': wabaId }).select('+whatsappAccessToken');
                 if (!accountRecord) {
                   logger.warn(`⚠️ Could not find account for WABA ${wabaId}`);
                   continue;
                 }
                 
                 logger.info(`✅ Account found: ${accountRecord.accountId}`);
+                logger.info(`🔑 Token available: ${!!accountRecord.whatsappAccessToken}`);
                 
                 // Extract message content based on type
                 let content = '';

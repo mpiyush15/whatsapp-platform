@@ -94,6 +94,7 @@ export const connectWhatsApp = async (req, res) => {
       { accountId },
       {
         wabaId: waba_id,
+        whatsappAccessToken: systemToken,
         whatsappConfig: {
           wabaId: waba_id,
           connectedAt: new Date(),
