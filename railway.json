@@ -3,8 +3,9 @@
     "builder": "nixpacks"
   },
   "deploy": {
-    "startCommand": "cd backend && npm start",
+    "startCommand": "npm start",
     "restartPolicyType": "always",
-    "restartPolicyMaxRetries": 3
+    "restartPolicyMaxRetries": 3,
+    "workingDirectory": "/app/backend"
   }
 }
