@@ -48,15 +48,22 @@ class WhatsAppService {
       );
     }
     
-    // ✅ CRITICAL FIX: Validate token is actually decrypted
+    // ✅ Fallback: if token missing in DB, use META_SYSTEM_TOKEN
     if (!config.accessToken) {
-      throw new Error(
-        'Access token is missing. This may indicate:\n' +
-        '1. Token encryption/decryption failed\n' +
-        '2. JWT_SECRET environment variable changed\n' +
-        '3. Database corruption\n' +
-        'Action: Reconnect your WhatsApp account in Settings.'
-      );
+      const fallbackToken = process.env.META_SYSTEM_TOKEN;
+      if (fallbackToken) {
+        logger.warn('⚠️ Phone accessToken missing in DB, using META_SYSTEM_TOKEN fallback');
+        config.accessToken = fallbackToken;
+      } else {
+        throw new Error(
+          'Access token is missing. This may indicate:\n' +
+          '1. Token encryption/decryption failed\n' +
+          '2. JWT_SECRET environment variable changed\n' +
+          '3. Database corruption\n' +
+          '4. META_SYSTEM_TOKEN not configured\n' +
+          'Action: Reconnect your WhatsApp account in Settings.'
+        );
+      }
     }
     
     // ✅ Log token status for debugging

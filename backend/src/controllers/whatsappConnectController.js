@@ -114,8 +114,11 @@ export const connectWhatsApp = async (req, res) => {
       {
         accountId,
         phoneNumberId: phone_number_id,
+        wabaId: waba_id,
         displayPhone,
+        phone: displayPhone,
         displayName,
+        accessToken: systemToken,
         qualityRating: phoneData.quality_rating || 'UNKNOWN',
         verificationStatus: phoneData.verified_name ? 'VERIFIED' : 'NOT_VERIFIED',
         isActive: true,
