@@ -54,20 +54,18 @@ export default function LiveChatContainer() {
       console.log('✅ Connected to live chat server')
     })
 
-    // Listen for new messages
-    newSocket.on('new_message', (data: Message) => {
-      console.log('📨 New message:', data)
-      console.log('🎬 Message details - Type:', data.mediaType, 'URL:', data.mediaUrl?.substring(0, 80))
-      if (selectedConversation && data.conversationId === selectedConversation.conversationId) {
-        setMessages(prev => [...prev, data])
-      }
-      // Update conversation preview
+    // 🔥 NOTE: new_message listener moved to selectedConversation useEffect
+    // This ensures it captures the correct selectedConversation value
+
+    // Listen for conversation preview updates (from any conversation)
+    const handleConversationUpdate = (data: Message) => {
       setConversations(prev => prev.map(conv => 
         conv.conversationId === data.conversationId 
-          ? { ...conv, lastMessagePreview: data.text, lastMessageAt: new Date(data.createdAt) }
+          ? { ...conv, lastMessagePreview: data.text || `📎 ${data.mediaType}`, lastMessageAt: new Date(data.createdAt) }
           : conv
       ))
-    })
+    }
+    newSocket.on('new_message', handleConversationUpdate)
 
     // Listen for typing indicator
     newSocket.on('customer_typing', (data) => {
@@ -136,11 +134,12 @@ export default function LiveChatContainer() {
     setSocket(newSocket)
 
     return () => {
+      newSocket.off('new_message', handleConversationUpdate)
       newSocket.disconnect()
     }
   }, [])
 
-  // ✅ Join/Leave conversation rooms when selection changes
+  // ✅ Join/Leave conversation rooms when selection changes + update listeners
   useEffect(() => {
     if (!socketRef.current || !selectedConversation) return
 
@@ -149,8 +148,20 @@ export default function LiveChatContainer() {
     })
     console.log(`Joined room: ${selectedConversation.conversationId}`)
 
+    // 🔥 UPDATE: Add message listener HERE so it captures current selectedConversation
+    const handleNewMessage = (data: Message) => {
+      console.log('📨 New message:', data)
+      console.log('🎬 Message details - Type:', data.mediaType, 'URL:', data.mediaUrl?.substring(0, 80))
+      if (data.conversationId === selectedConversation.conversationId) {
+        setMessages(prev => [...prev, data])
+      }
+    }
+
+    socketRef.current.on('new_message', handleNewMessage)
+
     return () => {
-      if (socketRef.current && selectedConversation) {
+      if (socketRef.current) {
+        socketRef.current.off('new_message', handleNewMessage)
         socketRef.current.emit('leave_conversation', {
           conversationId: selectedConversation.conversationId
         })
