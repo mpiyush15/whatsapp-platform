@@ -1,5 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import multer from 'multer';
 import conversationService from '../services/conversationService.js';
 import internalNoteService from '../services/internalNoteService.js';
 import tagService from '../services/tagService.js';
@@ -13,6 +14,15 @@ import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
+
+// Configure multer for memory storage (files stored in buffer)
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 16 * 1024 * 1024 // 16MB limit (WhatsApp requirement)
+  }
+});
 
 // ✅ All routes require JWT authentication
 router.use(requireJWT);
@@ -1439,6 +1449,153 @@ router.post('/:conversationId/messages/:messageId/reactions', async (req, res) =
     return res.status(500).json({
       success: false,
       message: 'Failed to add reaction',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/conversations/:conversationId/send-media
+ * Send media message (image/video/document/audio) to conversation
+ */
+router.post('/:conversationId/send-media', upload.single('file'), async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { caption } = req.body;
+    const accountId = req.account.accountId;
+    const agentId = req.user._id;
+    const agentName = req.user.name || 'Agent';
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file provided',
+        error: 'NO_FILE'
+      });
+    }
+
+    // Get conversation
+    const conversation = await Conversation.findOne({
+      conversationId: conversationId,
+      accountId
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found',
+        error: 'NOT_FOUND'
+      });
+    }
+
+    // Determine media type from file MIME type
+    const mimeType = file.mimetype;
+    let mediaType = 'document'; // default
+
+    if (mimeType.startsWith('image/')) {
+      mediaType = 'image';
+    } else if (mimeType.startsWith('video/')) {
+      mediaType = 'video';
+    } else if (mimeType.startsWith('audio/')) {
+      mediaType = 'audio';
+    } else if (mimeType.includes('pdf') || mimeType.includes('document')) {
+      mediaType = 'document';
+    }
+
+    logger.info(`📎 Media file received: ${file.originalname} (${mediaType}) | Size: ${file.size} bytes`);
+
+    // Create message record
+    const message = await Message.create({
+      accountId,
+      conversationId: conversation.conversationId,
+      phoneNumberId: conversation.phoneNumberId,
+      recipientPhone: conversation.userPhone,
+      recipientName: conversation.userName,
+      senderRole: 'agent',
+      senderName: agentName,
+      messageType: 'media',
+      direction: 'outbound',
+      content: { text: caption || '', mediaType, filename: file.originalname },
+      status: 'sent',
+      sentAt: new Date(),
+      sentByAgentId: agentId,
+      reactions: []
+    });
+
+    // Update conversation
+    await Conversation.findOneAndUpdate(
+      { conversationId: conversation.conversationId, accountId },
+      {
+        lastMessageAt: new Date(),
+        lastMessagePreview: `📎 ${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}`,
+        lastMessageType: 'media',
+        messageCount: conversation.messageCount + 1
+      }
+    );
+
+    logger.info(`✅ Media message saved: ${message._id}`);
+
+    // 🚀 SEND TO WHATSAPP API IN BACKGROUND (non-blocking)
+    if (conversation.phoneNumberId && conversation.userPhone) {
+      whatsappService
+        .sendMediaMessage(
+          accountId,
+          conversation.phoneNumberId,
+          conversation.userPhone,
+          null, // mediaUrl - will be uploaded
+          mediaType,
+          caption || '',
+          {
+            fileBuffer: file.buffer,
+            mimeType: mimeType,
+            filename: file.originalname
+          }
+        )
+        .then(() => {
+          logger.info(`✅ Media delivered to WhatsApp: ${conversation.userPhone}`);
+          
+          // Update message to delivered
+          Message.findByIdAndUpdate(message._id, { status: 'delivered' }).catch(err => {
+            logger.error('Error updating message status:', err.message);
+          });
+          
+          // Emit delivery confirmation
+          emitToConversation(accountId, conversation.conversationId, 'message_delivered', {
+            messageId: message._id,
+            conversationId: conversation.conversationId,
+            status: 'delivered',
+            timestamp: new Date()
+          });
+        })
+        .catch(err => {
+          logger.error('⚠️ WhatsApp media API error:', err.message);
+        });
+    }
+
+    // Emit real-time event to conversation room with placeholder URL
+    emitToConversation(accountId, conversation.conversationId, 'new_message', {
+      _id: message._id,
+      conversationId: conversation.conversationId,
+      senderRole: 'agent',
+      senderName: agentName,
+      text: caption || '',
+      mediaUrl: `media://${file.originalname}`, // Placeholder until WhatsApp returns actual URL
+      mediaType: mediaType,
+      status: 'sent',
+      createdAt: message.sentAt
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Media message sent successfully',
+      data: message
+    });
+  } catch (error) {
+    logger.error('❌ Error sending media message:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send media message',
       error: error.message
     });
   }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { Send, Plus, Smile, X, Loader, ImageIcon, FileIcon } from "lucide-react"
+import { Send, Plus, Smile, X, Loader, ImageIcon, FileIcon, Video, Music } from "lucide-react"
 
 interface Props {
   onSendMessage: (text: string, mediaUrl?: string, mediaType?: string) => void
@@ -12,9 +12,13 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
   const [text, setText] = useState("")
   const [loading, setLoading] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
+  const [showMediaMenu, setShowMediaMenu] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const imageRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLInputElement>(null)
+  const documentRef = useRef<HTMLInputElement>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout>()
 
   // Use array of emoji objects instead of string for better rendering
@@ -71,11 +75,28 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
     const file = e.target.files?.[0]
     if (!file) return
     setSelectedFile(file)
+    setShowMediaMenu(false)
     const reader = new FileReader()
     reader.onload = (e) => {
       setFilePreview(e.target?.result as string)
     }
     reader.readAsDataURL(file)
+  }
+
+  const triggerImageUpload = () => {
+    imageRef.current?.click()
+  }
+
+  const triggerVideoUpload = () => {
+    videoRef.current?.click()
+  }
+
+  const triggerDocumentUpload = () => {
+    documentRef.current?.click()
+  }
+
+  const triggerFileUpload = () => {
+    fileRef.current?.click()
   }
 
   const insertEmoji = (emoji: string) => {
@@ -110,19 +131,77 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
       )}
 
       <div className="flex items-end gap-2">
-        <button 
-          onClick={() => fileRef.current?.click()}
-          className="flex-shrink-0 p-2 hover:bg-green-50 rounded-full text-green-600 transition active:bg-green-100"
-          disabled={loading}
-        >
-          <Plus size={22} />
-        </button>
+        <div className="relative flex-shrink-0">
+          <button 
+            onClick={() => setShowMediaMenu(!showMediaMenu)}
+            className="flex-shrink-0 p-2 hover:bg-green-50 rounded-full text-green-600 transition active:bg-green-100"
+            disabled={loading}
+          >
+            <Plus size={22} />
+          </button>
+
+          {showMediaMenu && (
+            <div className="absolute bottom-full left-0 mb-2 bg-white border border-gray-300 rounded-lg shadow-lg p-2 z-50 flex flex-col gap-2 min-w-max">
+              <button
+                onClick={triggerImageUpload}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-green-50 rounded transition text-sm text-gray-700"
+              >
+                <ImageIcon size={18} className="text-green-600" />
+                Image
+              </button>
+              <button
+                onClick={triggerVideoUpload}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-green-50 rounded transition text-sm text-gray-700"
+              >
+                <Video size={18} className="text-green-600" />
+                Video
+              </button>
+              <button
+                onClick={triggerDocumentUpload}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-green-50 rounded transition text-sm text-gray-700"
+              >
+                <FileIcon size={18} className="text-green-600" />
+                PDF/Document
+              </button>
+              <button
+                onClick={triggerFileUpload}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-green-50 rounded transition text-sm text-gray-700"
+              >
+                <Music size={18} className="text-green-600" />
+                Audio/File
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Hidden file inputs for different media types */}
+        <input 
+          ref={imageRef}
+          type="file" 
+          hidden 
+          onChange={handleMediaUpload}
+          accept="image/*"
+        />
+        <input 
+          ref={videoRef}
+          type="file" 
+          hidden 
+          onChange={handleMediaUpload}
+          accept="video/*"
+        />
+        <input 
+          ref={documentRef}
+          type="file" 
+          hidden 
+          onChange={handleMediaUpload}
+          accept=".pdf,.doc,.docx,.txt,.xlsx"
+        />
         <input 
           ref={fileRef}
           type="file" 
           hidden 
           onChange={handleMediaUpload}
-          accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+          accept="audio/*,.pdf,.doc,.docx"
         />
 
         <textarea
