@@ -75,7 +75,7 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
               <div
                 className={`max-w-[85%] md:max-w-md px-3 md:px-4 py-2 rounded-2xl text-sm md:text-base transition-all ${
                   message.senderRole === 'agent'
-                    ? 'bg-green-600 text-white rounded-br-none shadow-md'
+                    ? 'bg-green-50 text-gray-900 rounded-br-none shadow-md border border-green-200'
                     : 'bg-white text-gray-900 rounded-bl-none shadow-md border border-gray-100'
                 }`}
               >

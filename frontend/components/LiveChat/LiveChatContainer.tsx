@@ -258,16 +258,8 @@ export default function LiveChatContainer() {
 
       if (response.ok) {
         const result = await response.json()
-        
-        // Emit via socket for real-time update
-        if (socket) {
-          socket.emit('send_message', {
-            conversationId: selectedConversation.conversationId,
-            text,
-            mediaUrl,
-            mediaType
-          })
-        }
+        console.log('✅ Message sent successfully')
+        // Message will come via socket listener 'new_message' event
       }
     } catch (err) {
       console.error('Error sending message:', err)
