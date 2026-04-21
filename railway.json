@@ -1,12 +1,13 @@
 {
   "build": {
     "builder": "nixpacks",
-    "buildCommand": "npm run build"
+    "buildCommand": "cd backend && npm install"
   },
   "deploy": {
     "startCommand": "cd backend && npm start",
     "restartPolicyType": "always",
     "restartPolicyMaxRetries": 3,
+    "workingDirectory": "/app",
     "env": {
       "NODE_ENV": "production",
       "MONGODB_URI": "${{DATABASE_URL}}",
