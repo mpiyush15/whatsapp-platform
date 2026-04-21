@@ -211,22 +211,22 @@ export const handleWebhook = async (req, res) => {
                 if (type === 'text' && text) {
                   content = text.body;
                 } else if (type === 'image' && image) {
-                  content = `[Image]`;
+                  content = '';
                   mediaType = 'image';
                   // WhatsApp provides URL directly in webhook
                   mediaUrl = image.url || image.link;
                 } else if (type === 'document' && document) {
-                  content = `[Document: ${document.filename}]`;
+                  content = '';
                   mediaType = 'document';
                   // WhatsApp provides URL directly in webhook
                   mediaUrl = document.url || document.link;
                 } else if (type === 'audio' && audio) {
-                  content = `[Audio]`;
+                  content = '';
                   mediaType = 'audio';
                   // WhatsApp provides URL directly in webhook
                   mediaUrl = audio.url || audio.link;
                 } else if (type === 'video' && video) {
-                  content = `[Video]`;
+                  content = '';
                   mediaType = 'video';
                   // WhatsApp provides URL directly in webhook
                   mediaUrl = video.url || video.link;

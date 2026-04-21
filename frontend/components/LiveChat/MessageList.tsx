@@ -133,11 +133,6 @@ export default function MessageList({ messages, socket, isTyping }: Props) {
                 {message.text && (
                   <p className="text-sm break-words whitespace-pre-wrap">{message.text}</p>
                 )}
-                
-                {/* Show sender name for customer messages */}
-                {message.senderRole === 'customer' && message.senderName && (
-                  <p className="text-xs opacity-70 mb-1">{message.senderName}</p>
-                )}
 
                 {/* Status & Time */}
                 <div className={`flex items-center justify-between gap-2 mt-1 text-xs ${

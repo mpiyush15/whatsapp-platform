@@ -250,50 +250,71 @@ export default function LiveChatContainer() {
 
       // If there's media (file was selected)
       if (mediaUrl && mediaType) {
-        // Convert data URL to blob
-        const response = await fetch(mediaUrl)
-        const blob = await response.blob()
-        const file = new File([blob], `media.${mediaType}`, { type: blob.type })
+        // Convert data URL to blob directly (without fetch)
+        const arr = mediaUrl.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+        const bstr = atob(arr[1]);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        
+        // Determine filename from mediaType
+        const extension = mediaType === 'image' ? 'jpg' : mediaType === 'video' ? 'mp4' : mediaType === 'audio' ? 'mp3' : 'pdf';
+        const file = new File([blob], `media.${extension}`, { type: mime });
 
         // Send as multipart/form-data for file upload
-        const formData = new FormData()
-        formData.append('file', file)
-        if (text) formData.append('caption', text)
+        const formData = new FormData();
+        formData.append('file', file);
+        if (text && text.trim()) {
+          formData.append('caption', text);
+        }
 
-        const uploadResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${selectedConversation.conversationId}/send-media`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-            // Don't set Content-Type, let browser set it for FormData
-          },
-          body: formData
-        })
+        console.log(`📤 Sending ${mediaType} file (${(file.size / 1024).toFixed(2)}KB)...`);
+
+        const uploadResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${selectedConversation.conversationId}/send-media`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+              // Don't set Content-Type, let browser set it for FormData
+            },
+            body: formData
+          }
+        );
 
         if (uploadResponse.ok) {
-          console.log('✅ Media message sent successfully')
+          console.log('✅ Media message sent successfully');
           // Message will come via socket listener 'new_message' event
         } else {
-          console.error('❌ Failed to send media message')
+          const errorData = await uploadResponse.json().catch(() => ({}));
+          console.error('❌ Failed to send media message:', errorData);
         }
       } else {
         // Send text-only message
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${selectedConversation.conversationId}/send-message`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ text, mediaUrl, mediaType })
-        })
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${selectedConversation.conversationId}/send-message`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ text, mediaUrl, mediaType })
+          }
+        );
 
         if (response.ok) {
-          const result = await response.json()
-          console.log('✅ Message sent successfully')
+          const result = await response.json();
+          console.log('✅ Message sent successfully');
           // Message will come via socket listener 'new_message' event
         }
       }
     } catch (err) {
-      console.error('Error sending message:', err)
+      console.error('❌ Error sending message:', err);
     }
   }
 

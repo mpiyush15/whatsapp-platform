@@ -93,17 +93,17 @@ router.post('/whatsapp', async (req, res) => {
         if (message.type === 'text') {
           messageContent = message.text?.body || '';
         } else if (message.type === 'image') {
-          messageContent = '[Image]';
+          messageContent = '';
         } else if (message.type === 'video') {
-          messageContent = '[Video]';
+          messageContent = '';
         } else if (message.type === 'document') {
-          messageContent = `[${message.document?.filename || 'Document'}]`;
+          messageContent = '';
         } else if (message.type === 'audio') {
-          messageContent = '[Audio]';
+          messageContent = '';
         } else if (message.type === 'location') {
-          messageContent = '[Location]';
+          messageContent = '';
         } else {
-          messageContent = `[${message.type}]`;
+          messageContent = '';
         }
 
         // Save incoming message
