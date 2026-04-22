@@ -8,19 +8,36 @@ import { ContactType } from '../constants/enums.js';
 
 export const createContact = async (req, res) => {
   try {
-    const { phoneNumber, name, email, customFields } = req.body;
+    const { accountId } = req.user;
+    const { name, phone, whatsappNumber, email, tags = [] } = req.body;
 
-    if (!phoneNumber) {
-      return sendValidationError(res, 'Phone number required');
+    if (!phone && !whatsappNumber) {
+      return sendValidationError(res, 'Phone or WhatsApp number required');
     }
 
-    return sendSuccess(res, {
-      contactId: `contact_${Date.now()}`,
-      phoneNumber,
-      name,
-      status: 'active'
-    }, 'Contact created');
+    const Contact = require('../models/Contact').default || require('../models/Contact');
+    
+    const contact = await Contact.create({
+      accountId,
+      name: name || phone || whatsappNumber,
+      phone: phone || whatsappNumber,
+      whatsappNumber: whatsappNumber || phone,
+      email,
+      type: 'customer',
+      isOptedIn: true,
+      optInDate: new Date(),
+      firstContactAt: new Date(),
+      tags,
+      messageCount: 0,
+      conversationCount: 0
+    });
+
+    console.log(`✅ Contact created: ${contact._id}`);
+    return sendSuccess(res, { contact }, 'Contact created', 201);
   } catch (error) {
+    if (error.code === 11000) {
+      return sendSuccess(res, {}, 'Contact already exists', 200);
+    }
     return handleControllerError(res, error, 'createContact');
   }
 };
@@ -55,7 +72,20 @@ export const getContacts = async (req, res) => {
   try {
     const user = req.user;
     const db = mongoose.connection.db;
+    console.log(`🔍 Fetching contacts for user accountId: ${user.accountId}`);
+    
     const contacts = await db.collection('contacts').find({ accountId: user.accountId }).toArray();
+    
+    console.log(`✅ Found ${contacts.length} contacts for accountId: ${user.accountId}`);
+    if (contacts.length === 0) {
+      console.log("⚠️ No contacts found. Checking total contacts in collection...");
+      const allContacts = await db.collection('contacts').find({}).toArray();
+      console.log(`📊 Total contacts in DB: ${allContacts.length}`);
+      if (allContacts.length > 0) {
+        console.log("📋 Sample contacts:", allContacts.slice(0, 2).map(c => ({ accountId: c.accountId, name: c.name })));
+      }
+    }
+    
     return sendSuccess(res, { contacts }, 'Contacts retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getContacts');

@@ -385,6 +385,7 @@ export const handleWebhook = async (req, res) => {
                     conversationId: conversationId,
                     senderRole: 'customer',
                     senderName: customerName,
+                    senderPhone: from,
                     text: content,
                     mediaUrl: mediaUrl,
                     mediaType: mediaType,

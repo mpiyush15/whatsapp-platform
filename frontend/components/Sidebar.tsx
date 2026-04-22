@@ -4,12 +4,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { 
   LayoutDashboard, MessageSquare, Users, Megaphone, FileText, Bot, Target, 
-  BarChart3, Users2, CreditCard, Settings, ChevronDown, LogOut, Menu, X, Lock, AlertCircle, User,
+  BarChart3, Users2, CreditCard, Settings, LogOut, Lock, AlertCircle, User,
   Building2, BookOpen, Activity, DollarSign, Receipt, Sliders
 } from 'lucide-react'
 import { authService, UserRole } from '@/lib/auth'
 import { getSidebarItems } from '@/lib/rbac'
-import DemoBadge from './DemoBadge'
 import { useState } from 'react'
 
 const iconMap = {
@@ -36,9 +35,7 @@ const iconMap = {
 export default function Sidebar() {
   const pathname = usePathname()
   const user = authService.getCurrentUser()
-  const [isOpen, setIsOpen] = useState(false)
   const [superAdminDropdownOpen, setSuperAdminDropdownOpen] = useState(false)
-  const [settingsDropdownOpen, setSettingsDropdownOpen] = useState(false)
 
   if (!user) return null
 
@@ -88,87 +85,39 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Mobile toggle */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`fixed top-4 left-4 z-50 md:hidden p-2 rounded-lg bg-white border border-gray-200 ${isPlanPending && !isSuperAdmin ? 'top-12' : ''}`}
-      >
-        {isOpen ? <X size={24} /> : <Menu size={24} />}
-      </button>
-
-      {/* Sidebar */}
-      <aside className={`
-        fixed md:static inset-y-0 left-0 z-40 w-64 bg-gray-900 text-white
-        transform transition-transform duration-300 overflow-y-auto
-        ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
+      {/* Sidebar - Compact Style */}
+      <aside className="fixed md:static inset-y-0 left-0 z-40 bg-gray-900 text-white w-20 overflow-y-auto flex flex-col">
         {/* Logo */}
-        <div className="h-16 flex items-center gap-3 px-6 border-b border-gray-800">
-          <div className="h-8 w-8 bg-green-500 rounded-lg flex items-center justify-center">
+        <div className="h-16 flex items-center justify-center px-4 border-b border-gray-800">
+          <div className="h-8 w-8 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <MessageSquare size={20} className="text-white" />
           </div>
-          <span className="font-bold text-lg">PixelsWhatsApp</span>
         </div>
 
-        {/* User Info */}
-        <div className="p-4 border-b border-gray-800">
-          <div className="text-sm">
-            <p className="font-semibold text-white">{user.name}</p>
-            
-            {/* Demo Badge */}
-            {user.isDemoAccount && (
-              <div className="mt-2 mb-2">
-                <DemoBadge 
-                  isDemoAccount={user.isDemoAccount}
-                  demoLabel={user.demoLabel}
-                  demoNote={user.demoNote}
-                  size="sm"
-                  showIcon={true}
-                />
-              </div>
-            )}
-            
-            <p className="text-gray-400 text-xs capitalize mt-1">{user.role}</p>
-            <p className="text-gray-500 text-xs mt-2 truncate">{user.email}</p>
-            
-            {/* Payment Status Badge */}
-            {!isSuperAdmin && isPlanPending && (
-              <div className="mt-3 bg-orange-900/30 border border-orange-600/50 rounded px-2 py-1.5 flex items-center gap-2">
-                <AlertCircle size={14} className="text-orange-400 flex-shrink-0" />
-                <span className="text-xs text-orange-300">Payment Pending</span>
-              </div>
-            )}
-            
-            {/* Plan Info */}
-            {!isSuperAdmin && user.plan && (
-              <div className="mt-2 text-xs text-gray-400">
-                Plan: <span className="text-gray-200 capitalize">{user.plan}</span>
-                {user.billingCycle && <span className="text-gray-500"> ({user.billingCycle})</span>}
-              </div>
-            )}
+        {/* User Avatar - Minimal */}
+        <div className="border-b border-gray-800 p-2 flex justify-center">
+          <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <User size={20} className="text-white" />
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="px-4 py-6 space-y-2">
-          {/* SuperAdmin Dropdown */}
+        <nav className="flex-1 px-1.5 py-4 space-y-1 overflow-y-auto">
+          {/* SuperAdmin Icon */}
           {isSuperAdmin && (
-            <div className="space-y-2">
+            <div className="relative group">
               <button
                 onClick={() => setSuperAdminDropdownOpen(!superAdminDropdownOpen)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                className="w-full flex flex-col items-center gap-1 px-2 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                title="Admin Panel"
               >
-                <Settings size={20} />
-                <span className="text-sm font-medium">Admin Panel</span>
-                <ChevronDown 
-                  size={16} 
-                  className={`ml-auto transition-transform duration-300 ${superAdminDropdownOpen ? 'rotate-180' : ''}`} 
-                />
+                <Settings size={24} />
+                <span className="text-xs font-semibold text-center leading-tight">Admin</span>
               </button>
               
-              {/* SuperAdmin Items */}
+              {/* SuperAdmin Items - Tooltip Style */}
               {superAdminDropdownOpen && (
-                <div className="bg-gray-800/50 rounded-lg space-y-1 py-2 px-2 border border-gray-700">
+                <div className="absolute left-full top-0 ml-2 bg-gray-800 border border-gray-700 rounded-lg space-y-1 py-2 px-1 w-40 z-50">
                   {[
                     { name: "Organizations", icon: "Building2" as const, href: "/dashboard/organizations" },
                     { name: "Demo Requests", icon: "BookOpen" as const, href: "/dashboard/admin/demo-requests" },
@@ -185,16 +134,15 @@ export default function Sidebar() {
                       <Link
                         key={adminItem.href}
                         href={adminItem.href}
-                        onClick={() => setIsOpen(false)}
                         className={`
-                          flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm
+                          flex items-center gap-2 px-3 py-2 rounded text-xs transition-colors
                           ${isActive 
-                            ? 'bg-green-600 text-white' 
+                            ? 'bg-white/10 text-white' 
                             : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                           }
                         `}
                       >
-                        {Icon && <Icon size={16} />}
+                        {Icon && <Icon size={14} />}
                         <span className="font-medium">{adminItem.name}</span>
                       </Link>
                     )
@@ -206,32 +154,16 @@ export default function Sidebar() {
 
           {/* Regular Navigation Items */}
           {items.map((item) => {
-            // Skip superadmin-only items since we moved them to dropdown
             if ((item as any).superAdminOnly) return null
             
             const Icon = iconMap[item.icon as keyof typeof iconMap]
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
             
-            // Lock features requiring active plan if plan is not active
-            // For clients with paid plans (pro/enterprise), show all features
             const lockedFeatures = ['whatsapp', 'contacts', 'broadcasts', 'campaigns', 'chatbot', 'templates']
             const isFeatureLocked = !isSuperAdmin && !isPlanActive && lockedFeatures.some(feature => item.href.includes(feature))
             
-            // Always show billing/settings/dashboard/account, even for pending plans
-            // For paid plans, show all features including chatbot, leads, campaigns
             const alwaysVisible = ['dashboard', 'billing', 'settings', 'account']
             const shouldShow = alwaysVisible.some(v => item.href.includes(v)) || isPlanActive || isSuperAdmin
-            
-            // DEBUG: Log each item
-            if (item.label === 'Account' || item.label === 'Settings') {
-              console.log(`🔗 Item: ${item.label}`, { 
-                href: item.href, 
-                shouldShow, 
-                isPlanActive,
-                isSuperAdmin,
-                alwaysVisibleMatch: alwaysVisible.some(v => item.href.includes(v))
-              })
-            }
             
             if (!shouldShow) return null
             
@@ -241,24 +173,23 @@ export default function Sidebar() {
                   href={isFeatureLocked ? '#' : item.href}
                   onClick={(e) => {
                     if (isFeatureLocked) e.preventDefault()
-                    setIsOpen(false)
                   }}
                   className={`
-                    flex items-center gap-3 px-4 py-3 rounded-lg transition-colors relative
+                    flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-lg transition-colors relative
                     ${isFeatureLocked
                       ? 'cursor-not-allowed opacity-50 text-gray-500'
                       : isActive 
-                      ? 'bg-green-600 text-white' 
+                      ? 'bg-white/10 text-white' 
                       : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                     }
                   `}
+                  title={item.label}
                 >
-                  {Icon && <Icon size={20} />}
-                  <span className="text-sm font-medium">{item.label}</span>
-                  {isFeatureLocked && <Lock size={16} className="ml-auto text-orange-400" />}
+                  {Icon && <Icon size={24} className="flex-shrink-0" />}
+                  <span className="text-xs font-semibold text-center leading-tight">{item.label}</span>
+                  {isFeatureLocked && <Lock size={12} className="absolute top-1 right-1 text-orange-400" />}
                 </Link>
                 
-                {/* Tooltip for locked features */}
                 {isFeatureLocked && (
                   <div className="invisible group-hover:visible absolute left-full top-0 ml-2 bg-orange-900 text-orange-100 text-xs px-2 py-1 rounded whitespace-nowrap z-50">
                     Activate plan to use this feature
@@ -270,24 +201,17 @@ export default function Sidebar() {
         </nav>
 
         {/* Logout */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-800">
+        <div className="p-2 border-t border-gray-800">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-red-600/10 hover:text-red-400 transition-colors"
+            className="w-full flex flex-col items-center gap-1 px-2 py-3 rounded-lg text-gray-300 hover:bg-red-600/20 hover:text-red-400 transition-colors"
+            title="Logout"
           >
-            <LogOut size={20} />
-            <span className="text-sm font-medium">Logout</span>
+            <LogOut size={24} />
+            <span className="text-xs font-semibold">Logout</span>
           </button>
         </div>
       </aside>
-
-      {/* Overlay for mobile */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
     </>
   )
 }
