@@ -253,7 +253,6 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     navigation = [
       { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/features", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
       { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-      { name: "Broadcasts", icon: Megaphone, href: "/dashboard/features/broadcasts", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT] },
       { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
       { name: "Templates", icon: FileText, href: "/dashboard/features/templates", roles: [UserRole.ADMIN, UserRole.MANAGER] },
       { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },

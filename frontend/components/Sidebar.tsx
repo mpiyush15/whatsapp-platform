@@ -34,9 +34,11 @@ const iconMap = {
 
 interface SidebarProps {
   projectId?: string
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
-export default function Sidebar({ projectId }: SidebarProps) {
+export default function Sidebar({ projectId, mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname()
   const [isClient, setIsClient] = useState(false)
   const [superAdminDropdownOpen, setSuperAdminDropdownOpen] = useState(false)
@@ -106,8 +108,20 @@ export default function Sidebar({ projectId }: SidebarProps) {
         </div>
       )}
 
+      {/* Mobile Backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={onMobileClose}
+        />
+      )}
+
       {/* Sidebar - Compact Style */}
-      <aside className="fixed md:static inset-y-0 left-0 z-40 bg-gray-900 text-white w-20 overflow-y-auto overflow-x-hidden flex flex-col scrollbar-hide">
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 md:z-40 bg-gray-900 text-white w-20 overflow-y-auto overflow-x-hidden flex flex-col scrollbar-hide transform transition-transform duration-300 md:translate-x-0 md:static ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
         {/* Logo */}
         <div className="h-16 flex items-center justify-center px-4 border-b border-gray-800">
           <div className="h-8 w-8 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -148,6 +162,9 @@ export default function Sidebar({ projectId }: SidebarProps) {
                       <Link
                         key={adminItem.href}
                         href={adminItem.href}
+                        onClick={() => {
+                          if (onMobileClose) onMobileClose()
+                        }}
                         className={`
                           flex items-center gap-2 px-3 py-2 rounded text-xs transition-colors
                           ${isActive 
@@ -198,6 +215,7 @@ export default function Sidebar({ projectId }: SidebarProps) {
                   href={isFeatureLocked ? '#' : item.href}
                   onClick={(e) => {
                     if (isFeatureLocked) e.preventDefault()
+                    if (!isFeatureLocked && onMobileClose) onMobileClose()
                   }}
                   className={`
                     flex flex-col items-center justify-center gap-1 px-2 py-3 rounded-lg transition-colors relative

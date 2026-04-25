@@ -3,7 +3,7 @@
  * Separates admin.domain and app.domain traffic
  */
 
-export type AppDomain = 'admin' | 'app';
+export type AppDomain = 'admin' | 'app' | 'public';
 
 /**
  * Get current domain type
@@ -34,6 +34,11 @@ export const getCurrentDomain = (): AppDomain => {
     if (override === 'admin') return 'admin';
     return 'app';
   }
+
+  // Bare domain (e.g. replysys.com — no subdomain) = public marketing site
+  if (!host.includes('.') || host.split('.').length === 2) {
+    return 'public';
+  }
   
   // Default to app for any other domain
   return 'app';
@@ -51,6 +56,13 @@ export const isAdminDomain = (): boolean => {
  */
 export const isAppDomain = (): boolean => {
   return getCurrentDomain() === 'app';
+};
+
+/**
+ * Check if current domain is the public marketing site (no subdomain)
+ */
+export const isPublicDomain = (): boolean => {
+  return getCurrentDomain() === 'public';
 };
 
 /**
@@ -77,6 +89,9 @@ export const redirectToDomain = (targetDomain: AppDomain, path: string = '/') =>
     newHost = host.replace('admin.', targetDomain === 'admin' ? 'admin.' : 'app.');
   } else if (host.startsWith('app.')) {
     newHost = host.replace('app.', targetDomain === 'app' ? 'app.' : 'admin.');
+  } else if (!host.includes('.') || host.split('.').length === 2) {
+    // Bare domain (e.g. replysys.com) — prepend the target subdomain
+    newHost = `${targetDomain}.${host}`;
   } else if (host === 'localhost' || host.startsWith('127.')) {
     // For localhost, just change the search param
     window.location.href = `${protocol}//${host}${port}${path}?domain=${targetDomain}`;

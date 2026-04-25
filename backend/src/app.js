@@ -44,6 +44,7 @@ import { startPaymentStatusPoller } from './jobs/paymentStatusPoller.js';
 import jobRoutes from './routes/jobRoutes.js';
 import demoRoutes from './routes/demoRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
+import messagingMetricsRoutes from './routes/messagingMetricsRoutes.js';
 import crmRoutes from './routes/crmRoutes.js';
 import discountRoutes from './routes/discountRoutes.js';
 import externalApiRoutes from './routes/externalApiRoutes.js';
@@ -410,6 +411,9 @@ app.use('/api/jobs', requireJWT, jobRoutes);
 
 // Mount WhatsApp integration routes (Flow B: Embedded Signup)
 app.use('/api/integrations/whatsapp', requireJWT, whatsappRoutes);
+
+// Mount messaging metrics routes (tier and usage)
+app.use('/api/messaging-metrics', requireJWT, messagingMetricsRoutes);
 
 // Mount Live Chat routes (Real-time conversations and messaging)
 app.use('/api/integrations/whatsapp/conversations', requireJWT, liveChatConversationRoutes);

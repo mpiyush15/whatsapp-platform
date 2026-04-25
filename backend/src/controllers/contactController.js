@@ -9,20 +9,19 @@ import { ContactType } from '../constants/enums.js';
 export const createContact = async (req, res) => {
   try {
     const { accountId } = req.user;
-    const { name, phone, whatsappNumber, email, tags = [] } = req.body;
+    const { name, phone, whatsappNumber, email, tags = [], source = 'Manual' } = req.body;
 
     if (!phone && !whatsappNumber) {
       return sendValidationError(res, 'Phone or WhatsApp number required');
     }
 
-    const Contact = require('../models/Contact').default || require('../models/Contact');
-    
     const contact = await Contact.create({
       accountId,
       name: name || phone || whatsappNumber,
       phone: phone || whatsappNumber,
       whatsappNumber: whatsappNumber || phone,
       email,
+      source,
       type: 'customer',
       isOptedIn: true,
       optInDate: new Date(),

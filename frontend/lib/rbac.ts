@@ -130,12 +130,6 @@ export const getSidebarItems = (role: UserRole) => {
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT]
     },
     {
-      label: 'Broadcasts',
-      href: '/dashboard/broadcasts',
-      icon: 'Megaphone',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT]
-    },
-    {
       label: 'Chatbot',
       href: '/dashboard/chatbot',
       icon: 'Bot',

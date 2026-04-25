@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense, lazy } from "react"
 import { Button } from "@/components/ui/button"
 import { Phone, CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, CreditCard, BarChart3, Headset, Loader } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
-import { SettingsProvider, useSettings } from "@/lib/context/SettingsContext"
+import { useSettings } from "@/lib/context/SettingsContext"
 
 // PHASE 5: Dynamic imports for code splitting - reduce initial bundle
 const TemplatesTab = lazy(() => import("@/components/TemplatesTab"))
@@ -407,11 +407,6 @@ function SettingsPageContent() {
   )
 }
 
-// Main Settings Page - Wrapped with Provider
 export default function SettingsPage() {
-  return (
-    <SettingsProvider>
-      <SettingsPageContent />
-    </SettingsProvider>
-  )
+  return <SettingsPageContent />
 }

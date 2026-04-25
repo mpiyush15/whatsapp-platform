@@ -1,7 +1,7 @@
 'use client'
 
 import { useProject } from '@/lib/context/ProjectContext'
-import { Loader2, Phone, CheckCircle, AlertCircle, Plus } from 'lucide-react'
+import { Loader2, Phone, CheckCircle, AlertCircle, Plus, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
@@ -17,6 +17,18 @@ interface ConnectedPhone {
   verificationStatus?: string
 }
 
+interface MessagingMetrics {
+  tier: string
+  metaTier: string
+  tierLimit: number | string
+  messageCount: number
+  usagePercentage: number
+  remainingMessages: number | string
+  quality: string
+  status: string
+  phoneNumber?: string
+}
+
 export default function ProjectDashboard() {
   const { project, loading, error } = useProject()
   const params = useParams()
@@ -25,6 +37,8 @@ export default function ProjectDashboard() {
   const [connectedPhones, setConnectedPhones] = useState<ConnectedPhone[]>([])
   const [phonesLoading, setPhoneLoading] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [messagingMetrics, setMessagingMetrics] = useState<MessagingMetrics | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
 
   useEffect(() => {
     if (projectId) {
@@ -62,6 +76,7 @@ export default function ProjectDashboard() {
         const phones = result.phones || result.phoneNumbers || result.data?.phones || result.data?.phoneNumbers || []
         console.log('Connected phones found:', phones.length, phones)
         setConnectedPhones(phones)
+        await fetchMessagingMetrics(phones?.[0]?.phoneNumberId)
       } else {
         console.log('API error - Status:', response.status)
         const errorData = await response.json()
@@ -71,6 +86,52 @@ export default function ProjectDashboard() {
       console.error('Error fetching phones:', err)
     } finally {
       setPhoneLoading(false)
+    }
+  }
+
+  const fetchMessagingMetrics = async (resolvedPhoneNumberId?: string) => {
+    try {
+      setMetricsLoading(true)
+
+      let phoneNumberId = resolvedPhoneNumberId
+
+      // Fallback to first conversation phone number (same source used in contacts header)
+      if (!phoneNumberId) {
+        const convResponse = await fetch(`${API_URL}/conversations?limit=1`, {
+          headers: getHeaders()
+        })
+        if (convResponse.ok) {
+          const convData = await convResponse.json()
+          const conversations = convData.data?.conversations || convData.conversations || []
+          phoneNumberId = conversations?.[0]?.phoneNumberId
+        }
+      }
+
+      if (!phoneNumberId) {
+        setMessagingMetrics(null)
+        return
+      }
+
+      const metricsResponse = await fetch(`${API_URL}/messaging-metrics/${phoneNumberId}`, {
+        headers: getHeaders()
+      })
+
+      if (!metricsResponse.ok) {
+        setMessagingMetrics(null)
+        return
+      }
+
+      const metricsData = await metricsResponse.json()
+      if (metricsData?.success && metricsData?.data) {
+        setMessagingMetrics(metricsData.data)
+      } else {
+        setMessagingMetrics(null)
+      }
+    } catch (error) {
+      console.error('Error fetching dashboard messaging metrics:', error)
+      setMessagingMetrics(null)
+    } finally {
+      setMetricsLoading(false)
     }
   }
 
@@ -180,6 +241,94 @@ export default function ProjectDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column - Main Content (8 columns) */}
           <div className="lg:col-span-8 space-y-8">
+            {/* WhatsApp Messaging Quota */}
+            <div className="bg-white rounded-lg border border-gray-200 p-8">
+              <div className="flex items-center justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">WhatsApp Messaging Quota</h2>
+                  <p className="text-sm text-gray-500 mt-1">Real-time tier, usage and quality rating (24-hour window)</p>
+                </div>
+                <button
+                  onClick={() => fetchMessagingMetrics(connectedPhones?.[0]?.phoneNumberId)}
+                  disabled={metricsLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-sm disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw size={14} className={metricsLoading ? 'animate-spin' : ''} />
+                  {metricsLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              </div>
+
+              {metricsLoading && !messagingMetrics ? (
+                <div className="flex items-center gap-2 text-gray-500 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading messaging metrics...
+                </div>
+              ) : messagingMetrics ? (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Tier</p>
+                      <p className="text-lg font-bold text-gray-900 mt-1">{messagingMetrics.tier}</p>
+                      <p className="text-xs text-gray-500 mt-1">{messagingMetrics.metaTier}</p>
+                    </div>
+
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Used</p>
+                      <p className="text-lg font-bold text-gray-900 mt-1">{messagingMetrics.messageCount}/{messagingMetrics.tierLimit}</p>
+                      <p className="text-xs text-gray-500 mt-1">Unique contacts (24h)</p>
+                    </div>
+
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Remaining</p>
+                      <p className="text-lg font-bold text-gray-900 mt-1">{messagingMetrics.remainingMessages}</p>
+                      <p className="text-xs text-gray-500 mt-1">Until next window roll</p>
+                    </div>
+
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <p className="text-xs uppercase tracking-wide text-gray-500">Quality</p>
+                      <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        messagingMetrics.quality === 'GREEN'
+                          ? 'bg-green-100 text-green-700'
+                          : messagingMetrics.quality === 'YELLOW'
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : messagingMetrics.quality === 'RED'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {messagingMetrics.quality === 'GREEN' ? '🟢' : messagingMetrics.quality === 'YELLOW' ? '🟡' : messagingMetrics.quality === 'RED' ? '🔴' : '⚪'}
+                        {messagingMetrics.quality}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+                      <span>Usage Percentage</span>
+                      <span className="font-semibold">{messagingMetrics.usagePercentage}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          messagingMetrics.usagePercentage < 50
+                            ? 'bg-green-500'
+                            : messagingMetrics.usagePercentage < 80
+                            ? 'bg-yellow-500'
+                            : 'bg-red-500'
+                        }`}
+                        style={{ width: `${messagingMetrics.usagePercentage}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {messagingMetrics.status === 'fallback_db_only' && (
+                    <p className="text-xs text-gray-500 italic">Meta is temporarily unavailable. Showing DB-based usage.</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Messaging metrics unavailable. Connect a WhatsApp number to enable quota tracking.</p>
+              )}
+            </div>
+
             {/* Getting Started */}
             <div className="bg-white rounded-lg border border-gray-200 p-8">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Getting Started</h2>

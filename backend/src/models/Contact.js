@@ -29,6 +29,12 @@ const contactSchema = new mongoose.Schema({
     required: true
   },
   email: String,
+
+  // Contact origin/source for UI reporting
+  source: {
+    type: String,
+    default: 'Manual'
+  },
   
   // Type
   type: {

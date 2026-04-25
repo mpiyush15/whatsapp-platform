@@ -29,7 +29,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const accountId = req.user.accountId;
-    const { phone, name, email, tags = [] } = req.body;
+    const { phone, name, email, tags = [], source = 'Manual' } = req.body;
 
     if (!phone || !name) {
       return sendError(res, 'Phone and name required', 400);
@@ -51,6 +51,7 @@ router.post('/', async (req, res) => {
       name,
       email: email || null,
       tags,
+      source,
       createdAt: new Date(),
       updatedAt: new Date()
     };

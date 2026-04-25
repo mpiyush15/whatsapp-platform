@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { useSettings } from "@/lib/context/SettingsContext"
+import TemplateEditForm, { type TemplateFormData } from "@/components/TemplateEditForm"
 import {
   Plus,
   RefreshCw,
@@ -64,6 +65,8 @@ interface Template {
   hasMedia?: boolean
   mediaType?: string
   mediaUrl?: string
+  mediaFileName?: string
+  mediaFilePath?: string
   headerText?: string
   footerText?: string
   components?: any[]
@@ -96,6 +99,8 @@ interface FormData {
   headerText: string
   footerText: string
   buttons: any[]
+  variableType: 'Number' | 'Text'
+  mediaSample: 'none' | 'image' | 'video' | 'document' | 'location'
 }
 
 export default function TemplatesTab({ projectId }: { projectId: string }) {
@@ -104,12 +109,15 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [createFlowStep, setCreateFlowStep] = useState<1 | 2 | 3>(1)
+  const [templateType, setTemplateType] = useState<'default' | 'catalogue' | 'calling_permissions_request'>('default')
   const [showViewModal, setShowViewModal] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'pending' | 'rejected' | 'draft'>('all')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [localMediaPreviewUrl, setLocalMediaPreviewUrl] = useState('')
   const itemsPerPage = 10
   
   // Get settings context to connect buttons to topbar
@@ -127,7 +135,9 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
     mediaInputType: 'url',
     headerText: '',
     footerText: '',
-    buttons: []
+    buttons: [],
+    variableType: 'Number',
+    mediaSample: 'none',
   })
 
   // Setup context callbacks on mount and when functions change
@@ -143,6 +153,15 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
     }
   }, [setShowSyncButton, setShowCreateButton, setSyncClick, setCreateClick])
 
+  useEffect(() => {
+    if (formData.mediaFile) {
+      const objectUrl = URL.createObjectURL(formData.mediaFile)
+      setLocalMediaPreviewUrl(objectUrl)
+      return () => URL.revokeObjectURL(objectUrl)
+    }
+    setLocalMediaPreviewUrl('')
+  }, [formData.mediaFile])
+
   // Fetch templates
   const fetchTemplates = async () => {
     try {
@@ -156,21 +175,21 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
         let templatesList: Template[] = []
         
         // Handle different response formats
-        if (Array.isArray(data)) {
-          templatesList = data
-        } else if (data.templates && Array.isArray(data.templates)) {
-          templatesList = data.templates
-        } else if (data.data && Array.isArray(data.data)) {
-          templatesList = data.data
-        } else if (typeof data === 'object') {
-          // Fallback: ensure it's an array
-          templatesList = []
+        // sendSuccess wraps in { success, data: { templates, stats } }
+        const payload = data.data || data
+        if (Array.isArray(payload)) {
+          templatesList = payload
+        } else if (payload.templates && Array.isArray(payload.templates)) {
+          templatesList = payload.templates
+        } else if (payload.data && Array.isArray(payload.data)) {
+          templatesList = payload.data
         }
         
         setTemplates(templatesList)
 
-        // Calculate stats
-        const stats = {
+        // Calculate stats from returned stats or compute locally
+        const returnedStats = payload.stats
+        const stats = returnedStats || {
           approved: templatesList.filter((t: Template) => t.status === TemplateStatus.APPROVED).length,
           pending: templatesList.filter((t: Template) => t.status === TemplateStatus.PENDING).length,
           rejected: templatesList.filter((t: Template) => t.status === TemplateStatus.REJECTED).length,
@@ -209,6 +228,9 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
         formDataToSend.append('headerText', formData.headerText)
         formDataToSend.append('footerText', formData.footerText)
         formDataToSend.append('projectId', projectId)
+        formDataToSend.append('mediaSample', formData.mediaSample || 'none')
+        formDataToSend.append('variableType', formData.variableType || 'Number')
+        formDataToSend.append('buttons', JSON.stringify(formData.buttons || []))
         formDataToSend.append('mediaFile', formData.mediaFile)
         
         const response = await fetch(`${API_URL}/templates`, {
@@ -221,11 +243,11 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
 
         const result = await response.json()
         if (response.ok) {
-          alert(result.message)
+          alert((result.data?.message || result.message) ?? 'Template saved as draft!')
           fetchTemplates()
           closeModal()
         } else {
-          alert(result.message || "Failed to create template")
+          alert(result.message || result.error || "Failed to create template")
         }
       } else {
         // Send as JSON if using URL
@@ -237,11 +259,11 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
 
         const result = await response.json()
         if (response.ok) {
-          alert(result.message)
+          alert((result.data?.message || result.message) ?? 'Template saved as draft!')
           fetchTemplates()
           closeModal()
         } else {
-          alert(result.message || "Failed to create template")
+          alert(result.message || result.error || "Failed to create template")
         }
       }
     } catch (error) {
@@ -283,7 +305,23 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
 
       const result = await response.json()
       if (response.ok) {
-        alert(`✅ Template submitted to Meta successfully!\nTemplate ID: ${result.metaTemplateId}`)
+        const submitPayload = result.data || result
+        const submittedMetaId = submitPayload.metaTemplateId || submitPayload.template?.metaTemplateId || 'N/A'
+
+        // Auto-sync immediately so status updates quickly after submit
+        const syncResponse = await fetch(`${API_URL}/settings/templates/sync?projectId=${projectId}`, {
+          method: 'POST',
+          headers: getHeaders(),
+        })
+        const syncResult = await syncResponse.json()
+        const syncPayload = syncResult.data || syncResult
+
+        if (syncResponse.ok) {
+          alert(`✅ Template submitted to Meta successfully!\nTemplate ID: ${submittedMetaId}\n\n🔄 Synced: ${syncPayload.synced ?? 0} (Created: ${syncPayload.created ?? 0}, Updated: ${syncPayload.updated ?? 0})`)
+        } else {
+          alert(`✅ Template submitted to Meta successfully!\nTemplate ID: ${submittedMetaId}\n\n⚠️ Auto-sync failed. Please click Sync.`)
+        }
+
         fetchTemplates()
       } else {
         alert(`❌ Failed to submit template: ${result.message || "Unknown error"}`)
@@ -305,7 +343,8 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
 
       const result = await response.json()
       if (response.ok) {
-        alert(`✅ ${result.message}\n\n📊 Created: ${result.created}\n🔄 Updated: ${result.updated}\n📈 Total Synced: ${result.synced}`)
+        const payload = result.data || result
+        alert(`✅ ${result.message || 'Templates synced'}\n\n📊 Created: ${payload.created ?? 0}\n🔄 Updated: ${payload.updated ?? 0}\n📈 Total Synced: ${payload.synced ?? 0}`)
         fetchTemplates()
       } else {
         alert(`❌ ${result.message || "Failed to sync templates"}`)
@@ -321,6 +360,8 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
   // Modal handlers
   const openCreateModal = () => {
     setSelectedTemplate(null)
+    setCreateFlowStep(1)
+    setTemplateType('default')
     setFormData({
       name: '',
       language: 'en',
@@ -333,7 +374,9 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
       mediaInputType: 'url',
       headerText: '',
       footerText: '',
-      buttons: []
+      buttons: [],
+      variableType: 'Number',
+      mediaSample: 'none',
     })
     setShowModal(true)
   }
@@ -347,6 +390,7 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
     setShowModal(false)
     setShowViewModal(false)
     setSelectedTemplate(null)
+    setCreateFlowStep(1)
   }
 
   useEffect(() => {
@@ -389,6 +433,138 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
   const extractVariables = (content: string): number => {
     const matches = content.match(/\{\{(\d+)\}\}/g)
     return matches ? matches.length : 0
+  }
+
+  const renderMetaMobilePreview = (isLive = false) => {
+    const liveContent = formData.content?.trim()
+    const liveFooter = formData.footerText?.trim()
+    const liveHeader = formData.headerText?.trim()
+    const liveImage = localMediaPreviewUrl || formData.mediaUrl?.trim()
+    const quickButtons = (formData.buttons || []).slice(0, 2)
+
+    const buttonLabel1 = quickButtons[0]?.text?.trim()
+    const buttonLabel2 = quickButtons[1]?.text?.trim()
+
+    return (
+    <div className="w-full">
+      <h4 className="font-semibold text-gray-900 mb-3">Template preview</h4>
+      <div className="rounded-lg border border-gray-200 p-3 bg-[#ece5dd]">
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          {formData.category === 'marketing' && templateType === 'default' && (
+            <>
+              <img
+                src={isLive && liveImage ? liveImage : "https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=400&q=80"}
+                alt="Fresh groceries"
+                className="w-full h-[120px] object-cover"
+              />
+              <div className="px-3 py-2">
+                {isLive && liveHeader && <p className="text-[11px] text-gray-500 leading-snug mb-1">{liveHeader}</p>}
+                <p className="text-[12px] text-gray-800 leading-snug whitespace-pre-wrap">
+                  {isLive && liveContent ? liveContent : 'Hey there! Check out our fresh groceries now!'}
+                </p>
+                {!isLive && <p className="text-[12px] text-gray-800 leading-snug mt-1.5">Use code <span className="font-bold">HEALTH</span> to get additional 10% off on your entire purchase.</p>}
+                {isLive && liveFooter && <p className="text-[11px] text-gray-500 leading-snug mt-1.5">{liveFooter}</p>}
+                <p className="text-[10px] text-gray-400 text-right mt-1.5">11:59 ✓✓</p>
+              </div>
+              <div className="border-t border-gray-100">
+                {isLive && formData.buttons && formData.buttons.length > 0 ? (
+                  formData.buttons.slice(0, 3).map((btn, i) => (
+                    <div key={btn.id || i}>
+                      {i > 0 && <div className="border-t border-gray-100" />}
+                      <button className="w-full py-1.5 text-[12px] font-semibold" style={{ color: '#0096de' }}>
+                        {btn.type === 'URL' ? '↗' : btn.type === 'PHONE_NUMBER' ? '📞' : '↩'}{' '}
+                        {btn.text?.trim() || 'Button'}
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    <button className="w-full py-1.5 text-[12px] font-semibold" style={{ color: '#0096de' }}>↗ {buttonLabel1 || 'Shop now'}</button>
+                    <div className="border-t border-gray-100" />
+                    <button className="w-full py-1.5 text-[12px] font-semibold" style={{ color: '#0096de' }}>📋 {buttonLabel2 || 'Copy code'}</button>
+                  </>
+                )}
+                {isLive && formData.buttons && formData.buttons.length > 3 && (
+                  <div>
+                    <div className="border-t border-gray-100" />
+                    <button className="w-full py-1.5 text-[12px] font-semibold text-gray-500">See all options</button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {formData.category === 'marketing' && templateType === 'catalogue' && (
+            <>
+              <div className="flex items-start gap-2 p-2 border-b border-gray-100">
+                <img
+                  src="https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=120&q=80"
+                  alt="Catalog thumbnail"
+                  className="w-12 h-12 object-cover rounded"
+                />
+                <div>
+                  <p className="text-[11px] font-bold text-gray-900 leading-tight">View Jasper Market&apos;s Catalog on WhatsApp</p>
+                  <p className="text-[10px] text-gray-500 leading-tight mt-0.5">Browse pictures and details of our offerings.</p>
+                </div>
+              </div>
+              <div className="px-3 py-2">
+                <p className="text-[12px] text-gray-800 leading-snug whitespace-pre-wrap">{isLive && liveContent ? liveContent : 'Discover our latest products and bestsellers in our catalog. Browse and shop with ease on WhatsApp #happyshopping!'}</p>
+                <p className="text-[10px] text-gray-400 text-right mt-1.5">11:59 ✓✓</p>
+              </div>
+              <div className="border-t border-gray-100">
+                <button className="w-full py-1.5 text-[12px] font-semibold" style={{ color: '#0096de' }}>View catalog</button>
+              </div>
+            </>
+          )}
+
+          {((formData.category === 'marketing' && templateType === 'calling_permissions_request') || (formData.category === 'utility' && templateType === 'calling_permissions_request')) && (
+            <>
+              <div className="flex items-start gap-2 px-3 pt-2.5 pb-1">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#e8f5e9' }}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: '#25d366' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[12px] font-bold text-gray-900 leading-tight">Can Jasper&apos;s Market call you?</p>
+                  <p className="text-[11px] text-gray-600 leading-snug mt-0.5">You can update your preference anytime in the business profile.</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-400 text-right px-3 pb-1">11:57 ✓✓</p>
+              <div className="border-t border-gray-100">
+                <button className="w-full py-1.5 text-[12px] font-semibold" style={{ color: '#25d366' }}>Choose preference ▾</button>
+              </div>
+            </>
+          )}
+
+          {formData.category === 'utility' && templateType === 'default' && (
+            <>
+              <div className="px-3 py-2">
+                <p className="text-[12px] text-gray-800 leading-snug whitespace-pre-wrap">{isLive && liveContent ? liveContent : 'Good news! Your order 23KFEJJ2312 has shipped!\n\nHere\'s your tracking information, please check link below.'}</p>
+                {isLive && liveFooter && <p className="text-[11px] text-gray-500 leading-snug mt-1.5">{liveFooter}</p>}
+                <p className="text-[10px] text-gray-400 text-right mt-1.5">11:59 ✓✓</p>
+              </div>
+              <div className="border-t border-gray-100">
+                <button className="w-full py-1.5 text-[12px] font-semibold" style={{ color: '#0096de' }}>{buttonLabel1 || 'Track shipment'}</button>
+              </div>
+            </>
+          )}
+
+          {formData.category === 'authentication' && (
+            <>
+              <div className="px-3 py-2">
+                <p className="text-[12px] text-gray-800 leading-snug whitespace-pre-wrap">{isLive && liveContent ? liveContent : '123456 is your verification code. For your security, do not share this code.'}</p>
+                <p className="text-[10px] text-gray-400 text-right mt-1.5">11:59 ✓✓</p>
+              </div>
+              <div className="border-t border-gray-100">
+                <button className="w-full py-1.5 text-[12px] font-semibold" style={{ color: '#0096de' }}>📋 {buttonLabel1 || 'Copy code'}</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
   }
 
   return (
@@ -577,484 +753,366 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
     </div>
 
     <>
-      {/* Create Modal - Right Drawer with Glass Blur */}
+      {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50">
-          {/* Glass Blur Background */}
-          <div 
-            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-            onClick={closeModal}
-          />
-          
-          {/* Right Drawer */}
-          <div className="absolute right-0 top-0 bottom-0 w-full max-w-2xl bg-white shadow-2xl overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white/95 backdrop-blur-sm">
-              <h2 className="text-2xl font-bold text-gray-900">Create WhatsApp Template</h2>
-              <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-lg transition">
-                <X className="h-6 w-6 text-gray-600" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-6">
-              {/* Info Box */}
-              <div className="bg-gradient-to-r from-blue-50 to-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 className="font-semibold text-blue-900 mb-2">📋 Template Guidelines</h3>
-                <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                  <li>Templates must be approved by Meta before use</li>
-                  <li>Use variables with {`{{1}}, {{2}}`}, etc. for dynamic content (names, URLs, emails, etc.)</li>
-                  <li>Website URLs can be sent as variables - just map to "Website URL" field</li>
-                  <li>Category: utility for OTPs/updates, marketing for promotions</li>
-                  <li>Keep messages clear and concise</li>
-                </ul>
-              </div>
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={closeModal} />
 
-              {/* Template Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Template Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                  placeholder="order_confirmation"
-                />
-                <p className="text-xs text-gray-500 mt-1">Use lowercase and underscores only</p>
-              </div>
-
-              {/* Category */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                >
-                  <option value="utility">Utility - Transactional updates</option>
-                  <option value="marketing">Marketing - Promotional messages</option>
-                  <option value="authentication">Authentication - OTPs and verification</option>
-                </select>
-              </div>
-
-              {/* Language */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
-                <select
-                  value={formData.language}
-                  onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                >
-                  <option value="en">English</option>
-                  <option value="en_US">English (US)</option>
-                  <option value="hi">Hindi</option>
-                  <option value="es">Spanish</option>
-                </select>
-              </div>
-
-              {/* Media Toggle */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="hasMedia"
-                  checked={formData.hasMedia}
-                  onChange={(e) => setFormData({ ...formData, hasMedia: e.target.checked })}
-                  className="h-4 w-4 text-green-600 rounded"
-                />
-                <label htmlFor="hasMedia" className="text-sm font-medium text-gray-700">
-                  Include Media (Header)
-                </label>
-              </div>
-
-              {/* Media Configuration */}
-              {formData.hasMedia && (
-                <div className="border border-gray-200 rounded-lg p-4 space-y-4 bg-gray-50">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Media Type</label>
-                    <select
-                      value={formData.mediaType}
-                      onChange={(e) => setFormData({ ...formData, mediaType: e.target.value as any })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                    >
-                      <option value="IMAGE">Image</option>
-                      <option value="VIDEO">Video</option>
-                      <option value="DOCUMENT">Document</option>
-                    </select>
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-full max-w-5xl h-[88vh] bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Create template</h2>
+                  <div className="mt-2 flex items-center gap-3 text-sm">
+                    <span className={`font-medium ${createFlowStep === 1 ? 'text-blue-600' : 'text-gray-500'}`}>1. Set up template</span>
+                    <span className="text-gray-300">•</span>
+                    <span className={`font-medium ${createFlowStep === 2 ? 'text-blue-600' : 'text-gray-500'}`}>2. Edit template</span>
+                    <span className="text-gray-300">•</span>
+                    <span className={`font-medium ${createFlowStep === 3 ? 'text-blue-600' : 'text-gray-500'}`}>3. Submit for review</span>
                   </div>
+                </div>
+                <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-lg transition">
+                  <X className="h-6 w-6 text-gray-600" />
+                </button>
+              </div>
 
-                  {/* Input Type Toggle: File or URL */}
-                  <div className="flex gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="mediaInputType"
-                        value="file"
-                        checked={formData.mediaInputType === 'file'}
-                        onChange={(e) => setFormData({ ...formData, mediaInputType: 'file' })}
-                        className="h-4 w-4 text-green-600"
-                      />
-                      <span className="text-sm font-medium text-gray-700">📎 Upload File</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="mediaInputType"
-                        value="url"
-                        checked={formData.mediaInputType === 'url'}
-                        onChange={(e) => setFormData({ ...formData, mediaInputType: 'url' })}
-                        className="h-4 w-4 text-green-600"
-                      />
-                      <span className="text-sm font-medium text-gray-700">🔗 Use URL</span>
-                    </label>
-                  </div>
+              {createFlowStep === 1 ? (
+                <div className="flex-1 overflow-y-auto bg-[#f2f5fb] p-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                    <div className="lg:col-span-2 bg-white rounded-lg border border-gray-200 p-5 h-fit">
+                      <h3 className="text-2xl font-semibold text-gray-900 mb-2">Set up your template</h3>
+                      <p className="text-sm text-gray-600 mb-4">Choose the category that best describes your template, then choose the type.</p>
 
-                  {/* File Upload Input */}
-                  {formData.mediaInputType === 'file' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Attach {formData.mediaType.charAt(0) + formData.mediaType.slice(1).toLowerCase()} *
-                      </label>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-green-500 transition cursor-pointer bg-white">
-                        <input
-                          type="file"
-                          accept={
-                            formData.mediaType === 'image' 
-                              ? 'image/jpeg,image/png,image/gif,image/webp' 
-                              : formData.mediaType === 'video' 
-                              ? 'video/mp4,video/quicktime'
-                              : 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                          }
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              setFormData({ ...formData, mediaFile: e.target.files[0] })
-                            }
-                          }}
-                          className="hidden"
-                          id="mediaFileInput"
-                        />
-                        <label htmlFor="mediaFileInput" className="cursor-pointer">
-                          {formData.mediaFile ? (
-                            <div className="text-sm">
-                              <p className="text-green-600 font-semibold">✓ {formData.mediaFile.name}</p>
-                              <p className="text-gray-500 text-xs mt-1">
-                                ({(formData.mediaFile.size / 1024 / 1024).toFixed(2)} MB)
-                              </p>
-                            </div>
-                          ) : (
-                            <div>
-                              <p className="text-gray-500">
-                                {formData.mediaType === 'image' 
-                                  ? '📷 Click to upload image (JPG, PNG, GIF, WebP)'
-                                  : formData.mediaType === 'video'
-                                  ? '🎥 Click to upload video (MP4, MOV)'
-                                  : '📄 Click to upload document (PDF, DOC, DOCX)'}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-1">Max 16 MB</p>
-                            </div>
-                          )}
+                      <div className="grid grid-cols-3 border border-gray-300 rounded-lg overflow-hidden mb-4">
+                        {[
+                          { id: 'marketing', label: 'Marketing' },
+                          { id: 'utility', label: 'Utility' },
+                          { id: 'authentication', label: 'Authentication' },
+                        ].map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              setFormData({ ...formData, category: c.id as any })
+                              setTemplateType('default')
+                            }}
+                            className={`px-4 py-2 text-sm font-medium border-r last:border-r-0 ${formData.category === c.id ? 'bg-blue-50 text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${templateType === 'default' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                          <input type="radio" name="templateType" checked={templateType === 'default'} onChange={() => setTemplateType('default')} className="mt-1" />
+                          <div>
+                            <p className="font-semibold text-gray-900">Default</p>
+                            <p className="text-xs text-gray-600">Send normal templates with media and custom buttons.</p>
+                          </div>
                         </label>
+
+                        {formData.category === 'marketing' && (
+                          <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${templateType === 'catalogue' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                            <input type="radio" name="templateType" checked={templateType === 'catalogue'} onChange={() => setTemplateType('catalogue')} className="mt-1" />
+                            <div>
+                              <p className="font-semibold text-gray-900">Catalogue</p>
+                              <p className="text-xs text-gray-600">Drive sales by linking products from your catalogue.</p>
+                            </div>
+                          </label>
+                        )}
+
+                        {(formData.category === 'marketing' || formData.category === 'utility') && (
+                          <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${templateType === 'calling_permissions_request' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                            <input type="radio" name="templateType" checked={templateType === 'calling_permissions_request'} onChange={() => setTemplateType('calling_permissions_request')} className="mt-1" />
+                            <div>
+                              <p className="font-semibold text-gray-900">Calling permissions request</p>
+                              <p className="text-xs text-gray-600">Ask customers if you can call them on WhatsApp.</p>
+                            </div>
+                          </label>
+                        )}
                       </div>
                     </div>
-                  )}
 
-                  {/* URL Input */}
-                  {formData.mediaInputType === 'url' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Media URL (Sample) *
-                      </label>
-                      <input
-                        type="url"
-                        value={formData.mediaUrl}
-                        onChange={(e) => setFormData({ ...formData, mediaUrl: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                        placeholder="https://example.com/image.jpg"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Sample URL for Meta approval. Actual media URL will be provided when sending.
-                      </p>
+                    <div className="bg-white rounded-lg border border-gray-200 p-4 h-fit">
+                      {renderMetaMobilePreview(false)}
                     </div>
-                  )}
-
-                  {/* Header Text for Video/Document */}
-                  {formData.mediaType !== 'image' && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Header Text (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.headerText}
-                        onChange={(e) => setFormData({ ...formData, headerText: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                        placeholder="Document title or video caption"
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-hidden flex">
+                  <div className="flex-1 overflow-y-auto bg-[#f2f5fb] p-6">
+                    <div className="bg-white rounded-lg border border-gray-200">
+                      <TemplateEditForm
+                        formData={formData as unknown as TemplateFormData}
+                        setFormData={(d) => setFormData(d as unknown as FormData)}
+                        category={formData.category}
+                        templateType={templateType}
                       />
                     </div>
+                  </div>
+
+                  <div className="w-[260px] flex-shrink-0 border-l bg-[#f2f5fb] overflow-y-auto px-4 py-5">
+                    {renderMetaMobilePreview(true)}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 p-4 border-t justify-between bg-white">
+                <Button variant="outline" onClick={closeModal} className="border-gray-300">Discard</Button>
+                <div className="flex gap-2">
+                  {createFlowStep === 2 && (
+                    <Button variant="outline" onClick={() => setCreateFlowStep(1)} className="border-gray-300">Back</Button>
+                  )}
+                  {createFlowStep === 1 ? (
+                    <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setCreateFlowStep(2)}>Next</Button>
+                  ) : (
+                    <Button className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold" onClick={createTemplate} disabled={!formData.name || !formData.content}>
+                      Create Template
+                    </Button>
                   )}
                 </div>
-              )}
-
-              {/* Content */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Message Content *
-                </label>
-                <textarea
-                  value={formData.content}
-                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 font-mono text-sm"
-                  placeholder="Hello {{1}}, your order {{2}} has been confirmed!"
-                  rows={6}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Variables found: {extractVariables(formData.content)}
-                </p>
               </div>
-
-              {/* Variable Mappings - Show when there are variables */}
-              {extractVariables(formData.content) > 0 && (
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-300 rounded-xl p-6 shadow-sm">
-                  <div className="flex items-center gap-2 mb-4">
-                    <p className="text-base font-bold text-indigo-900">
-                      🔗 Variable to Field Mapping
-                    </p>
-                    <span className="bg-indigo-300 text-indigo-900 text-xs px-3 py-1 rounded-full font-bold">
-                      {extractVariables(formData.content)} variables
-                    </span>
-                  </div>
-                  <p className="text-sm text-indigo-800 mb-4">
-                    Define which contact field each variable will use:
-                  </p>
-                  
-                  {/* Mapping Display */}
-                  <div className="space-y-3">
-                    {Array.from({ length: extractVariables(formData.content) }, (_, i) => (
-                      <div key={i + 1} className="bg-white rounded-lg border-2 border-indigo-200 p-4 hover:border-indigo-400 transition">
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="flex items-center justify-center w-8 h-8 bg-indigo-600 text-white rounded-lg font-bold text-sm">
-                            {i + 1}
-                          </div>
-                          <p className="font-semibold text-gray-900">Variable {i + 1}</p>
-                          <span className="bg-indigo-100 text-indigo-700 px-2 py-1 text-xs rounded font-mono">
-                            Variable#{i + 1}
-                          </span>
-                        </div>
-                        
-                        <div className="ml-11 space-y-2">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">
-                              What does this variable represent?
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="e.g., Customer Name, Order ID, Amount, Email"
-                              className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                            />
-                          </div>
-                          
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">
-                              Which contact field to use?
-                            </label>
-                            <select className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white font-medium">
-                              <option value="">-- Select contact field --</option>
-                              <option value="name">👤 Name</option>
-                              <option value="email">📧 Email</option>
-                              <option value="phone">📱 Phone</option>
-                              <option value="website_url">🌐 Website URL</option>
-                              <option value="whatsappNumber">💬 WhatsApp Number</option>
-                              <option value="type">🏷️ Contact Type</option>
-                              <option value="custom">⚙️ Custom Field</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* Example */}
-                  <div className="mt-4 bg-indigo-100 border-l-4 border-indigo-600 p-3 rounded">
-                    <p className="text-xs font-semibold text-indigo-900 mb-2">📌 Examples:</p>
-                    <p className="text-xs text-indigo-800 mb-2">
-                      • Variable 1 = Name (from name field) and Variable 2 = Order ID (from custom field)
-                    </p>
-                    <p className="text-xs text-indigo-800">
-                      • Variable 1 = Website URL (from website_url field) to send dynamic links to customers
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Show hint when no variables */}
-              {extractVariables(formData.content) === 0 && formData.content && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <p className="text-xs text-yellow-800">
-                    ℹ️ Add variables like {'{'}'{'{'}1{'}'}, {'{'}'{'{'}2{'}}{'}') to enable field mappings
-                  </p>
-                </div>
-              )}
-
-              {/* Footer Text */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Footer Text (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={formData.footerText}
-                  onChange={(e) => setFormData({ ...formData, footerText: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600"
-                  placeholder="Small text at the bottom (e.g., 'Reply STOP to unsubscribe')"
-                  maxLength={60}
-                />
-                <p className="text-xs text-gray-500 mt-1">Maximum 60 characters</p>
-              </div>
-
-              {/* Preview */}
-              {formData.content && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">Preview:</p>
-                  <div className="bg-white rounded-lg p-3 border border-gray-200">
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{formData.content}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 p-6 border-t justify-end sticky bottom-0 bg-white/95 backdrop-blur-sm">
-              <Button variant="outline" onClick={closeModal} className="border-gray-300">
-                Cancel
-              </Button>
-              <Button 
-                className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold" 
-                onClick={createTemplate}
-                disabled={!formData.name || !formData.content}
-              >
-                Create Template
-              </Button>
             </div>
           </div>
         </div>
       )}
 
       {/* View Modal */}
-      {showViewModal && selectedTemplate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b sticky top-0 bg-white">
-              <h2 className="text-xl font-semibold text-gray-900">Template Details</h2>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Name</p>
-                  <p className="font-medium text-gray-900">{selectedTemplate.name}</p>
+      {showViewModal && selectedTemplate && (() => {
+        const t = selectedTemplate
+        const headerComp = t.components?.find((c: any) => c.type === 'HEADER')
+        const bodyComp   = t.components?.find((c: any) => c.type === 'BODY')
+        const footerComp = t.components?.find((c: any) => c.type === 'FOOTER')
+        const buttonsComp = t.components?.find((c: any) => c.type === 'BUTTONS')
+        const mediaUrl   = t.mediaUrl || headerComp?.example?.header_handle?.[0] || ''
+        const bodyText   = bodyComp?.text || t.content || ''
+        const footerText = footerComp?.text || t.footerText || ''
+        const headerText = headerComp?.format === 'TEXT' ? (headerComp.text || t.headerText || '') : ''
+        const hasImage   = headerComp?.format === 'IMAGE' || t.mediaType === 'image'
+        const hasVideo   = headerComp?.format === 'VIDEO' || t.mediaType === 'video'
+        const hasDoc     = headerComp?.format === 'DOCUMENT' || t.mediaType === 'document'
+        const buttons    = buttonsComp?.buttons || []
+        const statusColors: Record<string, string> = {
+          approved: 'bg-green-100 text-green-700',
+          pending:  'bg-orange-100 text-orange-700',
+          rejected: 'bg-red-100 text-red-700',
+          draft:    'bg-gray-100 text-gray-600',
+        }
+        return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[92vh] overflow-hidden">
+            {/* Header bar */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+                  </svg>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Status</p>
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    selectedTemplate.status === TemplateStatus.APPROVED
-                      ? "bg-green-100 text-green-700"
-                      : selectedTemplate.status === TemplateStatus.PENDING
-                      ? "bg-orange-100 text-orange-700"
-                      : selectedTemplate.status === TemplateStatus.REJECTED
-                      ? "bg-red-100 text-red-700"
-                      : "bg-gray-100 text-gray-700"
-                  }`}>
-                    {selectedTemplate.status}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Category</p>
-                  <p className="font-medium text-gray-900">{selectedTemplate.category}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Language</p>
-                  <p className="font-medium text-gray-900">{selectedTemplate.language}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Usage Count</p>
-                  <p className="font-medium text-gray-900">{selectedTemplate.usageCount || 0} times</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Last Used</p>
-                  <p className="font-medium text-gray-900">{formatDate(selectedTemplate.lastUsedAt)}</p>
+                  <h2 className="text-base font-bold text-gray-900">{t.name}</h2>
+                  <p className="text-xs text-gray-500 capitalize">{t.category} • {t.language?.toUpperCase()}</p>
                 </div>
               </div>
+              <div className="flex items-center gap-3">
+                <span className={`px-2.5 py-1 text-xs font-semibold rounded-full capitalize ${statusColors[t.status] || 'bg-gray-100 text-gray-600'}`}>
+                  {t.status}
+                </span>
+                <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
 
-              {/* Display components if available */}
-              {selectedTemplate.components && selectedTemplate.components.length > 0 && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-2">Template Components</p>
-                  <div className="space-y-2">
-                    {selectedTemplate.components.map((comp: any, idx: number) => (
-                      <div key={idx} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-semibold text-blue-600 uppercase">{comp.type}</span>
-                          {comp.format && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{comp.format}</span>
-                          )}
+            {/* Body: info left + preview right */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left: template info */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {/* Rejection banner */}
+                {t.status === TemplateStatus.REJECTED && t.rejectedReason && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
+                    <span className="text-red-500 text-lg">⚠️</span>
+                    <div>
+                      <p className="text-sm font-semibold text-red-800">Rejected by Meta</p>
+                      <p className="text-sm text-red-700 mt-0.5">{t.rejectedReason}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Stats row */}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Usage Count', value: `${t.usageCount || 0} times` },
+                    { label: 'Last Used', value: formatDate(t.lastUsedAt) },
+                    { label: 'Created', value: formatDate(t.createdAt) },
+                  ].map(item => (
+                    <div key={item.label} className="bg-gray-50 rounded-xl p-3">
+                      <p className="text-xs text-gray-500 mb-0.5">{item.label}</p>
+                      <p className="text-sm font-semibold text-gray-800">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Header section */}
+                {(headerText || hasImage || hasVideo || hasDoc) && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Header</p>
+                    {headerText && (
+                      <div className="bg-gray-50 rounded-xl p-3 text-sm font-medium text-gray-800">{headerText}</div>
+                    )}
+                    {(hasImage || hasVideo || hasDoc) && (
+                      <div className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+                        <span className="text-2xl">{hasImage ? '🖼️' : hasVideo ? '🎬' : '📄'}</span>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 capitalize">{t.mediaType} attachment</p>
+                          {t.mediaFileName && <p className="text-xs text-gray-500 mt-0.5">{t.mediaFileName}</p>}
                         </div>
-                        {comp.text && (
-                          <p className="text-sm text-gray-900 font-mono">{comp.text}</p>
-                        )}
-                        {comp.example && comp.example.header_handle && (
-                          <div className="mt-2">
-                            <p className="text-xs text-gray-500 mb-1">Sample Media URL:</p>
-                            <a 
-                              href={comp.example.header_handle[0]} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-xs text-blue-600 hover:underline break-all"
-                            >
-                              {comp.example.header_handle[0]}
-                            </a>
-                          </div>
+                        {mediaUrl && (
+                          <a href={mediaUrl} target="_blank" rel="noopener noreferrer"
+                            className="ml-auto text-xs text-blue-600 hover:underline font-medium">
+                            View ↗
+                          </a>
                         )}
                       </div>
-                    ))}
+                    )}
+                  </div>
+                )}
+
+                {/* Body */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Message Body</p>
+                  <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                    {bodyText}
                   </div>
                 </div>
-              )}
 
-              <div>
-                <p className="text-sm text-gray-600 mb-2">Content</p>
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <p className="text-sm text-gray-900 whitespace-pre-wrap font-mono">{selectedTemplate.content}</p>
-                </div>
+                {/* Footer */}
+                {footerText && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Footer</p>
+                    <div className="bg-gray-50 rounded-xl p-3 text-sm text-gray-500 italic">{footerText}</div>
+                  </div>
+                )}
+
+                {/* Buttons */}
+                {buttons.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Buttons</p>
+                    <div className="space-y-2">
+                      {buttons.map((btn: any, i: number) => (
+                        <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-2.5">
+                          <span className="text-base">
+                            {btn.type === 'URL' ? '↗' : btn.type === 'PHONE_NUMBER' ? '📞' : '↩'}
+                          </span>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{btn.text}</p>
+                            {(btn.url || btn.phone_number) && (
+                              <p className="text-xs text-gray-500">{btn.url || btn.phone_number}</p>
+                            )}
+                          </div>
+                          <span className="ml-auto text-xs text-gray-400 capitalize">{btn.type?.replace('_', ' ').toLowerCase()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Variables */}
+                {t.variables && t.variables.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Variables</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {t.variables.map((v: string, i: number) => (
+                        <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-mono font-semibold">
+                          {`{{${v}}}`}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {selectedTemplate.variables && selectedTemplate.variables.length > 0 && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-2">Variables</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {selectedTemplate.variables.map((v, i) => (
-                      <span key={i} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-mono">
-                        {`{{${v}}}`}
-                      </span>
-                    ))}
+              {/* Right: WhatsApp bubble preview */}
+              <div className="w-[240px] flex-shrink-0 bg-[#f2f5fb] border-l border-gray-100 flex flex-col items-center pt-8 px-4">
+                <p className="text-xs font-semibold text-gray-500 mb-4 uppercase tracking-wide">Preview</p>
+                <div className="w-full rounded-2xl bg-[#ece5dd] p-2.5 shadow-inner">
+                  <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                    {/* Image header */}
+                    {hasImage && mediaUrl && (
+                      <img src={mediaUrl} alt="header" className="w-full h-[110px] object-cover" />
+                    )}
+                    {hasImage && !mediaUrl && (
+                      <div className="w-full h-[110px] bg-gray-100 flex items-center justify-center text-3xl">🖼️</div>
+                    )}
+                    {hasVideo && (
+                      <div className="w-full h-[80px] bg-gray-800 flex items-center justify-center">
+                        <span className="text-3xl">▶️</span>
+                      </div>
+                    )}
+                    {hasDoc && (
+                      <div className="w-full bg-gray-50 border-b border-gray-100 px-3 py-2.5 flex items-center gap-2">
+                        <span className="text-2xl">📄</span>
+                        <p className="text-xs text-gray-600 truncate">{t.mediaFileName || 'Document'}</p>
+                      </div>
+                    )}
+                    <div className="px-3 py-2">
+                      {headerText && <p className="text-[11px] font-semibold text-gray-700 mb-1">{headerText}</p>}
+                      <p className="text-[12px] text-gray-800 leading-snug whitespace-pre-wrap">{bodyText}</p>
+                      {footerText && <p className="text-[11px] text-gray-400 mt-1.5 leading-snug">{footerText}</p>}
+                      <p className="text-[10px] text-gray-400 text-right mt-1.5">11:59 ✓✓</p>
+                    </div>
+                    {buttons.length > 0 && (
+                      <div className="border-t border-gray-100">
+                        {buttons.slice(0, 3).map((btn: any, i: number) => (
+                          <div key={i}>
+                            {i > 0 && <div className="border-t border-gray-100" />}
+                            <p className="w-full py-1.5 text-[12px] font-semibold text-center" style={{ color: '#0096de' }}>
+                              {btn.type === 'URL' ? '↗' : btn.type === 'PHONE_NUMBER' ? '📞' : '↩'} {btn.text}
+                            </p>
+                          </div>
+                        ))}
+                        {buttons.length > 3 && (
+                          <>
+                            <div className="border-t border-gray-100" />
+                            <p className="w-full py-1.5 text-[11px] text-center text-gray-400">See all options</p>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
 
-              {selectedTemplate.status === TemplateStatus.REJECTED && selectedTemplate.rejectedReason && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-red-900 mb-1">Rejection Reason:</p>
-                  <p className="text-sm text-red-800">{selectedTemplate.rejectedReason}</p>
-                </div>
-              )}
+                {/* Meta ID if submitted */}
+                {t.metaTemplateId && (
+                  <div className="mt-4 w-full bg-white rounded-xl p-3 text-center border border-gray-200">
+                    <p className="text-xs text-gray-500">Meta Template ID</p>
+                    <p className="text-xs font-mono font-semibold text-gray-700 mt-0.5">{t.metaTemplateId}</p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="flex gap-2 p-6 border-t justify-end sticky bottom-0 bg-white">
-              <Button variant="outline" onClick={closeModal}>Close</Button>
+            {/* Footer actions */}
+            <div className="flex gap-2 px-6 py-4 border-t border-gray-100 justify-between items-center">
+              <div className="text-xs text-gray-400">
+                ID: <span className="font-mono">{t._id}</span>
+              </div>
+              <div className="flex gap-2">
+                {t.status === TemplateStatus.DRAFT && (
+                  <Button
+                    className="bg-green-600 hover:bg-green-700 text-white text-sm"
+                    onClick={() => { closeModal(); submitTemplateToMeta(t._id) }}
+                  >
+                    Submit to Meta
+                  </Button>
+                )}
+                <Button variant="outline" onClick={closeModal} className="text-sm">Close</Button>
+              </div>
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
     </>
     </>
   )

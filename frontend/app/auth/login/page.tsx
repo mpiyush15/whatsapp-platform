@@ -6,7 +6,7 @@ import Link from "next/link"
 import { ArrowRight, Mail, Lock } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import { login } from "@/lib/auth"
-import { getCurrentDomain, isAppDomain, redirectToDomain } from "@/lib/domain"
+import { getCurrentDomain, isAppDomain, isPublicDomain, redirectToDomain } from "@/lib/domain"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -46,14 +46,14 @@ export default function LoginPage() {
             } else if (payload.type === 'client' || payload.type === 'agency') {
               // Phase 3: Both client and agency use new project-based dashboard
               redirectPath = "/dashboard"
-              // Clients stay on app.domain or redirect to it
+              // Clients go to app.domain
               if (isAppDomain()) {
                 // Already on app.domain, just push
                 setTimeout(() => {
                   router.push(redirectPath)
                 }, 1500)
               } else {
-                // On public domain (localhost), redirect to app.domain
+                // On public domain (replysys.com) or localhost → redirect to app.domain
                 setTimeout(() => {
                   redirectToDomain('app', redirectPath)
                 }, 1500)
