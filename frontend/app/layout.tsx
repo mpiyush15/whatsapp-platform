@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeScript } from "./theme-script";
 import WhatsAppWidget from "@/components/WhatsAppWidget";
+import { DomainProvider } from "@/lib/context/DomainContext";
+import DomainAwareLayout from "@/components/DomainAwareLayout";
 
 export const metadata: Metadata = {
   title: "Replysys - Business Messaging Platform",
@@ -110,8 +112,12 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased bg-white text-gray-900 transition-colors duration-300">
-        {children}
-        <WhatsAppWidget />
+        <DomainProvider>
+          <DomainAwareLayout>
+            {children}
+          </DomainAwareLayout>
+          <WhatsAppWidget />
+        </DomainProvider>
       </body>
     </html>
   );

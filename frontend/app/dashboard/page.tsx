@@ -55,7 +55,7 @@ export default function DashboardPage() {
       // ✅ CRITICAL: If only 1 project, auto-redirect with projectId
       if (projectList.length === 1) {
         const projectId = projectList[0].projectId || projectList[0].id
-        router.push(`/projects/${projectId}/live-chat`)
+        router.push(`/projects/${projectId}`)
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to load projects'

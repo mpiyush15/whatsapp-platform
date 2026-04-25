@@ -1,16 +1,15 @@
 /**
  * Domain-based layout selection
- * Routes to correct UI based on domain
+ * Routes to correct UI based on domain (admin vs app)
  */
 'use client'
 
-import { useEffect, ReactNode } from 'react'
-import { getCurrentDomain, isAdminDomain } from '@/lib/domain'
+import { useDomain } from '@/lib/context/DomainContext'
 
 interface DomainLayoutProps {
-  children: ReactNode
-  adminLayout: ReactNode
-  appLayout: ReactNode
+  children?: React.ReactNode
+  adminLayout?: React.ReactNode
+  appLayout?: React.ReactNode
 }
 
 export default function DomainLayout({ 
@@ -18,17 +17,14 @@ export default function DomainLayout({
   adminLayout, 
   appLayout 
 }: DomainLayoutProps) {
-  const isDomain = isAdminDomain()
+  const { domain } = useDomain()
 
-  useEffect(() => {
-    // Log domain for debugging
-    console.log(`🌐 Running on domain: ${isDomain ? 'admin.domain' : 'app.domain'}`)
-  }, [isDomain])
-
-  // Render appropriate layout based on domain
-  if (isDomain) {
-    return <>{adminLayout}</>
-  } else {
-    return <>{appLayout}</>
+  // Render appropriate layout based on detected domain
+  if (adminLayout && appLayout) {
+    // Two-layout mode
+    return domain === 'admin' ? <>{adminLayout}</> : <>{appLayout}</>
   }
+
+  // Pass-through mode
+  return <>{children}</>
 }
