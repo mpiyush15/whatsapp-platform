@@ -10,6 +10,14 @@ const workflowSessionSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+
+  // Project isolation (NEW - Phase 1)
+  projectId: {
+    type: String,
+    default: null,
+    index: true
+  },
+
   phoneNumberId: {
     type: String,
     required: true,

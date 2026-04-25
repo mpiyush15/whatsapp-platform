@@ -8,6 +8,13 @@ const leadSchema = new mongoose.Schema({
     index: true
   },
 
+  // Project isolation (NEW - Phase 1)
+  projectId: {
+    type: String,
+    default: null,
+    index: true
+  },
+
   // Links to existing records
   // Use String type to match Conversation.conversationId (multi-tenant ID)
   conversationId: {

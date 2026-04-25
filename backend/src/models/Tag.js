@@ -13,6 +13,13 @@ const tagSchema = new mongoose.Schema({
     index: true
   },
 
+  // Project isolation (NEW - Phase 1)
+  projectId: {
+    type: String,
+    default: null,
+    index: true
+  },
+
   // Tag name (unique per account)
   name: {
     type: String,

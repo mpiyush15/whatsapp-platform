@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { authService, UserRole } from '@/lib/auth'
 import { getSidebarItems } from '@/lib/rbac'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const iconMap = {
   LayoutDashboard,
@@ -32,12 +32,25 @@ const iconMap = {
   Sliders
 }
 
-export default function Sidebar() {
-  const pathname = usePathname()
-  const user = authService.getCurrentUser()
-  const [superAdminDropdownOpen, setSuperAdminDropdownOpen] = useState(false)
+interface SidebarProps {
+  projectId?: string
+}
 
-  if (!user) return null
+export default function Sidebar({ projectId }: SidebarProps) {
+  const pathname = usePathname()
+  const [isClient, setIsClient] = useState(false)
+  const [superAdminDropdownOpen, setSuperAdminDropdownOpen] = useState(false)
+  
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  const user = authService.getCurrentUser()
+
+  if (!user || !isClient) return null
+
+  // Build base path for project routes
+  const basePath = projectId ? `/projects/${projectId}` : ''
 
   // DEBUG: Log the role for debugging
   console.log('🔍 Sidebar Debug - User role:', { 
@@ -51,14 +64,22 @@ export default function Sidebar() {
   const isPlanActive = user.status === 'active' && user.plan && user.plan !== 'free'
   const isPlanPending = user.status === 'pending'
   const isSuperAdmin = user.role === UserRole.SUPERADMIN
+  const isInProject = !!projectId  // When in project view, show all features
 
   const items = getSidebarItems(user.role as UserRole)
 
+  // Update items with projectId if provided
+  const updatedItems = items.map(item => ({
+    ...item,
+    href: projectId ? item.href.replace('/dashboard', `${basePath}`) : item.href
+  }))
+
   // DEBUG: Log sidebar items
   console.log('📋 Sidebar Items Debug:', { 
-    itemsCount: items.length,
-    items: items.map(i => ({ label: i.label, href: i.href })),
-    userRole: user.role
+    itemsCount: updatedItems.length,
+    items: updatedItems.map(i => ({ label: i.label, href: i.href })),
+    userRole: user.role,
+    projectId
   })
 
   const handleLogout = async () => {
@@ -86,7 +107,7 @@ export default function Sidebar() {
       )}
 
       {/* Sidebar - Compact Style */}
-      <aside className="fixed md:static inset-y-0 left-0 z-40 bg-gray-900 text-white w-20 overflow-y-auto flex flex-col">
+      <aside className="fixed md:static inset-y-0 left-0 z-40 bg-gray-900 text-white w-20 overflow-y-auto overflow-x-hidden flex flex-col scrollbar-hide">
         {/* Logo */}
         <div className="h-16 flex items-center justify-center px-4 border-b border-gray-800">
           <div className="h-8 w-8 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -94,15 +115,8 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* User Avatar - Minimal */}
-        <div className="border-b border-gray-800 p-2 flex justify-center">
-          <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-            <User size={20} className="text-white" />
-          </div>
-        </div>
-
         {/* Navigation */}
-        <nav className="flex-1 px-1.5 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-1.5 py-4 space-y-1 overflow-y-auto scrollbar-hide">
           {/* SuperAdmin Icon */}
           {isSuperAdmin && (
             <div className="relative group">
@@ -153,17 +167,28 @@ export default function Sidebar() {
           )}
 
           {/* Regular Navigation Items */}
-          {items.map((item) => {
+          {updatedItems.map((item) => {
             if ((item as any).superAdminOnly) return null
             
             const Icon = iconMap[item.icon as keyof typeof iconMap]
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+            
+            // Improved active detection - for dashboard only match exact or /dashboard/ paths
+            let isActive = false
+            if (item.label === 'Dashboard') {
+              // For dashboard: only active if exactly on dashboard or dashboard subpages (not other project sections)
+              isActive = pathname === item.href || (pathname.startsWith(item.href + '/') && !pathname.includes('/live-chat') && !pathname.includes('/messages') && !pathname.includes('/contacts') && !pathname.includes('/broadcasts'))
+            } else {
+              // For other items: active if pathname matches
+              isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+            }
             
             const lockedFeatures = ['whatsapp', 'contacts', 'broadcasts', 'campaigns', 'chatbot', 'templates']
-            const isFeatureLocked = !isSuperAdmin && !isPlanActive && lockedFeatures.some(feature => item.href.includes(feature))
+            // In project view, show all features. Otherwise check plan status
+            const isFeatureLocked = !isInProject && !isSuperAdmin && !isPlanActive && lockedFeatures.some(feature => item.href.includes(feature))
             
             const alwaysVisible = ['dashboard', 'billing', 'settings', 'account']
-            const shouldShow = alwaysVisible.some(v => item.href.includes(v)) || isPlanActive || isSuperAdmin
+            // In project view, show all features. Otherwise respect plan status
+            const shouldShow = isInProject || alwaysVisible.some(v => item.href.includes(v)) || isPlanActive || isSuperAdmin
             
             if (!shouldShow) return null
             
@@ -199,18 +224,6 @@ export default function Sidebar() {
             )
           })}
         </nav>
-
-        {/* Logout */}
-        <div className="p-2 border-t border-gray-800">
-          <button
-            onClick={handleLogout}
-            className="w-full flex flex-col items-center gap-1 px-2 py-3 rounded-lg text-gray-300 hover:bg-red-600/20 hover:text-red-400 transition-colors"
-            title="Logout"
-          >
-            <LogOut size={24} />
-            <span className="text-xs font-semibold">Logout</span>
-          </button>
-        </div>
       </aside>
     </>
   )

@@ -7,6 +7,13 @@ const messageSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+
+  // Project isolation (NEW - Phase 1)
+  projectId: {
+    type: String,
+    default: null,
+    index: true
+  },
   
   // CRITICAL: For multi-number analytics
   phoneNumberId: {
@@ -168,6 +175,7 @@ const messageSchema = new mongoose.Schema({
 
 // Compound indexes for efficient queries
 messageSchema.index({ accountId: 1, conversationId: 1 });
+messageSchema.index({ accountId: 1, conversationId: 1, createdAt: -1 }); // Most important for getMessages query
 messageSchema.index({ accountId: 1, phoneNumberId: 1 });
 messageSchema.index({ accountId: 1, createdAt: -1 });
 messageSchema.index({ conversationId: 1, createdAt: -1 });

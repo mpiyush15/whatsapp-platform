@@ -2,7 +2,7 @@ import app from './src/app.js';
 import mongoose from 'mongoose';
 import { createServer } from 'http';
 import dotenv from 'dotenv';
-import { initSocketIO } from './src/services/socketService.js';
+import initializeSocket, { broadcastToProject, broadcastToAccount, sendNotificationToUser } from './src/socket/socketHandler.js';
 import { setupSocketIOHandlers } from './src/services/liveChat-socketHandler.js';
 import { initializeSocketIO } from './src/services/liveChat-socketService.js';
 
@@ -15,8 +15,8 @@ const MONGO_URI = process.env.MONGODB_URI;
 // Create HTTP server
 const httpServer = createServer(app);
 
-// Initialize Socket.io
-const io = initSocketIO(httpServer);
+// Initialize Socket.io (PHASE 4: Project-scoped real-time updates)
+const io = initializeSocket(httpServer);
 
 // Initialize Socket.IO in liveChat service (for emitToConversation, emitToAccount, etc)
 initializeSocketIO(io);
@@ -24,8 +24,11 @@ initializeSocketIO(io);
 // Setup Socket.IO handlers for live chat
 setupSocketIOHandlers(io);
 
-// Make io available to routes/controllers
+// Make io and broadcast helpers available to routes/controllers
 app.locals.io = io;
+app.locals.broadcastToProject = broadcastToProject;
+app.locals.broadcastToAccount = broadcastToAccount;
+app.locals.sendNotificationToUser = sendNotificationToUser;
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI)

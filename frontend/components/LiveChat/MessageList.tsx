@@ -38,7 +38,11 @@ export default function MessageList({ messages, socket, isTyping, conversationId
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'auto' }) // Instant scroll, no animation
+    // Small delay to ensure DOM is updated before scrolling
+    const timer = setTimeout(() => {
+      endRef.current?.scrollIntoView({ behavior: 'auto' }) // Instant scroll, no animation
+    }, 0)
+    return () => clearTimeout(timer)
   }, [messages, isTyping])
 
   // Load more messages when user scrolls near top

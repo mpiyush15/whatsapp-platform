@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { MessageSquare, Menu, X } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { authService } from '@/lib/auth'
+import { redirectToDomain } from '@/lib/domain'
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -70,11 +71,14 @@ export default function Navbar() {
               </Link>
             ) : (
               <>
-                <Link href="/auth/login">
-                  <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700 hover:bg-green-50">
-                    Login
-                  </Button>
-                </Link>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => redirectToDomain('app', '/auth/login')}
+                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                >
+                  Login
+                </Button>
                 <Link href="/auth/register">
                   <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
                     Start Free
@@ -145,11 +149,16 @@ export default function Navbar() {
                   </Link>
                 ) : (
                   <>
-                    <Link href="/auth/login" onClick={() => setMobileMenuOpen(false)}>
-                      <Button variant="outline" className="w-full">
-                        Login
-                      </Button>
-                    </Link>
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => {
+                        setMobileMenuOpen(false)
+                        redirectToDomain('app', '/auth/login')
+                      }}
+                    >
+                      Login
+                    </Button>
                     <Link href="/auth/register" onClick={() => setMobileMenuOpen(false)}>
                       <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
                         Start Free

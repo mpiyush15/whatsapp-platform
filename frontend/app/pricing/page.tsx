@@ -30,30 +30,24 @@ export default function PricingPage() {
     const fetchPlans = async () => {
       try {
         setLoading(true)
-        console.log('📡 Fetching public pricing plans...')
         
         const res = await fetch(`${API_URL}/pricing/plans/public`, {
           cache: 'no-store'
         })
-        
-        console.log('📥 Response:', res.status)
         
         if (!res.ok) {
           throw new Error(`API error: ${res.status}`)
         }
 
         const data = await res.json()
-        console.log('📥 Data:', data)
 
         // Handle nested response structure
         const plansData = data?.data?.data || data?.data || []
-        console.log('✅ Plans:', plansData)
         
         if (Array.isArray(plansData)) {
           setPlans(plansData)
         }
       } catch (err) {
-        console.error('❌ Error:', err)
         setError(err instanceof Error ? err.message : 'Failed to load pricing')
       } finally {
         setLoading(false)
@@ -199,8 +193,8 @@ export default function PricingPage() {
                       <button
                         onClick={() => {
                           const token = localStorage.getItem('token')
-                          // Redirect to new checkout with selected plan
-                          window.location.href = `/checkout-v2?plan=${plan.name.toLowerCase()}&cycle=${billingPeriod}`
+                          // Redirect to checkout with selected plan
+                          window.location.href = `/checkout?plan=${plan.name.toLowerCase()}&cycle=${billingPeriod}`
                         }}
                         className={`w-full py-3 rounded-lg font-semibold transition ${
                           plan.isPopular

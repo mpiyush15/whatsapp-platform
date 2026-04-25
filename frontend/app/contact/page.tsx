@@ -31,7 +31,6 @@ export default function ContactPage() {
     
     try {
       // In a real app, you'd send this to your backend
-      console.log('Contact form submitted:', formData)
       setSubmitted(true)
       setFormData({
         name: '',
@@ -42,7 +41,7 @@ export default function ContactPage() {
       })
       setTimeout(() => setSubmitted(false), 5000)
     } catch (error) {
-      console.error('Error submitting form:', error)
+      // Handle error silently
     } finally {
       setIsLoading(false)
     }

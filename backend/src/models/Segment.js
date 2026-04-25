@@ -13,6 +13,13 @@ const segmentSchema = new mongoose.Schema({
     index: true
   },
 
+  // Project isolation (NEW - Phase 1)
+  projectId: {
+    type: String,
+    default: null,
+    index: true
+  },
+
   // Segment metadata
   name: {
     type: String,

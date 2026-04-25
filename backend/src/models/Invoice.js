@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const invoiceSchema = new mongoose.Schema({
   accountId: { type: String, required: true, index: true },
+  projectId: { type: String, default: null, index: true },
   invoiceNumber: { type: String, required: true, unique: true },
   subscriptionId: { type: String, required: true },
   

@@ -41,13 +41,11 @@ async function sendZeptoEmail(toEmail: string) {
     });
 
     if (!response.ok) {
-      console.error("Zepto API error:", await response.text());
       throw new Error("Failed to send email");
     }
 
     return true;
   } catch (error) {
-    console.error("Zepto email error:", error);
     return false;
   }
 }
@@ -71,15 +69,11 @@ export async function POST(request: NextRequest) {
     // Send confirmation email via Zepto
     await sendZeptoEmail(email);
 
-    console.log("Subscribed email:", email);
-    console.log("Total subscribers:", subscribedEmails.length);
-
     return NextResponse.json(
       { success: true, message: "Subscribed successfully" },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Subscription error:", error);
     return NextResponse.json(
       { error: "Failed to subscribe" },
       { status: 500 }

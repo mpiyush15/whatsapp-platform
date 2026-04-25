@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 
 const phoneNumberSchema = new mongoose.Schema({
   accountId: { type: String, required: true, index: true },
+  
+  // Project isolation (NEW - Phase 1)
+  projectId: { type: String, default: null, index: true },
+  
   phoneNumberId: { type: String, required: true, unique: true },
   wabaId: { type: String, default: '' },
   displayPhone: { type: String, required: true },

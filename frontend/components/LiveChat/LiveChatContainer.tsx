@@ -6,6 +6,7 @@ import { MessageCircle } from "lucide-react"
 import ConversationList from "./ConversationList"
 import ChatArea from "./ChatArea"
 import { authService } from "@/lib/auth"
+import { useLiveChat } from "@/lib/context/LiveChatContext"
 
 interface Conversation {
   _id: string
@@ -35,6 +36,7 @@ interface Message {
 }
 
 export default function LiveChatContainer() {
+  const { search, filter } = useLiveChat()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -222,11 +224,12 @@ export default function LiveChatContainer() {
         const result = await response.json()
         
         if (offset === 0) {
-          // First load: show last 50 messages
-          setMessages(result.data || [])
+          // First load: show last 50 messages in chronological order (oldest first)
+          const messages = result.data || []
+          setMessages(messages)
           messageOffsetRef.current = limit
         } else {
-          // Prepend older messages
+          // Prepend older messages when scrolling up
           setMessages(prev => [...(result.data || []), ...prev])
           messageOffsetRef.current += limit
         }
@@ -244,7 +247,8 @@ export default function LiveChatContainer() {
     
     try {
       setLoadingMore(true)
-      await fetchMessages(conversationId, 50, messageOffsetRef.current)
+      // Load 30 more messages when scrolling up
+      await fetchMessages(conversationId, 30, messageOffsetRef.current)
     } finally {
       setLoadingMore(false)
     }
@@ -254,7 +258,9 @@ export default function LiveChatContainer() {
     setSelectedConversation(conversation)
     messageOffsetRef.current = 0
     setHasMore(false)
-    await fetchMessages(conversation.conversationId, 50, 0) // Load last 50 messages
+    setMessages([]) // Clear messages before loading new ones
+    // Load only 20 messages initially for faster loading, user can scroll up for more
+    await fetchMessages(conversation.conversationId, 20, 0)
     
     // Mark all messages as read and clear unread count
     if (socket && conversation.unreadCount > 0) {
@@ -386,6 +392,8 @@ export default function LiveChatContainer() {
           selectedConversation={selectedConversation}
           onSelectConversation={handleSelectConversation}
           loading={loading}
+          search={search}
+          filter={filter}
         />
       </div>
 
@@ -397,6 +405,8 @@ export default function LiveChatContainer() {
             selectedConversation={selectedConversation}
             onSelectConversation={handleSelectConversation}
             loading={loading}
+            search={search}
+            filter={filter}
           />
         </div>
       )}

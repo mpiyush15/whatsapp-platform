@@ -255,6 +255,33 @@ export const IntegrationType = {
   OTHER: 'other',
 };
 
+// ============================================
+// BUSINESS CATEGORIES (Project Layer)
+// ============================================
+export const BusinessCategory = {
+  EDUCATION: 'education',           // Schools, colleges, coaching centers
+  HEALTH: 'health',                 // Hospitals, clinics, pharmacies, wellness
+  REAL_ESTATE: 'real_estate',       // Real estate agents, property consultants
+  FINANCE: 'finance',               // Banks, insurance, financial advisors
+  RETAIL: 'retail',                 // Shops, stores, e-commerce
+  RESTAURANT: 'restaurant',         // Restaurants, cafes, food delivery
+  SERVICE: 'service',               // Plumbing, electrical, consulting, salon
+  MANUFACTURING: 'manufacturing',   // Factories, production units
+  LOGISTICS: 'logistics',           // Shipping, delivery, warehousing
+  HOSPITALITY: 'hospitality',       // Hotels, resorts, travel agencies
+  ENTERTAINMENT: 'entertainment',   // Gaming, movies, events
+  SAAS: 'saas',                     // Software, SaaS platforms
+  NONPROFIT: 'nonprofit',           // NGOs, charities
+  GOVERNMENT: 'government',         // Government agencies
+  AGRICULTURE: 'agriculture',       // Farming, agribusiness
+  AUTOMOTIVE: 'automotive',         // Car dealers, repair shops
+  LEGAL: 'legal',                   // Law firms, legal services
+  MEDIA: 'media',                   // News, publishing, media agencies
+  CONSTRUCTION: 'construction',     // Contractors, builders
+  TELECOM: 'telecom',               // Telecom companies
+  OTHER: 'other',                   // Any other business type
+};
+
 export const WebhookStatus = {
   ACTIVE: 'active',
   INACTIVE: 'inactive',
@@ -347,10 +374,11 @@ export default {
   SubscriptionStatus,
   // Integrations
   IntegrationType,
-  WebhookStatus,
+  BusinessCategory,
   // Tags & Rules
   TagType,
   KeywordRuleAction,
+  WebhookStatus,
   // Utilities
   enumToArray,
   isValidEnum,

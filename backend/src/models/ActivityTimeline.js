@@ -14,6 +14,13 @@ const activityTimelineSchema = new mongoose.Schema({
     index: true
   },
 
+  // Project isolation (NEW - Phase 1)
+  projectId: {
+    type: String,
+    default: null,
+    index: true
+  },
+
   // Which conversation does this activity belong to
   conversationId: {
     type: mongoose.Schema.Types.ObjectId,

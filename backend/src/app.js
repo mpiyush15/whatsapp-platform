@@ -10,6 +10,7 @@ import { requireJWT } from './middlewares/jwtAuth.js';
 import requireSubscription from './middlewares/requireSubscription.js';
 import { subdomainDetectionMiddleware } from './middlewares/subdomainDetection.js';
 import { validateWebhookSignature } from './middlewares/webhookSignatureValidator.js';
+import { validateDomain, requireAdminDomain, requireAppDomain, enforceProjectIsolation } from './middlewares/domainMiddleware.js';
 
 // Import Sentry for error tracking
 import { initSentry, sentryErrorHandler } from './config/sentry.js';
@@ -50,6 +51,7 @@ import agentRoutes from './routes/agentRoutes.js';
 import apiKeyRoutes from './routes/apiKeyRoutes.js';
 import businessPermissionsRoutes from './routes/businessPermissionsRoutes.js';
 import enumsRoutes from './routes/enumsRoutes.js';
+import projectRoutes from './routes/projects.js';
 
 // Import live chat routes
 import liveChatConversationRoutes from './routes/liveChat-conversationRoutes.js';
@@ -155,6 +157,9 @@ app.use((req, res, next) => {
 
 // Subdomain detection middleware (RUNS FIRST - extracts workspace context from URL)
 app.use(subdomainDetectionMiddleware);
+
+// Domain validation middleware (Enforce admin.domain vs app.domain separation)
+app.use(validateDomain(['admin', 'app']));
 
 // Serve static files (uploads)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -331,12 +336,15 @@ app.use('/api/enums', enumsRoutes);
 // Mount external API routes (API KEY AUTH only - for third-party integrations)
 app.use('/api/external', externalApiRoutes);
 
-// Mount settings routes (JWT AUTH only - users need to configure phones even without subscription)
-app.use('/api/settings', requireJWT, settingsRoutes);
+// Mount project routes (JWT AUTH only - multi-project scoping)
+app.use('/api/projects', requireJWT, projectRoutes);
+
+// Mount settings routes (ADMIN DOMAIN ONLY - superadmin/team configuration)
+app.use('/api/settings', requireAdminDomain, requireJWT, settingsRoutes);
 
 // ✅ SYSTEM CONSISTENCY: Mount phone-numbers as standalone endpoint (alias for /settings/phone-numbers)
 // This ensures both /api/phone-numbers and /api/settings/phone-numbers work for frontend compatibility
-app.use('/api/phone-numbers', requireJWT, settingsRoutes);
+app.use('/api/phone-numbers', requireAdminDomain, requireJWT, settingsRoutes);
 
 // Mount dashboard routes (JWT AUTH + SUBSCRIPTION REQUIRED - for logged-in dashboard users)
 app.use('/api/templates', requireJWT, requireSubscription, templateRoutes);
@@ -367,9 +375,9 @@ app.use('/api/dashboard', requireJWT, dashboardRoutes);
 // Mount CRM routes (JWT AUTH + SUBSCRIPTION REQUIRED - for managing contacts, conversations, analytics)
 app.use('/api/crm', requireJWT, requireSubscription, crmRoutes);
 
-// Mount live chat routes (JWT AUTH + SUBSCRIPTION REQUIRED - for real-time team messaging)
-app.use('/api/live-chat/conversations', requireJWT, requireSubscription, liveChatConversationRoutes);
-app.use('/api/live-chat/messages', requireJWT, requireSubscription, liveChatMessageRoutes);
+// Mount live chat routes (APP DOMAIN ONLY - client WhatsApp chat interface)
+app.use('/api/live-chat/conversations', requireAppDomain, requireJWT, requireSubscription, liveChatConversationRoutes);
+app.use('/api/live-chat/messages', requireAppDomain, requireJWT, requireSubscription, liveChatMessageRoutes);
 app.use('/api/live-chat/tags', requireJWT, requireSubscription, liveChatTagRoutes);
 
 // Mount media routes (JWT AUTH - for media proxy and downloads)

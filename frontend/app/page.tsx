@@ -29,7 +29,6 @@ export default function LaunchingPage() {
       }
     } catch (err) {
       setError("Error subscribing. Please try again.");
-      console.error(err);
     } finally {
       setLoading(false);
     }

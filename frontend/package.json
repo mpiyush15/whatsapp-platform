@@ -1,12 +1,14 @@
 {
   "name": "whatsapp",
-  "version": "1.2.0",
+  "version": "25.04.26.01",
+  "description": "replysys - Multi-tenant WhatsApp platform with Socket.io real-time updates",
   "private": true,
   "scripts": {
     "dev": "NEXT_DISABLE_TURBOPACK=1 next dev",
     "build": "NEXT_DISABLE_TURBOPACK=1 next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "analyze": "ANALYZE=true next build"
   },
   "dependencies": {
     "@react-oauth/google": "^0.12.2",
@@ -35,5 +37,11 @@
     "postcss": "^8.5.8",
     "tailwindcss": "^3.4.1",
     "typescript": "5.9.3"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": "./lib/index.ts"
+    }
   }
 }

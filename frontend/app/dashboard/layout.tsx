@@ -224,12 +224,12 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   // Determine which tier folder they're in
   const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin')
-  const isClientTier = pathname.startsWith('/dashboard/client') || pathname.startsWith('/dashboard/features')
+  const isClientTier = pathname.startsWith('/dashboard/features') || pathname.startsWith('/dashboard/account') || pathname.startsWith('/dashboard/api-keys')
 
   // Get dashboard href based on tier
   let dashboardHref = '/dashboard'
   if (isSuperAdminTier) dashboardHref = '/dashboard/superadmin'
-  if (isClientTier) dashboardHref = '/dashboard/client'
+  if (isClientTier) dashboardHref = '/dashboard/features'
 
   // Create tier-specific navigation
   let navigation = []
@@ -249,9 +249,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     ]
   } else if (isClientTier) {
     // Client tier navigation (for both client & agency account types)
-    // Shows all features based on user role
+    // Shows all features based on user role - ALL CONSOLIDATED UNDER /dashboard/features
     navigation = [
-      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/client", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/features", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
       { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
       { name: "Broadcasts", icon: Megaphone, href: "/dashboard/features/broadcasts", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT] },
       { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
@@ -259,9 +259,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
       { name: "Chatbot", icon: Bot, href: "/dashboard/features/chatbot", roles: [UserRole.ADMIN, UserRole.MANAGER] },
       { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-      { name: "Subscriptions", icon: CreditCard, href: "/dashboard/client/subscriptions", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Invoices", icon: Receipt, href: "/dashboard/client/invoices", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Billing", icon: CreditCard, href: "/dashboard/client/billing", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Subscriptions", icon: CreditCard, href: "/dashboard/features/subscriptions", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Invoices", icon: Receipt, href: "/dashboard/features/invoices", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+      { name: "Billing", icon: CreditCard, href: "/dashboard/features/billing", roles: [UserRole.ADMIN, UserRole.MANAGER] },
     ]
   }
 

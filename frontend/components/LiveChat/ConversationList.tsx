@@ -1,7 +1,7 @@
 "use client"
 
-import { Search, Filter } from "lucide-react"
-import { useState, useMemo } from "react"
+import { useMemo } from "react"
+import { useLiveChat } from "@/lib/context/LiveChatContext"
 
 interface Conversation {
   _id: string
@@ -20,60 +20,51 @@ interface Props {
   selectedConversation: Conversation | null
   onSelectConversation: (conv: Conversation) => void
   loading: boolean
+  search?: string
+  filter?: 'all' | 'unread' | 'open' | 'closed'
 }
 
 export default function ConversationList({ 
   conversations, 
   selectedConversation, 
   onSelectConversation,
-  loading 
+  loading,
+  search = "",
+  filter = 'all'
 }: Props) {
-  const [search, setSearch] = useState("")
-  const [filter, setFilter] = useState<'all' | 'unread' | 'open' | 'closed'>('all')
+  // Get filter and search from context (not from props)
+  const { filter: contextFilter, setFilter, search: contextSearch } = useLiveChat()
+  
+  // Use context values for actual filtering
+  const activeFilter = contextFilter
+  const activeSearch = contextSearch
 
   const filtered = useMemo(() => {
     return conversations.filter(conv => {
       // Search filter
-      if (search && !conv.userPhone.includes(search) && !conv.userName?.toLowerCase().includes(search.toLowerCase())) {
+      if (activeSearch && !conv.userPhone.includes(activeSearch) && !conv.userName?.toLowerCase().includes(activeSearch.toLowerCase())) {
         return false
       }
       
       // Status filter
-      if (filter === 'unread' && conv.unreadCount === 0) return false
-      if (filter === 'open' && conv.status !== 'open') return false
-      if (filter === 'closed' && conv.status !== 'closed') return false
+      if (activeFilter === 'unread' && conv.unreadCount === 0) return false
+      if (activeFilter === 'open' && conv.status !== 'open') return false
+      if (activeFilter === 'closed' && conv.status !== 'closed') return false
       
       return true
     }).sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
-  }, [conversations, search, filter])
+  }, [conversations, activeSearch, activeFilter])
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-      {/* Compact Header with inline search */}
-      <div className="px-3 py-2 bg-white border-b border-gray-200 sticky top-0 z-10 flex items-center justify-between gap-2">
-        <h1 className="text-lg font-bold text-gray-900 flex-shrink-0">Messages</h1>
-        
-        {/* Inline Search */}
-        <div className="relative flex-1 max-w-xs">
-          <Search size={16} className="absolute left-2.5 top-2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-gray-100 text-gray-900 placeholder-gray-500 border-0 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500 text-xs"
-          />
-        </div>
-      </div>
-
-      {/* Filter Buttons */}
+      {/* Filter Buttons - Display only (controlled from topbar) */}
       <div className="px-3 py-2 flex gap-1.5 overflow-x-auto bg-white border-b border-gray-200 scrollbar-hide">
         {(['all', 'unread', 'open', 'closed'] as const).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={`px-2.5 py-1 rounded-full text-xs whitespace-nowrap transition-all font-medium ${
-              filter === f
+              contextFilter === f
                 ? 'bg-green-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300'
             }`}

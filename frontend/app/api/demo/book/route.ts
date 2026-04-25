@@ -23,7 +23,6 @@ export async function POST(request: Request) {
 
     return Response.json(data, { status: 201 })
   } catch (error) {
-    console.error('Error booking demo:', error)
     return Response.json(
       { message: 'Failed to book demo' },
       { status: 500 }

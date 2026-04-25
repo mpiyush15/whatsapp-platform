@@ -6,6 +6,7 @@ import Link from "next/link"
 import { ArrowRight, Mail, Lock } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import { login } from "@/lib/auth"
+import { getCurrentDomain, isAppDomain, redirectToDomain } from "@/lib/domain"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -28,6 +29,7 @@ export default function LoginPage() {
         // Get JWT token to check user type
         const token = localStorage.getItem('token')
         let redirectPath = "/dashboard"
+        const currentDomain = getCurrentDomain()
         
         if (token) {
           try {
@@ -37,18 +39,39 @@ export default function LoginPage() {
             // Redirect based on account type
             if (payload.type === 'internal' && payload.role === 'superadmin') {
               redirectPath = "/dashboard/superadmin"
+              // Admin goes to admin.domain
+              setTimeout(() => {
+                redirectToDomain('admin', redirectPath)
+              }, 1500)
             } else if (payload.type === 'client' || payload.type === 'agency') {
-              // Both client and agency types use the same dashboard tier
-              redirectPath = "/dashboard/client"
+              // Phase 3: Both client and agency use new project-based dashboard
+              redirectPath = "/dashboard"
+              // Clients stay on app.domain or redirect to it
+              if (isAppDomain()) {
+                // Already on app.domain, just push
+                setTimeout(() => {
+                  router.push(redirectPath)
+                }, 1500)
+              } else {
+                // On public domain (localhost), redirect to app.domain
+                setTimeout(() => {
+                  redirectToDomain('app', redirectPath)
+                }, 1500)
+              }
             }
           } catch (e) {
             console.error('Error parsing token:', e)
+            // Fallback redirect
+            setTimeout(() => {
+              router.push(redirectPath)
+            }, 1500)
           }
+        } else {
+          // No token, fallback redirect
+          setTimeout(() => {
+            router.push(redirectPath)
+          }, 1500)
         }
-        
-        setTimeout(() => {
-          router.push(redirectPath)
-        }, 1500)
       } else {
         setError(result.error || "Login failed")
       }

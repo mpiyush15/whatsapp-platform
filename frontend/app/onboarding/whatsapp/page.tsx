@@ -8,7 +8,6 @@ export default function WhatsAppOnboardingPage() {
 
   useEffect(() => {
     // Redirect to Settings where user can connect WhatsApp via OAuth
-    console.log('📲 Redirecting to WhatsApp Settings...')
     router.push('/dashboard/settings?tab=whatsapp')
   }, [router])
 

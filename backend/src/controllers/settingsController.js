@@ -27,25 +27,42 @@ export const updateSettings = async (req, res) => {
 
 export const getPhoneNumbers = async (req, res) => {
   try {
-    const accountId = req.account.accountId;
+    // Support both req.accountId (JWT) and req.account.accountId (tenant)
+    const accountId = req.accountId || req.account?.accountId;
+    const projectId = req.query.projectId || req.projectId || null;
 
-    // Get account to find associated phone numbers
-    const Account = mongoose.model('Account');
-    const PhoneNumber = mongoose.model('PhoneNumber');
+    // DEBUG: Log what we're getting
+    console.log('🔍 getPhoneNumbers Debug:')
+    console.log('   req.accountId:', req.accountId)
+    console.log('   req.account?.accountId:', req.account?.accountId)
+    console.log('   Final accountId:', accountId)
+    console.log('   projectId:', projectId)
 
-    const account = await Account.findOne({ accountId }).select('wabaId phoneNumberId');
-
-    if (!account?.wabaId) {
-      logger.info(`No WhatsApp connected for account ${accountId}`);
-      return sendSuccess(res, { phoneNumbers: [] }, 'No phone numbers connected');
+    if (!accountId) {
+      console.log('❌ No accountId found!')
+      return res.status(401).json({
+        success: false,
+        error: 'Account ID not found in request'
+      });
     }
 
-    // Fetch all phone numbers for this WABA
-    const phoneNumbers = await PhoneNumber.find({ wabaId: account.wabaId }).select(
-      '_id phoneNumberId wabaId displayName displayPhone phone isActive verifiedAt qualityRating messageCount'
+    const PhoneNumber = mongoose.model('PhoneNumber');
+
+    // Build query based on projectId
+    const query = { accountId };
+    if (projectId) {
+      query.projectId = projectId;
+    }
+
+    console.log('📊 Query:', query)
+
+    // Fetch phone numbers for this project or account
+    const phoneNumbers = await PhoneNumber.find(query).select(
+      '_id phoneNumberId wabaId displayName displayPhone phone isActive verificationStatus qualityRating messageCount'
     ).sort({ createdAt: -1 });
 
-    logger.info(`✅ Retrieved ${phoneNumbers.length} phone numbers for account ${accountId}`);
+    logger.info(`✅ Retrieved ${phoneNumbers.length} phone numbers for account ${accountId} project ${projectId || 'default'}`);
+    console.log('📱 Found phones:', phoneNumbers)
 
     return sendSuccess(res, { phoneNumbers }, 'Phone numbers retrieved');
   } catch (error) {

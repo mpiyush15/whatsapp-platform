@@ -84,8 +84,8 @@ export const routeAccess = {
   '/dashboard/settings/security': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
   '/dashboard/settings/whatsapp-setup': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
   
-  // Client WhatsApp
-  '/dashboard/client/connected-whatsapp': [UserRole.SUPERADMIN, UserRole.ADMIN],
+  // Client Features (now consolidated under /dashboard/features)
+  '/dashboard/features/connected-whatsapp': [UserRole.SUPERADMIN, UserRole.ADMIN],
   
   // SuperAdmin only routes
   '/dashboard/organizations': [UserRole.SUPERADMIN],
@@ -136,12 +136,6 @@ export const getSidebarItems = (role: UserRole) => {
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT]
     },
     {
-      label: 'Templates',
-      href: '/dashboard/templates',
-      icon: 'FileText',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
-    },
-    {
       label: 'Chatbot',
       href: '/dashboard/chatbot',
       icon: 'Bot',
@@ -160,28 +154,10 @@ export const getSidebarItems = (role: UserRole) => {
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
     },
     {
-      label: 'Analytics',
-      href: '/dashboard/analytics',
-      icon: 'BarChart3',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
-    },
-    {
       label: 'Team',
       href: '/dashboard/team',
       icon: 'Users2',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN]
-    },
-    {
-      label: 'Agents',
-      href: '/dashboard/agents',
-      icon: 'Headset',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
-    },
-    {
-      label: 'Billing',
-      href: '/dashboard/billing',
-      icon: 'CreditCard',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
     },
     {
       label: 'Account',
@@ -193,17 +169,11 @@ export const getSidebarItems = (role: UserRole) => {
       label: 'Settings',
       href: '/dashboard/settings',
       icon: 'Settings',
-    },
-    {
-      label: 'Connected WhatsApp',
-      href: '/dashboard/client/connected-whatsapp',
-      icon: 'MessageSquare',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN]
     }
   ]
 
-  // Filter items based on user role
-  return baseItems.filter(item => item.roles.includes(role))
+  // Filter items based on user role (with safety check for undefined roles)
+  return baseItems.filter(item => !item.roles || item.roles.includes(role))
 }
 
 /**

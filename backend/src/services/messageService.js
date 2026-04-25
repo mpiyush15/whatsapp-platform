@@ -161,10 +161,10 @@ export const getMessages = async (conversationId, accountId, limit = 50, offset 
     .sort({ createdAt: -1 })
     .skip(offset)
     .limit(limit)
-    .populate('readBy.agentId', 'name email')
-    .populate('replyTo', 'content.text messageType')
-    .lean();
-
+    .lean()
+    .exec(); // Ensure lean() executes properly
+  
+  // Count total without executing another heavy query
   const total = await Message.countDocuments({ conversationId, accountId });
 
   // Transform messages to frontend format
