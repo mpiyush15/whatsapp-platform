@@ -6,6 +6,8 @@ const accountSchema = new mongoose.Schema({
   name: { type: String, required: true },
   company: { type: String, default: '' },
   password: { type: String, default: null, select: false },
+  resetPasswordToken: { type: String, default: null, index: true },
+  resetPasswordExpires: { type: Date, default: null },
   
   // WhatsApp
   whatsappAccessToken: { type: String, default: null, select: false },

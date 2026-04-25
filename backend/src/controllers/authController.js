@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { generateToken } from '../middlewares/jwtAuth.js';
 import Account from '../models/Account.js';
 import User from '../models/User.js';
@@ -308,9 +309,106 @@ export const getCurrentUser = async (req, res) => {
   }
 };
 
+export const forgotPassword = async (req, res) => {
+  try {
+    const email = req.body?.email?.toLowerCase()?.trim();
+
+    if (!email) {
+      return sendValidationError(res, 'Email is required');
+    }
+
+    const genericMessage = 'If an account exists with this email, a password reset link has been sent.';
+
+    let authEntity = await Account.findOne({ email }).select('+password');
+    let entityType = 'account';
+
+    if (!authEntity) {
+      authEntity = await User.findOne({ email }).select('+password');
+      entityType = 'user';
+    }
+
+    if (!authEntity) {
+      logger.info('🔐 Forgot password requested for unknown email:', email);
+      return sendSuccess(res, {}, genericMessage);
+    }
+
+    if (!authEntity.password) {
+      logger.info('🔐 Forgot password requested for password-less account:', email);
+      return sendSuccess(res, {}, genericMessage);
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    authEntity.resetPasswordToken = resetPasswordToken;
+    authEntity.resetPasswordExpires = resetPasswordExpires;
+    await authEntity.save();
+
+    const emailResult = await emailService.sendPasswordResetEmail(email, resetToken);
+    if (!emailResult?.success) {
+      logger.error('❌ Failed to send reset email:', emailResult?.error || 'Unknown error');
+    }
+
+    logger.info(`✅ Password reset initiated for ${entityType}: ${email}`);
+    return sendSuccess(res, {}, genericMessage);
+  } catch (error) {
+    logger.error('❌ Forgot password error:', error.message);
+    return handleControllerError(res, error, 'forgotPassword');
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+
+    if (!token || !password) {
+      return sendValidationError(res, 'Token and new password are required');
+    }
+
+    if (password.length < 6) {
+      return sendValidationError(res, 'Password must be at least 6 characters');
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    let authEntity = await Account.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: new Date() }
+    }).select('+password');
+
+    let entityType = 'account';
+
+    if (!authEntity) {
+      authEntity = await User.findOne({
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: { $gt: new Date() }
+      }).select('+password');
+      entityType = 'user';
+    }
+
+    if (!authEntity) {
+      return sendValidationError(res, 'Reset link is invalid or expired');
+    }
+
+    authEntity.password = await bcrypt.hash(password, 10);
+    authEntity.resetPasswordToken = null;
+    authEntity.resetPasswordExpires = null;
+    await authEntity.save();
+
+    logger.info(`✅ Password reset completed for ${entityType}: ${authEntity.email}`);
+    return sendSuccess(res, {}, 'Password reset successful. Please login with your new password.');
+  } catch (error) {
+    logger.error('❌ Reset password error:', error.message);
+    return handleControllerError(res, error, 'resetPassword');
+  }
+};
+
 export default {
   login,
   signup,
   logout,
-  getCurrentUser
+  getCurrentUser,
+  forgotPassword,
+  resetPassword
 };

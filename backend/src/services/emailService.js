@@ -2,12 +2,42 @@ import axios from 'axios';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
-const ZEPTO_API_KEY = process.env.ZEPTOMAIL_API_TOKEN || process.env.ZEPTO_API_TOKEN || process.env.ZEPTO_API_KEY;
-const ZEPTO_BASE_URL = process.env.ZEPTO_API_URL || 'https://api.zeptomail.in/v1.1/email';
-const FROM_EMAIL = process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'support@replysys.com';
+const ZEPTO_API_KEY = (process.env.ZEPTOMAIL_API_TOKEN || process.env.ZEPTO_API_TOKEN || process.env.ZEPTO_API_KEY || '').trim();
+const ZEPTO_BASE_URL = (process.env.ZEPTO_API_URL || process.env.ZEPTOMAIL_API_URL || 'https://api.zeptomail.in').trim();
+const FROM_EMAIL = (process.env.ZEPTO_FROM || process.env.ZEPTO_FROM_EMAIL || process.env.EMAIL_FROM || process.env.FROM_EMAIL || 'support@replysys.com').trim();
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.SUPPORT_EMAIL || 'support@replysys.com';
 const FROM_NAME = 'Replysys'; // Changed from "Pixels WhatsApp" to "Replysys"
 const ENABLE_EMAIL = process.env.ENABLE_EMAIL !== 'false';
+
+const getPrimaryFrontendUrl = () => {
+  const raw = (process.env.FRONTEND_URL || '').trim();
+  if (!raw) return 'http://localhost:3000';
+  return raw.split(',')[0].trim().replace(/\/$/, '');
+};
+
+const getZeptoSendUrl = () => {
+  const base = (ZEPTO_BASE_URL || '').replace(/\/$/, '');
+
+  if (base.includes('/v1.1/email/send')) return base;
+  if (base.includes('/v1.1/email')) return base;
+
+  return `${base}/v1.1/email`;
+};
+
+const getZeptoAuthHeader = () => {
+  if (!ZEPTO_API_KEY) return '';
+  return ZEPTO_API_KEY.startsWith('Zoho-enczapikey')
+    ? ZEPTO_API_KEY
+    : `Zoho-enczapikey ${ZEPTO_API_KEY}`;
+};
+
+const safeSerialize = (value) => {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
 
 // Helper function to send email via Zepto
 const sendViaZepto = async (to, subject, htmlbody) => {
@@ -16,9 +46,12 @@ const sendViaZepto = async (to, subject, htmlbody) => {
     return { success: false, error: 'Email API key not configured' };
   }
 
+  const zeptoUrl = getZeptoSendUrl();
+  const authHeader = getZeptoAuthHeader();
+
   try {
     const response = await axios.post(
-      ZEPTO_BASE_URL,
+      zeptoUrl,
       {
         from: { address: FROM_EMAIL, name: FROM_NAME },
         to: [{ email_address: { address: to } }],
@@ -27,14 +60,25 @@ const sendViaZepto = async (to, subject, htmlbody) => {
       },
       {
         headers: {
-          'Authorization': ZEPTO_API_KEY,
+          'Authorization': authHeader,
           'Content-Type': 'application/json'
         }
       }
     );
     return { success: true };
   } catch (error) {
-    logger.error('  Zepto Error:', error.response?.data || error.message);
+    logger.error('❌ Zepto email request failed');
+    logger.error('  Status:', error.response?.status || 'no-status');
+    logger.error('  Status Text:', error.response?.statusText || 'no-status-text');
+    logger.error('  Provider Response:', safeSerialize(error.response?.data || error.message));
+    logger.error('  Request URL:', zeptoUrl);
+    logger.error('  Request Meta:', {
+      to,
+      from: FROM_EMAIL,
+      subject,
+      hasApiKey: !!ZEPTO_API_KEY,
+      authHeaderPrefixed: authHeader.startsWith('Zoho-enczapikey ')
+    });
     throw error;
   }
 };
@@ -178,14 +222,11 @@ export const emailService = {
   // Send password reset email
   sendPasswordResetEmail: async (email, resetToken) => {
     try {
-      const resetLink = `${process.env.FRONTEND_URL}/auth/reset-password?token=${resetToken}`;
-      const response = await axios.post(
-        `${ZEPTO_BASE_URL}/v1.1/email/send`,
-        {
-          from: { address: FROM_EMAIL, name: FROM_NAME },
-          to: [{ email_address: { address: email } }],
-          subject: '🔐 Password Reset Request - Pixels WhatsApp',
-          htmlbody: `
+      const resetLink = `${getPrimaryFrontendUrl()}/auth/reset-password?token=${resetToken}`;
+      await sendViaZepto(
+        email,
+        '🔐 Password Reset Request - Pixels WhatsApp',
+        `
             <!DOCTYPE html>
             <html>
             <head>
@@ -211,13 +252,6 @@ export const emailService = {
             </body>
             </html>
           `
-        },
-        {
-          headers: {
-            'Authorization': ZEPTO_API_KEY,
-            'Content-Type': 'application/json'
-          }
-        }
       );
       logger.info('✅ Password reset email sent to', email);
       return { success: true };

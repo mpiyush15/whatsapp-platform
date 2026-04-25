@@ -166,6 +166,12 @@ export default function LoginPage() {
                 {loading ? "Signing in..." : "Sign In"} {!loading && <ArrowRight size={18} />}
               </button>
 
+              <div className="text-right">
+                <Link href="/auth/forgot-password" className="text-sm text-green-600 hover:text-green-700 font-medium">
+                  Forgot password?
+                </Link>
+              </div>
+
               {/* Divider */}
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">

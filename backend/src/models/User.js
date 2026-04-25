@@ -19,6 +19,15 @@ const userSchema = new mongoose.Schema({
   // Authentication
   password: String, // Optional - for email/password auth
   googleId: String, // For Google OAuth
+  resetPasswordToken: {
+    type: String,
+    default: null,
+    index: true
+  },
+  resetPasswordExpires: {
+    type: Date,
+    default: null
+  },
   emailVerified: {
     type: Boolean,
     default: false
