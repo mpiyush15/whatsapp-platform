@@ -498,16 +498,58 @@ class WhatsAppService {
       await message.save();
 
       // Build template components
-      let components = [];
-      
+      const components = [];
+
+      // BODY params (if template has body variables)
       if (params && params.length > 0) {
-        components = [{
+        components.push({
           type: 'body',
           parameters: params.map(p => ({ type: 'text', text: String(p) }))
-        }];
-        logger.info('✅ Building components with', params.length, 'parameters');
-      } else {
-        logger.info('📝 Template has no variables - sending without components');
+        });
+        logger.info('✅ Building BODY component with', params.length, 'parameter(s)');
+      }
+
+      // HEADER params (required for media-header templates)
+      const headerComp = (template.components || []).find(
+        (c) => String(c?.type || '').toUpperCase() === 'HEADER'
+      );
+      const headerFormat = String(headerComp?.format || '').toUpperCase();
+
+      if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat)) {
+        const mediaLink =
+          template.mediaUrl ||
+          headerComp?.example?.header_handle?.[0] ||
+          headerComp?.example?.header_url ||
+          null;
+
+        if (!mediaLink) {
+          throw new Error(
+            `Template "${templateName}" requires ${headerFormat} header media, but no media URL is configured`
+          );
+        }
+
+        const lowerType = headerFormat.toLowerCase();
+        const headerParam = { type: lowerType };
+
+        if (lowerType === 'document') {
+          headerParam.document = {
+            link: mediaLink,
+            filename: template.mediaFileName || undefined
+          };
+        } else {
+          headerParam[lowerType] = { link: mediaLink };
+        }
+
+        components.push({
+          type: 'header',
+          parameters: [headerParam]
+        });
+
+        logger.info(`✅ Added required ${headerFormat} HEADER component`);
+      }
+
+      if (components.length === 0) {
+        logger.info('📝 Template has no dynamic components - sending without components');
       }
 
       // Build template payload
@@ -516,7 +558,7 @@ class WhatsAppService {
         language: { code: template.language || 'en' }
       };
 
-      // Only attach components if parameters exist
+      // Attach components when present (body/header)
       if (components.length > 0) {
         templatePayload.components = components;
       }
