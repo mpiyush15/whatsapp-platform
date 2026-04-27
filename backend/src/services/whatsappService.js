@@ -8,6 +8,7 @@ import Conversation from '../models/Conversation.js';
 import KeywordRule from '../models/KeywordRule.js';
 import WorkflowSession from '../models/WorkflowSession.js';
 import { broadcastMessageStatus } from './socketService.js';
+import { getSignedUrlForS3Object } from './s3Service.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -516,11 +517,25 @@ class WhatsAppService {
       const headerFormat = String(headerComp?.format || '').toUpperCase();
 
       if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat)) {
-        const mediaLink =
-          template.mediaUrl ||
-          headerComp?.example?.header_handle?.[0] ||
-          headerComp?.example?.header_url ||
-          null;
+        let mediaLink = null;
+
+        // Prefer fresh signed URL when media is stored in S3 key (prevents expired URL failures)
+        if (template.mediaFilePath) {
+          try {
+            mediaLink = await getSignedUrlForS3Object(template.mediaFilePath, 3600);
+            logger.info('✅ Generated fresh signed URL for template header media');
+          } catch (s3Err) {
+            logger.warn('⚠️ Failed to generate fresh signed URL, falling back to stored mediaUrl:', s3Err.message);
+          }
+        }
+
+        if (!mediaLink) {
+          mediaLink =
+            template.mediaUrl ||
+            headerComp?.example?.header_handle?.[0] ||
+            headerComp?.example?.header_url ||
+            null;
+        }
 
         if (!mediaLink) {
           throw new Error(
