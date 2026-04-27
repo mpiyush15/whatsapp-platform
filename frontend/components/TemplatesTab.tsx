@@ -90,6 +90,10 @@ interface FormData {
   name: string
   language: string
   category: string
+  authUseCase?: 'login_otp' | 'signup_otp' | 'order_verification'
+  authAutoFillEnabled?: boolean
+  appPackageName?: string
+  appSignatureHash?: string
   content: string
   hasMedia: boolean
   mediaType: string
@@ -101,6 +105,8 @@ interface FormData {
   buttons: any[]
   variableType: 'Number' | 'Text'
   mediaSample: 'none' | 'image' | 'video' | 'document' | 'location'
+  messageValidityEnabled?: boolean
+  messageValidityPeriod?: '10_minutes' | '12_hours' | '24_hours' | '7_days' | '30_days'
 }
 
 export default function TemplatesTab({ projectId }: { projectId: string }) {
@@ -127,6 +133,10 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
     name: '',
     language: 'en',
     category: TemplateCategory.UTILITY,
+    authUseCase: 'login_otp',
+    authAutoFillEnabled: false,
+    appPackageName: '',
+    appSignatureHash: '',
     content: '',
     hasMedia: false,
     mediaType: 'image',
@@ -138,6 +148,8 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
     buttons: [],
     variableType: 'Number',
     mediaSample: 'none',
+    messageValidityEnabled: false,
+    messageValidityPeriod: '10_minutes',
   })
 
   // Setup context callbacks on mount and when functions change
@@ -230,6 +242,8 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
         formDataToSend.append('projectId', projectId)
         formDataToSend.append('mediaSample', formData.mediaSample || 'none')
         formDataToSend.append('variableType', formData.variableType || 'Number')
+        formDataToSend.append('messageValidityEnabled', String(!!formData.messageValidityEnabled))
+        formDataToSend.append('messageValidityPeriod', formData.messageValidityPeriod || '10_minutes')
         formDataToSend.append('buttons', JSON.stringify(formData.buttons || []))
         formDataToSend.append('mediaFile', formData.mediaFile)
         
@@ -309,7 +323,7 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
         const submittedMetaId = submitPayload.metaTemplateId || submitPayload.template?.metaTemplateId || 'N/A'
 
         // Auto-sync immediately so status updates quickly after submit
-        const syncResponse = await fetch(`${API_URL}/settings/templates/sync?projectId=${projectId}`, {
+        const syncResponse = await fetch(`${API_URL}/templates/sync?projectId=${projectId}`, {
           method: 'POST',
           headers: getHeaders(),
         })
@@ -336,7 +350,7 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
   const syncTemplatesFromWhatsApp = async () => {
     try {
       setIsSyncing(true)
-      const response = await fetch(`${API_URL}/settings/templates/sync?projectId=${projectId}`, {
+      const response = await fetch(`${API_URL}/templates/sync?projectId=${projectId}`, {
         method: 'POST',
         headers: getHeaders(),
       })
@@ -366,6 +380,10 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
       name: '',
       language: 'en',
       category: TemplateCategory.UTILITY,
+      authUseCase: 'login_otp',
+      authAutoFillEnabled: false,
+      appPackageName: '',
+      appSignatureHash: '',
       content: '',
       hasMedia: false,
       mediaType: 'image',
@@ -377,6 +395,8 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
       buttons: [],
       variableType: 'Number',
       mediaSample: 'none',
+      messageValidityEnabled: false,
+      messageValidityPeriod: '10_minutes',
     })
     setShowModal(true)
   }
@@ -792,7 +812,27 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
                           <button
                             key={c.id}
                             onClick={() => {
-                              setFormData({ ...formData, category: c.id as any })
+                              if (c.id === 'authentication') {
+                                setFormData({
+                                  ...formData,
+                                  category: c.id as any,
+                                  authUseCase: 'login_otp',
+                                  authAutoFillEnabled: false,
+                                  appPackageName: '',
+                                  appSignatureHash: '',
+                                  content: '{{1}} is your verification code. Do not share this code.',
+                                  variableType: 'Number',
+                                  hasMedia: false,
+                                  mediaSample: 'none',
+                                  mediaUrl: '',
+                                  mediaFile: null,
+                                  headerText: '',
+                                  footerText: '',
+                                  buttons: [],
+                                })
+                              } else {
+                                setFormData({ ...formData, category: c.id as any })
+                              }
                               setTemplateType('default')
                             }}
                             className={`px-4 py-2 text-sm font-medium border-r last:border-r-0 ${formData.category === c.id ? 'bg-blue-50 text-blue-700' : 'bg-white text-gray-700 hover:bg-gray-50'}`}

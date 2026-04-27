@@ -111,58 +111,87 @@ export const routeAccess = {
  */
 export const getSidebarItems = (role: UserRole) => {
   const baseItems = [
+    // ── MAIN ──
     {
       label: 'Dashboard',
       href: '/dashboard',
       icon: 'LayoutDashboard',
+      group: null,
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
     },
+    // ── GROWTH ──
     {
-      label: 'Messages',
-      href: '/dashboard/live-chat-v2',
-      icon: 'MessageSquare',
+      label: 'Leads',
+      href: '/dashboard/leads',
+      icon: 'Target',
+      group: '🚀 Growth',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
     },
     {
       label: 'Contacts',
       href: '/dashboard/contacts',
       icon: 'Users',
+      group: '🚀 Growth',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT]
+    },
+    // ── CONVERSATIONS ──
+    {
+      label: 'Live Chat',
+      href: '/dashboard/live-chat-v2',
+      icon: 'MessageSquare',
+      group: '💬 Conversations',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
     },
     {
       label: 'Chatbot',
       href: '/dashboard/chatbot',
       icon: 'Bot',
+      group: '💬 Conversations',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
     },
-    {
-      label: 'Leads',
-      href: '/dashboard/leads',
-      icon: 'Target',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
-    },
+    // ── MARKETING ──
     {
       label: 'Campaigns',
       href: '/dashboard/campaigns',
-      icon: 'Target',
+      icon: 'Megaphone',
+      group: '📢 Marketing',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
     },
     {
-      label: 'Team',
-      href: '/dashboard/team',
-      icon: 'Users2',
-      roles: [UserRole.SUPERADMIN, UserRole.ADMIN]
+      label: 'Templates',
+      href: '/dashboard/templates',
+      icon: 'FileText',
+      group: '📢 Marketing',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
     },
+    // ── ANALYTICS ──
+    {
+      label: 'Analytics',
+      href: '/dashboard/analytics',
+      icon: 'BarChart3',
+      group: '📈 Analytics',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    // ── SYSTEM ──
     {
       label: 'Account',
       href: '/dashboard/account',
       icon: 'User',
+      group: '⚙️ System',
+      roles: [UserRole.ADMIN, UserRole.MANAGER]
+    },
+    {
+      label: 'Billing',
+      href: '/dashboard/billing',
+      icon: 'CreditCard',
+      group: '⚙️ System',
       roles: [UserRole.ADMIN, UserRole.MANAGER]
     },
     {
       label: 'Settings',
       href: '/dashboard/settings',
       icon: 'Settings',
+      group: '⚙️ System',
     }
   ]
 

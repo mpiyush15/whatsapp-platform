@@ -2,12 +2,11 @@
 
 import { useState, useEffect, Suspense, lazy } from "react"
 import { Button } from "@/components/ui/button"
-import { Phone, CheckCircle, AlertCircle, FileText, Settings as SettingsIcon, CreditCard, BarChart3, Headset, Loader } from "lucide-react"
-import { useParams, useRouter } from "next/navigation"
+import { Phone, CheckCircle, AlertCircle, Settings as SettingsIcon, CreditCard, BarChart3, Headset, Loader } from "lucide-react"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useSettings } from "@/lib/context/SettingsContext"
 
 // PHASE 5: Dynamic imports for code splitting - reduce initial bundle
-const TemplatesTab = lazy(() => import("@/components/TemplatesTab"))
 const BillingTab = lazy(() => import("@/components/BillingTab"))
 const AnalyticsTab = lazy(() => import("@/components/AnalyticsTab"))
 const AgentsTab = lazy(() => import("@/components/AgentsTab"))
@@ -61,7 +60,6 @@ interface Project {
 // Settings Tabs
 const SETTINGS_TABS = [
   { id: 'connect-number', label: 'Connect Number', icon: Phone },
-  { id: 'templates', label: 'Templates', icon: FileText },
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'agents', label: 'Agents', icon: Headset }
@@ -313,9 +311,20 @@ function ConnectNumberTab({ projectId }: { projectId: string }) {
 // Main Settings Page Inner Content
 function SettingsPageContent() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const projectId = params.projectId as string
   const [accountId, setAccountId] = useState<string | undefined>(undefined)
   const { activeTab, setActiveTab, setTabTitle, setShowSyncButton, setShowCreateButton } = useSettings()
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab')
+    if (!tabFromUrl) return
+
+    const isValidTab = SETTINGS_TABS.some(tab => tab.id === tabFromUrl)
+    if (isValidTab && activeTab !== tabFromUrl) {
+      setActiveTab(tabFromUrl)
+    }
+  }, [searchParams, activeTab, setActiveTab])
 
   // ✅ CRITICAL: Fetch accountId from auth/session
   useEffect(() => {
@@ -340,9 +349,9 @@ function SettingsPageContent() {
     const tab = SETTINGS_TABS.find(t => t.id === activeTab)
     if (tab) {
       setTabTitle(tab.label)
-      // Only show sync/create for templates tab
-      setShowSyncButton(activeTab === 'templates')
-      setShowCreateButton(activeTab === 'templates')
+      // Templates moved to dedicated /templates page
+      setShowSyncButton(false)
+      setShowCreateButton(false)
     }
   }, [activeTab, setTabTitle, setShowSyncButton, setShowCreateButton])
 
@@ -379,11 +388,6 @@ function SettingsPageContent() {
           <div className="flex-1 overflow-y-auto">
             <div className="p-8 max-w-6xl">
               {activeTab === 'connect-number' && <ConnectNumberTab projectId={projectId} />}
-              {activeTab === 'templates' && (
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <TemplatesTab projectId={projectId} />
-                </Suspense>
-              )}
               {activeTab === 'billing' && (
                 <Suspense fallback={<TabLoadingFallback />}>
                   <BillingTab projectId={projectId} accountId={accountId} />

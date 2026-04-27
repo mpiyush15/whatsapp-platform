@@ -43,6 +43,12 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
   
   // Check if on settings page
   const isSettingsPage = pathname.includes('/settings')
+
+  // Check if on templates page
+  const isTemplatesPage = pathname.includes('/templates')
+
+  // Check if on campaigns page
+  const isCampaignsPage = pathname.includes('/campaigns')
   
   // Use context for live chat search/filter
   let search = ''
@@ -184,6 +190,90 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
             <Menu size={20} />
           </button>
           <h2 className="text-lg font-semibold text-gray-900">Settings</h2>
+        </div>
+      </header>
+    )
+  }
+
+  // Show topbar with templates heading + actions for templates page
+  if (isTemplatesPage) {
+    let settingsContext = null
+    try {
+      settingsContext = useSettings()
+    } catch {
+      // Context not available yet
+    }
+
+    if (settingsContext) {
+      const { showSyncButton, showCreateButton, isSyncing, onSyncClick, onCreateClick } = settingsContext
+
+      return (
+        <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onMenuClick}
+              className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+              aria-label="Open menu"
+            >
+              <Menu size={20} />
+            </button>
+            <h2 className="text-lg font-semibold text-gray-900">Templates</h2>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {showSyncButton && (
+              <button
+                onClick={onSyncClick}
+                disabled={isSyncing}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition text-sm font-medium"
+              >
+                <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+                {isSyncing ? 'Syncing...' : 'Sync'}
+              </button>
+            )}
+            {showCreateButton && (
+              <button
+                onClick={onCreateClick}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition text-sm font-medium"
+              >
+                <Plus size={16} />
+                Create
+              </button>
+            )}
+          </div>
+        </header>
+      )
+    }
+
+    return (
+      <header className="bg-white border-b border-gray-200 h-16 flex items-center px-6">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+            aria-label="Open menu"
+          >
+            <Menu size={20} />
+          </button>
+          <h2 className="text-lg font-semibold text-gray-900">Templates</h2>
+        </div>
+      </header>
+    )
+  }
+
+  // Show topbar with campaigns heading
+  if (isCampaignsPage) {
+    return (
+      <header className="bg-white border-b border-gray-200 h-16 flex items-center px-6">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+            aria-label="Open menu"
+          >
+            <Menu size={20} />
+          </button>
+          <h2 className="text-lg font-semibold text-gray-900">Campaigns</h2>
         </div>
       </header>
     )

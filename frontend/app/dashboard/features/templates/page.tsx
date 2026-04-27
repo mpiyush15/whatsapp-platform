@@ -209,7 +209,7 @@ export default function TemplatesPage() {
   const syncTemplatesFromWhatsApp = async () => {
     try {
       setIsSyncing(true)
-      const response = await fetch(`${API_URL}/settings/templates/sync`, {
+      const response = await fetch(`${API_URL}/templates/sync`, {
         method: 'POST',
         headers: getHeaders(),
       })

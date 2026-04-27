@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Plus, ChevronDown, Info } from "lucide-react"
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -16,6 +16,10 @@ export interface TemplateFormData {
   name: string
   language: string
   category: string
+  authUseCase?: "login_otp" | "signup_otp" | "order_verification"
+  authAutoFillEnabled?: boolean
+  appPackageName?: string
+  appSignatureHash?: string
   variableType: "Number" | "Text"
   mediaSample: "none" | "image" | "video" | "document" | "location"
   mediaUrl: string
@@ -24,6 +28,8 @@ export interface TemplateFormData {
   content: string
   footerText: string
   buttons: TemplateButton[]
+  messageValidityEnabled?: boolean
+  messageValidityPeriod?: "10_minutes" | "12_hours" | "24_hours" | "7_days" | "30_days"
   // legacy compat
   hasMedia: boolean
   mediaType: string
@@ -74,6 +80,14 @@ const TYPE_LABEL: Record<string, string> = {
   catalogue: "Catalogue",
   calling_permissions_request: "Calling permissions request",
 }
+
+const AUTH_FIXED_MESSAGE = "{{1}} is your verification code. Do not share this code."
+
+const AUTH_USE_CASE_OPTIONS = [
+  { value: "login_otp", label: "Login OTP" },
+  { value: "signup_otp", label: "Signup OTP" },
+  { value: "order_verification", label: "Order verification" },
+] as const
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -134,6 +148,161 @@ export default function TemplateEditForm({ formData, setFormData, category, temp
   const typeLabel = TYPE_LABEL[templateType] ?? templateType
   const langLabel = LANGUAGES.find((l) => l.value === formData.language)?.label ?? formData.language
   const canUploadMediaFile = category === "marketing" && templateType === "default" && ["image", "video", "document"].includes(mediaSample)
+  const isUtilityDefault = category === "utility" && templateType === "default"
+  const isAuthenticationDefault = category === "authentication" && templateType === "default"
+
+  useEffect(() => {
+    if (!isAuthenticationDefault) return
+
+    const patch: Partial<TemplateFormData> = {}
+
+    if (formData.content !== AUTH_FIXED_MESSAGE) patch.content = AUTH_FIXED_MESSAGE
+    if (!formData.authUseCase) patch.authUseCase = "login_otp"
+    if (formData.variableType !== "Number") patch.variableType = "Number"
+    if (formData.hasMedia) patch.hasMedia = false
+    if (formData.mediaSample !== "none") patch.mediaSample = "none"
+    if (formData.mediaUrl) patch.mediaUrl = ""
+    if (formData.mediaFile) patch.mediaFile = null
+    if (formData.headerText) patch.headerText = ""
+    if (formData.footerText) patch.footerText = ""
+    if (formData.buttons.length > 0) patch.buttons = []
+
+    if (Object.keys(patch).length > 0) set(patch)
+  }, [
+    isAuthenticationDefault,
+    formData.content,
+    formData.authUseCase,
+    formData.variableType,
+    formData.hasMedia,
+    formData.mediaSample,
+    formData.mediaUrl,
+    formData.mediaFile,
+    formData.headerText,
+    formData.footerText,
+    formData.buttons.length,
+  ])
+
+  if (isAuthenticationDefault) {
+    return (
+      <div className="space-y-0">
+        <div className="flex items-center gap-3 px-5 py-3 bg-white border-b border-gray-200">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: "#1877f2" }}>
+            <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">
+              {formData.name || "login_otp"} • {langLabel}
+            </p>
+            <p className="text-xs text-gray-500">Authentication • Default</p>
+          </div>
+        </div>
+
+        <div className="px-5 py-5 bg-white border-b border-gray-200">
+          <h3 className="text-base font-semibold text-gray-900 mb-4">Template name and language</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Name your template</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => set({ name: e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") })}
+                  maxLength={512}
+                  placeholder="login_otp"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 pr-16"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{formData.name.length}/512</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Lowercase letters, numbers and underscores only</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Select language</label>
+              <select
+                value={formData.language}
+                onChange={(e) => set({ language: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.value} value={l.value}>{l.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-5 bg-white border-b border-gray-200 space-y-5">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Authentication template setup</h3>
+            <p className="text-xs text-gray-500 mt-1">Simple OTP setup for ecommerce use-cases.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Use case</label>
+            <select
+              value={formData.authUseCase || "login_otp"}
+              onChange={(e) => set({ authUseCase: e.target.value as TemplateFormData["authUseCase"] })}
+              className="w-full max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {AUTH_USE_CASE_OPTIONS.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Message (fixed)</label>
+            <textarea
+              value={AUTH_FIXED_MESSAGE}
+              readOnly
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 resize-none"
+            />
+            <p className="text-xs text-gray-400 mt-1">Replysys keeps this fixed to match Meta authentication policy.</p>
+          </div>
+
+          <div className="pt-2 border-t border-gray-100">
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!formData.authAutoFillEnabled}
+                onChange={(e) => set({ authAutoFillEnabled: e.target.checked })}
+                className="h-4 w-4"
+              />
+              Enable auto-fill (for mobile apps)
+            </label>
+          </div>
+
+          {formData.authAutoFillEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">App package name</label>
+                <input
+                  type="text"
+                  value={formData.appPackageName || ""}
+                  onChange={(e) => set({ appPackageName: e.target.value })}
+                  placeholder="com.yourapp.android"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">App signature hash</label>
+                <input
+                  type="text"
+                  value={formData.appSignatureHash || ""}
+                  onChange={(e) => set({ appSignatureHash: e.target.value })}
+                  placeholder="ABcdEfGhIjK"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-0">
@@ -547,6 +716,58 @@ export default function TemplateEditForm({ formData, setFormData, category, temp
           </div>
         )}
       </div>
+
+      {/* ── Section: Message validity period (Utility Default) ── */}
+      {isUtilityDefault && (
+        <div className="px-5 py-5 bg-white border-t border-gray-200 space-y-4">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Message validity period</h3>
+            <p className="text-xs text-gray-500 mt-1">
+              You can set a custom validity period that your utility message must be delivered by before it expires.
+              If a message is not delivered within this time frame, it will not be charged and your customer will not see it.
+            </p>
+          </div>
+
+          <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 p-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Set custom validity period for your message</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {formData.messageValidityEnabled
+                  ? "Select how long the message should be valid."
+                  : "If you don’t set a custom validity period, the standard 10 minutes validity period will be applied."}
+              </p>
+            </div>
+
+            <label className="relative inline-flex items-center cursor-pointer mt-1">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={!!formData.messageValidityEnabled}
+                onChange={(e) => set({ messageValidityEnabled: e.target.checked })}
+              />
+              <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 transition-colors" />
+              <div className="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-5" />
+            </label>
+          </div>
+
+          {formData.messageValidityEnabled && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Validity period</label>
+              <select
+                value={formData.messageValidityPeriod || "10_minutes"}
+                onChange={(e) => set({ messageValidityPeriod: e.target.value as TemplateFormData["messageValidityPeriod"] })}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[220px]"
+              >
+                <option value="10_minutes">10 minutes (default)</option>
+                <option value="12_hours">12 hours</option>
+                <option value="24_hours">24 hours</option>
+                <option value="7_days">7 days</option>
+                <option value="30_days">30 days</option>
+              </select>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
