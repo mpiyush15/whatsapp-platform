@@ -9,6 +9,49 @@ import Account from '../models/Account.js';
 import PhoneNumber from '../models/PhoneNumber.js';
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
+import Campaign from '../models/Campaign.js';
+
+const refreshCampaignStatsFromMessages = async (campaignId, accountId) => {
+  const [sentCount, failedCount, deliveredOrReadCount, readCount] = await Promise.all([
+    Message.countDocuments({ campaign: String(campaignId), accountId, status: { $in: ['sent', 'delivered', 'read'] } }),
+    Message.countDocuments({ campaign: String(campaignId), accountId, status: 'failed' }),
+    Message.countDocuments({ campaign: String(campaignId), accountId, status: { $in: ['delivered', 'read'] } }),
+    Message.countDocuments({ campaign: String(campaignId), accountId, status: 'read' })
+  ]);
+
+  const campaign = await Campaign.findOne({ _id: campaignId, accountId });
+  if (!campaign) return null;
+
+  const attempted = Number(campaign.recipients?.total || 0);
+  const terminalCount = deliveredOrReadCount + failedCount;
+  const updatedStatus = attempted > 0 && terminalCount >= attempted ? 'completed' : campaign.status;
+
+  campaign.stats = {
+    ...(campaign.stats?.toObject?.() || campaign.stats || {}),
+    totalSent: sentCount,
+    totalFailed: failedCount,
+    totalDelivered: deliveredOrReadCount,
+    totalOpened: readCount,
+    deliveryRate: sentCount > 0 ? Number(((deliveredOrReadCount / sentCount) * 100).toFixed(2)) : 0,
+    openRate: deliveredOrReadCount > 0 ? Number(((readCount / deliveredOrReadCount) * 100).toFixed(2)) : 0
+  };
+
+  campaign.recipients = {
+    ...(campaign.recipients?.toObject?.() || campaign.recipients || {}),
+    sent: sentCount,
+    failed: failedCount,
+    pending: Math.max(attempted - terminalCount, 0),
+    inProgress: Math.max(attempted - terminalCount, 0)
+  };
+
+  campaign.status = updatedStatus;
+  if (updatedStatus === 'completed' && !campaign.completedAt) {
+    campaign.completedAt = new Date();
+  }
+
+  await campaign.save();
+  return campaign;
+};
 export const registerWebhook = async (req, res) => {
   try {
     const { url, events } = req.body;
@@ -175,11 +218,12 @@ export const handleWebhook = async (req, res) => {
             }
           }
           
-          // Handle incoming messages
+          // Handle incoming messages + status updates
           else if (field === 'messages') {
             const messages = value.messages || [];
             const contacts = value.contacts || [];
             const metadata = value.metadata || {};
+            const statuses = value.statuses || [];
             
             logger.info(`💬 ${messages.length} message(s) received`);
             
@@ -410,21 +454,59 @@ export const handleWebhook = async (req, res) => {
                 logger.error(`❌ Error saving message:`, messageError.message);
               }
             }
-          }
-          
-          // Handle message status updates (delivered, read, failed, etc.)
-          else if (field === 'message_status') {
-            const statuses = value.statuses || [];
-            
-            logger.info(`📨 ${statuses.length} status update(s)`);
-            
-            for (const status of statuses) {
-              const { id: messageId, status: msgStatus, timestamp, recipient_id, errors } = status;
-              
-              logger.info(`📊 Message ${messageId}: ${msgStatus} at ${new Date(timestamp * 1000).toISOString()}`);
-              
-              if (errors) {
-                logger.warn(`⚠️ Error for message ${messageId}:`, errors);
+
+            if (statuses.length > 0) {
+              logger.info(`📨 ${statuses.length} status update(s)`);
+
+              for (const statusEvent of statuses) {
+                const { id: waMessageId, status: msgStatus, timestamp, errors } = statusEvent;
+                logger.info(`📊 Message ${waMessageId}: ${msgStatus} at ${new Date(Number(timestamp) * 1000).toISOString()}`);
+
+                const messageDoc = await Message.findOne({ waMessageId });
+                if (!messageDoc) {
+                  logger.warn(`⚠️ Status webhook received for unknown message: ${waMessageId}`);
+                  continue;
+                }
+
+                const mappedStatus = ['sent', 'delivered', 'read', 'failed'].includes(String(msgStatus))
+                  ? String(msgStatus)
+                  : messageDoc.status;
+
+                messageDoc.status = mappedStatus;
+
+                if (mappedStatus === 'delivered' && !messageDoc.deliveredAt) {
+                  messageDoc.deliveredAt = new Date(Number(timestamp) * 1000);
+                }
+                if (mappedStatus === 'read' && !messageDoc.readAt) {
+                  messageDoc.readAt = new Date(Number(timestamp) * 1000);
+                }
+                if (mappedStatus === 'failed' && !messageDoc.failedAt) {
+                  messageDoc.failedAt = new Date(Number(timestamp) * 1000);
+                  messageDoc.errorCode = errors?.[0]?.code ? String(errors[0].code) : messageDoc.errorCode;
+                  messageDoc.errorMessage = errors?.[0]?.title || errors?.[0]?.message || messageDoc.errorMessage;
+                }
+
+                messageDoc.statusUpdates.push({
+                  status: mappedStatus,
+                  timestamp: new Date(Number(timestamp) * 1000),
+                  errorCode: errors?.[0]?.code ? String(errors[0].code) : undefined,
+                  errorMessage: errors?.[0]?.title || errors?.[0]?.message || undefined
+                });
+
+                await messageDoc.save();
+
+                if (req.app.locals.io && messageDoc.conversationId) {
+                  req.app.locals.io.to(`conversation:${messageDoc.conversationId}`).emit('message_status_updated', {
+                    messageId: messageDoc._id,
+                    waMessageId,
+                    status: mappedStatus,
+                    timestamp: new Date(Number(timestamp) * 1000)
+                  });
+                }
+
+                if (messageDoc.campaign && messageDoc.campaign !== 'manual') {
+                  await refreshCampaignStatsFromMessages(messageDoc.campaign, messageDoc.accountId);
+                }
               }
             }
           }

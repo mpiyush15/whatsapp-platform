@@ -4,12 +4,46 @@ import { handleControllerError } from '../utils/errorHandler.js';
 import Campaign from '../models/Campaign.js';
 import PhoneNumber from '../models/PhoneNumber.js';
 import Template from '../models/Template.js';
+import Contact from '../models/Contact.js';
+import whatsappService from '../services/whatsappService.js';
 
 const getProjectId = (req) => req.query?.projectId || req.body?.projectId || null;
 
 const toPositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(String(value), 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const normalizePhone = (phone) => String(phone || '').replace(/[^0-9]/g, '');
+
+const getCampaignRecipients = async ({ accountId, projectId, campaign }) => {
+  const attrs = campaign?.audience?.customFilters?.attributes || {};
+  const selectedContactIds = Array.isArray(attrs.selectedContactIds) ? attrs.selectedContactIds : [];
+  const selectedPhones = Array.isArray(attrs.selectedPhones) ? attrs.selectedPhones : [];
+
+  const recipients = new Set();
+
+  for (const phone of selectedPhones) {
+    const normalized = normalizePhone(phone);
+    if (normalized) recipients.add(normalized);
+  }
+
+  if (selectedContactIds.length > 0) {
+    const contacts = await Contact.find({
+      _id: { $in: selectedContactIds },
+      accountId,
+      ...(projectId ? { projectId } : {})
+    }).select('phone whatsappNumber');
+
+    for (const c of contacts) {
+      const normalized = normalizePhone(c.whatsappNumber || c.phone);
+      if (normalized) recipients.add(normalized);
+    }
+  }
+
+  return Array.from(recipients);
 };
 
 const resolvePhoneNumberId = async (accountId, projectId = null) => {
@@ -159,24 +193,6 @@ export const getCampaigns = async (req, res) => {
     if (type) query.type = type;
     if (search) query.name = { $regex: String(search), $options: 'i' };
 
-    // Temporary stub-mode safeguard:
-    // if worker execution is not enabled, don't keep campaigns forever in running state.
-    await Campaign.updateMany(
-      {
-        accountId,
-        ...(projectId ? { projectId } : {}),
-        status: 'running'
-      },
-      {
-        $set: {
-          status: 'completed',
-          completedAt: new Date(),
-          'recipients.pending': 0,
-          'recipients.inProgress': 0
-        }
-      }
-    );
-
     const campaigns = await Campaign.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
@@ -312,48 +328,139 @@ export const startCampaign = async (req, res) => {
     if (projectId) query.projectId = projectId;
 
     const campaign = await Campaign.findOne(query);
-
     if (!campaign) return sendNotFound(res, 'Campaign');
 
-    // NOTE: Real async sender/worker is not wired yet.
-    // To avoid campaigns stuck in "running", complete immediately with deterministic stats.
-    const total = Number(campaign.recipients?.total || 0);
-    const sent = total;
-    const delivered = total;
-    const opened = Math.round(total * 0.65);
-    const clicked = Math.round(opened * 0.35);
-    const converted = Math.round(total * 0.08);
+    if (campaign.status === 'running') {
+      return sendSuccess(res, { campaign }, 'Campaign already running');
+    }
 
-    campaign.status = 'completed';
+    const recipients = await getCampaignRecipients({ accountId, projectId, campaign });
+    if (recipients.length === 0) {
+      return sendValidationError(res, 'No valid recipient phone numbers found for this campaign');
+    }
+
+    let templateName = campaign.message?.templateName;
+    if (!templateName && campaign.message?.templateId) {
+      const templateQuery = { _id: campaign.message.templateId, accountId, ...(projectId ? { projectId } : {}) };
+      let template = await Template.findOne(templateQuery).select('name');
+      if (!template && projectId) {
+        template = await Template.findOne({ _id: campaign.message.templateId, accountId }).select('name');
+      }
+      if (template?.name) {
+        templateName = template.name;
+        campaign.message.templateName = template.name;
+      }
+    }
+
+    if (!templateName) {
+      return sendValidationError(res, 'Template name not found for campaign');
+    }
+
+    campaign.status = 'running';
     campaign.startedAt = campaign.startedAt || new Date();
-    campaign.completedAt = new Date();
-
+    campaign.completedAt = undefined;
     campaign.recipients = {
       ...(campaign.recipients?.toObject?.() || campaign.recipients || {}),
-      total,
-      sent,
+      total: recipients.length,
+      sent: 0,
       failed: 0,
-      pending: 0,
-      inProgress: 0
+      pending: recipients.length,
+      inProgress: recipients.length
     };
-
     campaign.stats = {
       ...(campaign.stats?.toObject?.() || campaign.stats || {}),
-      totalSent: sent,
-      totalDelivered: delivered,
+      totalSent: 0,
+      totalDelivered: 0,
       totalFailed: 0,
-      totalOpened: opened,
-      totalClicked: clicked,
-      totalConverted: converted,
-      deliveryRate: sent > 0 ? Number(((delivered / sent) * 100).toFixed(2)) : 0,
-      openRate: delivered > 0 ? Number(((opened / delivered) * 100).toFixed(2)) : 0,
-      clickRate: opened > 0 ? Number(((clicked / opened) * 100).toFixed(2)) : 0,
-      conversionRate: sent > 0 ? Number(((converted / sent) * 100).toFixed(2)) : 0
+      totalOpened: 0,
+      deliveryRate: 0,
+      openRate: 0,
+      clickRate: 0,
+      conversionRate: 0
     };
+    await campaign.save();
+
+    logger.info(`[Campaign:${campaign._id}] Starting bulk send for ${recipients.length} recipients`);
+
+    let sent = 0;
+    let failed = 0;
+    const failedLogs = [];
+
+    for (let i = 0; i < recipients.length; i++) {
+      const recipientPhone = recipients[i];
+      try {
+        await whatsappService.sendTemplateMessage(
+          accountId,
+          campaign.phoneNumberId,
+          recipientPhone,
+          templateName,
+          campaign.message?.variables || [],
+          {
+            campaign: String(campaign._id),
+            projectId: campaign.projectId || null
+          }
+        );
+
+        sent += 1;
+      } catch (err) {
+        failed += 1;
+        failedLogs.push({
+          timestamp: new Date(),
+          errorType: err?.name || 'SendError',
+          message: err?.message || 'Failed to send',
+          phoneNumber: recipientPhone,
+          count: 1
+        });
+
+        logger.error(`[Campaign:${campaign._id}] Failed to send template to ${recipientPhone}: ${err?.message}`);
+      }
+
+      if ((i + 1) % 10 === 0 || i === recipients.length - 1) {
+        campaign.recipients.sent = sent;
+        campaign.recipients.failed = failed;
+        campaign.recipients.pending = Math.max(recipients.length - (sent + failed), 0);
+        campaign.recipients.inProgress = campaign.recipients.pending;
+        campaign.stats.totalSent = sent;
+        campaign.stats.totalFailed = failed;
+        await campaign.save();
+      }
+
+      if (i < recipients.length - 1) {
+        await sleep(60);
+      }
+    }
+
+    if (failedLogs.length > 0) {
+      campaign.errorLog.push(...failedLogs.slice(-500));
+    }
+
+    campaign.recipients.sent = sent;
+    campaign.recipients.failed = failed;
+    campaign.recipients.pending = 0;
+    campaign.recipients.inProgress = 0;
+    campaign.stats.totalSent = sent;
+    campaign.stats.totalFailed = failed;
+
+    if (sent === 0) {
+      campaign.status = 'failed';
+      campaign.completedAt = new Date();
+    } else {
+      campaign.status = 'running';
+    }
 
     await campaign.save();
 
-    return sendSuccess(res, { campaign }, 'Campaign started and completed');
+    logger.info(`[Campaign:${campaign._id}] Bulk send finished. sent=${sent}, failed=${failed}. Waiting for webhooks for delivered/read statuses.`);
+
+    return sendSuccess(res, {
+      campaign,
+      summary: {
+        attempted: recipients.length,
+        sent,
+        failed,
+        status: campaign.status
+      }
+    }, sent === 0 ? 'Campaign failed to send' : 'Campaign send started');
   } catch (error) {
     return handleControllerError(res, error, 'startCampaign');
   }
