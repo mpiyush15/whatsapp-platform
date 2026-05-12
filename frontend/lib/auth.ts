@@ -50,7 +50,9 @@ export const authService = {
   // Check if user is authenticated
   isAuthenticated: (): boolean => {
     if (typeof window === "undefined") return false
-    return localStorage.getItem("isAuthenticated") === "true"
+    const flag = localStorage.getItem("isAuthenticated") === "true"
+    const token = localStorage.getItem("token")
+    return flag && Boolean(token && token.length > 10)
   },
 
   // Get current user

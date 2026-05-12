@@ -49,6 +49,12 @@ export default function DashboardPage() {
         }
       })
 
+      if (response.status === 401) {
+        await authService.logout()
+        router.replace('/auth/login?session=expired')
+        return
+      }
+
       if (!response.ok) {
         throw new Error('Failed to load projects')
       }

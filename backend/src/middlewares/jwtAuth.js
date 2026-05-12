@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/jwt.js';
 import Account from '../models/Account.js';
+import User from '../models/User.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -16,8 +17,9 @@ import { handleControllerError, ValidationError, NotFoundError, UnauthorizedErro
 export const requireJWT = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    const token = authHeader?.replace('Bearer ', '');
-    
+    const raw = typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '').trim() : '';
+    const token = raw || null;
+
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -25,43 +27,78 @@ export const requireJWT = async (req, res, next) => {
         redirectTo: '/login'
       });
     }
-    
+
     // Verify token
     const decoded = jwt.verify(token, JWT_SECRET);
-    
-    // Inject user info into request
-    req.accountId = decoded.accountId;
+
+    const emailNorm = decoded.email ? String(decoded.email).trim().toLowerCase() : '';
+
+    // Coerce accountId (JWT JSON may store numeric yyMMdd ids as numbers)
+    let accountIdToLookup =
+      decoded.accountId != null && decoded.accountId !== ''
+        ? String(decoded.accountId).trim()
+        : '';
+
     req.user = {
       email: decoded.email,
       name: decoded.name,
-      accountId: decoded.accountId,
-      role: decoded.role
+      accountId: accountIdToLookup,
+      role: decoded.role,
     };
+    req.accountId = accountIdToLookup;
     req.authType = 'jwt';
 
     // Look up account in database
     let account;
-    let accountIdToLookup = decoded.accountId;
-    
+
     // ✅ FALLBACK: Handle old tokens with legacy account IDs (only for pixels_internal)
     if (accountIdToLookup === 'pixels_internal') {
       accountIdToLookup = '2600001';
       req.accountId = '2600001';
       req.user.accountId = '2600001';
     }
-    
-    // Check if accountId is a valid MongoDB ObjectId format
-    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(accountIdToLookup);
-    
-    if (isValidObjectId) {
-      // accountId is a valid ObjectId - use findById
-      account = await Account.findById(accountIdToLookup);
-    } else {
-      // accountId is a custom string (like "acc_xxx_yyy" or "2600001") - use findOne with accountId field
-      account = await Account.findOne({ accountId: accountIdToLookup });
+
+    const resolveAccount = async (idOrKey) => {
+      const key = idOrKey != null && idOrKey !== '' ? String(idOrKey).trim() : '';
+      if (!key) return null;
+      const isOid = /^[0-9a-fA-F]{24}$/.test(key);
+      if (isOid) {
+        return Account.findById(key);
+      }
+      return Account.findOne({ accountId: key });
+    };
+
+    if (accountIdToLookup) {
+      account = await resolveAccount(accountIdToLookup);
     }
-    
+
+    // Staff / legacy tokens: JWT accountId missing or wrong — resolve org via User.email
+    if (!account && emailNorm) {
+      const userDoc = await User.findOne({ email: emailNorm }).select('accountId email');
+      if (userDoc?.accountId) {
+        const orgId = String(userDoc.accountId).trim();
+        account = await resolveAccount(orgId);
+        if (account) {
+          req.accountId = account.accountId;
+          req.user.accountId = account.accountId;
+        }
+      }
+    }
+
+    // Client admin token may only guarantee email match on some paths
+    if (!account && emailNorm) {
+      account = await Account.findOne({ email: emailNorm });
+      if (account) {
+        req.accountId = account.accountId;
+        req.user.accountId = account.accountId;
+      }
+    }
+
     if (!account) {
+      logger.warn('[requireJWT] Account not found after lookup', {
+        hadAccountIdInToken: Boolean(accountIdToLookup),
+        email: emailNorm || undefined,
+      });
       return res.status(401).json({
         success: false,
         message: 'Account not found. Please login again.',
@@ -84,10 +121,7 @@ export const requireJWT = async (req, res, next) => {
     
     next();
   } catch (error) {
-    // Log JWT errors only in development for debugging
-    if (process.env.NODE_ENV === 'development') {
-      logger.error('[JWT Error]', error.message);
-    }
+    logger.warn('[requireJWT] verify failed', { name: error?.name, message: error?.message });
     return res.status(401).json({
       success: false,
       message: 'Invalid or expired token. Please login again.',
@@ -100,11 +134,12 @@ export const requireJWT = async (req, res, next) => {
  * Generate JWT Token
  */
 export const generateToken = (user) => {
+  const accountId = user?.accountId != null && user.accountId !== '' ? String(user.accountId).trim() : '';
   return jwt.sign(
     {
       email: user.email,
       name: user.name,
-      accountId: user.accountId,
+      accountId,
       role: user.role,
       type: user.type // Include type: internal, client, company
     },

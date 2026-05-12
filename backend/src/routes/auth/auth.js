@@ -6,6 +6,7 @@ import { sendSuccess, sendValidationError } from '../../utils/responseHandler.js
 import { handleControllerError } from '../../utils/errorHandler.js';
 import { AccountType } from '../../constants/enums.js';
 import logger from '../../utils/logger.js';
+import { JWT_SECRET } from '../../config/jwt.js';
 
 const router = express.Router();
 
@@ -44,12 +45,13 @@ export const superadminLogin = async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       {
-        accountId: account.accountId,
+        accountId: String(account.accountId ?? ''),
+        name: account.name,
         type: AccountType.INTERNAL,
         email: account.email,
         role: account.role || 'superadmin'
       },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -113,12 +115,13 @@ export const clientLogin = async (req, res) => {
     // Generate JWT token with accountId
     const token = jwt.sign(
       {
-        accountId: account.accountId,
+        accountId: String(account.accountId ?? ''),
+        name: account.name,
         type: AccountType.CLIENT,
         email: account.email,
         role: account.role || 'user'
       },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -157,19 +160,20 @@ export const refreshToken = async (req, res) => {
     }
 
     // Verify old token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+    const decoded = jwt.verify(token, JWT_SECRET, {
       ignoreExpiration: true
     });
 
     // Generate new token
     const newToken = jwt.sign(
       {
-        accountId: decoded.accountId,
+        accountId: String(decoded.accountId ?? ''),
+        name: decoded.name,
         type: decoded.type,
         email: decoded.email,
         role: decoded.role
       },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
