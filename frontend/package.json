@@ -1,6 +1,6 @@
 {
   "name": "whatsapp",
-  "version": "25.04.26.01",
+  "version": "12.05.26",
   "description": "replysys - Multi-tenant WhatsApp platform with Socket.io real-time updates",
   "private": true,
   "scripts": {
