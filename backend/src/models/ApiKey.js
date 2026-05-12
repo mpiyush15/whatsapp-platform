@@ -7,10 +7,28 @@ const apiKeySchema = new mongoose.Schema({
     required: true,
     index: true
   },
+
+  projectId: {
+    type: String,
+    default: null,
+    index: true
+  },
   
   name: {
     type: String,
     required: true
+  },
+
+  scopes: {
+    type: [String],
+    default: ['messages:read', 'messages:write', 'contacts:read', 'contacts:write', 'broadcasts:read', 'broadcasts:write', 'webhooks:write'],
+  },
+
+  rateLimitPerMinute: {
+    type: Number,
+    default: 300,
+    min: 30,
+    max: 5000,
   },
 
   platform: {
@@ -72,6 +90,16 @@ apiKeySchema.statics.generateApiKey = function() {
 apiKeySchema.statics.findByApiKey = async function(apiKey) {
   const hash = this.hashApiKey(apiKey);
   return this.findOne({ keyHash: hash }).select('+keyHash');
+};
+
+apiKeySchema.methods.isActive = function isActive() {
+  return !this.expiresAt || new Date(this.expiresAt) > new Date();
+};
+
+apiKeySchema.methods.hasScope = function hasScope(requiredScope) {
+  const scopes = Array.isArray(this.scopes) ? this.scopes : [];
+  if (scopes.includes('*') || scopes.includes('all')) return true;
+  return scopes.includes(requiredScope);
 };
 
 export default mongoose.model('ApiKey', apiKeySchema);

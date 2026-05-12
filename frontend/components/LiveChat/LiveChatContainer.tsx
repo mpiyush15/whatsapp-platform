@@ -57,6 +57,7 @@ export default function LiveChatContainer() {
 
     newSocket.on('connect', () => {
       console.log('✅ Connected to live chat server')
+      newSocket.emit('subscribe_conversations')
     })
 
     // 🔥 NOTE: new_message listener moved to selectedConversation useEffect
@@ -138,8 +139,13 @@ export default function LiveChatContainer() {
 
     // Listen for conversation updated
     newSocket.on('conversation_updated', (data) => {
+      const targetConversationId = data?.conversationId
+      if (!targetConversationId && !data?._id) return
+
       setConversations(prev => prev.map(conv => 
-        conv.conversationId === data.conversationId ? data : conv
+        (conv.conversationId === targetConversationId || conv._id === data?._id)
+          ? { ...conv, ...data }
+          : conv
       ))
     })
 
@@ -267,6 +273,22 @@ export default function LiveChatContainer() {
       socket.emit('mark_conversation_read', { 
         conversationId: conversation.conversationId 
       })
+
+      // Fallback API call to guarantee DB reset even if socket event drops
+      try {
+        const token = authService.getToken()
+        await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/integrations/whatsapp/conversations/${conversation.conversationId}/mark-read`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        )
+      } catch (err) {
+        console.error('Error marking conversation as read:', err)
+      }
     }
     
     // Update conversation unread count to 0

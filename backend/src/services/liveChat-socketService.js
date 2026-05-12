@@ -54,6 +54,10 @@ export const broadcastMessageReceived = (accountId, conversationId, message) => 
   // Broadcast unread count update to account room
   io.to(`account:${accountId}`).emit('conversation_updated', {
     conversationId,
+    unreadCount: typeof message?.unreadCount === 'number' ? message.unreadCount : undefined,
+    lastMessagePreview: message?.content?.text || message?.content || '',
+    lastMessageAt: message?.createdAt || new Date(),
+    lastMessageType: message?.messageType || 'text',
     updates: {
       unreadCount: true,
       lastMessage: true
@@ -250,9 +254,16 @@ export const broadcastConversationUpdated = (accountId, conversationId, updates)
 
   const room = `account:${accountId}`;
 
+  const normalizedUpdates = updates || {};
+
   io.to(room).emit('conversation_updated', {
     conversationId,
-    updates,
+    _id: normalizedUpdates._id,
+    unreadCount: typeof normalizedUpdates.unreadCount === 'number' ? normalizedUpdates.unreadCount : undefined,
+    lastMessagePreview: normalizedUpdates.lastMessagePreview,
+    lastMessageAt: normalizedUpdates.lastMessageAt,
+    lastMessageType: normalizedUpdates.lastMessageType,
+    updates: normalizedUpdates,
     timestamp: new Date()
   });
 };

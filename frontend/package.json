@@ -18,11 +18,12 @@
     "framer-motion": "^10.16.16",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
+    "pdf-lib": "^1.17.1",
     "lucide-react": "^0.369.0",
     "next": "^14.2.3",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "react-icons": "^4.12.0",
+    "reactflow": "^11.11.4",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^2.3.0"
   },

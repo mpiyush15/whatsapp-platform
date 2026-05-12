@@ -9,6 +9,7 @@ interface Project {
   businessCategory: string
   status: string
   isDefault: boolean
+  vertical?: 'whatsapp' | 'healthcare' | 'ecommerce'
   settings?: {
     timezone?: string
     autoReplyEnabled?: boolean
@@ -18,6 +19,7 @@ interface Project {
 interface ProjectContextType {
   projectId: string
   project: Project | null
+  vertical: 'whatsapp' | 'healthcare' | 'ecommerce'
   loading: boolean
   error: string | null
   refreshProject: () => Promise<void>
@@ -94,7 +96,7 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
       }
 
       // Navigate to new project
-      router.push(`/projects/${newProjectId}/dashboard`)
+      router.push(`/projects/${newProjectId}`)
     } catch (err) {
       console.error('Error switching project:', err)
       setError('Failed to switch project')
@@ -104,6 +106,7 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
   const value: ProjectContextType = {
     projectId,
     project,
+    vertical: (project?.vertical ?? 'whatsapp') as 'whatsapp' | 'healthcare' | 'ecommerce',
     loading,
     error,
     refreshProject,

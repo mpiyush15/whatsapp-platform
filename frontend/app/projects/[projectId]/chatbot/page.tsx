@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
-import { Bot, Plus, Play, Pause, Edit, Trash2, X, Search, MessageSquare, Zap, List, Users } from "lucide-react"
+import Link from "next/link"
+import { Bot, Plus, Play, Pause, Edit, Trash2, X, Search, MessageSquare, Zap, List, Users, GitBranch } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ErrorToast } from "@/components/ErrorToast"
 import { LeadStatus } from "@/lib/enums"
 import { authService } from "@/lib/auth"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
 
 const getHeaders = () => {
   const token = authService.getToken()
@@ -459,10 +460,19 @@ export default function ChatbotPage() {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Chatbot</h1>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">Build and manage your AI chatbots</p>
         </div>
-        <Button onClick={openCreateModal} className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm px-3 sm:px-4 py-2">
-          <Plus className="h-4 w-4 mr-2" />
-          Create Bot
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/projects/${projectId}/flow`}
+            className="inline-flex items-center gap-2 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs sm:text-sm font-medium text-violet-700 hover:bg-violet-100 transition"
+          >
+            <GitBranch className="h-4 w-4" />
+            Visual Flow Builder
+          </Link>
+          <Button onClick={openCreateModal} className="bg-green-600 hover:bg-green-700 text-xs sm:text-sm px-3 sm:px-4 py-2">
+            <Plus className="h-4 w-4 mr-2" />
+            Create Bot
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards - Mobile Optimized */}
@@ -620,6 +630,15 @@ export default function ChatbotPage() {
                       </>
                     )}
                   </Button>
+                  {bot.replyType === 'workflow' && (bot.replyContent as any)?.flowGraph && (
+                    <Link
+                      href={`/projects/${projectId}/flow`}
+                      className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-violet-50 px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-violet-700 hover:bg-violet-100 transition"
+                    >
+                      <GitBranch className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline">Builder</span>
+                    </Link>
+                  )}
                   <Button 
                     onClick={() => openEditModal(bot)}
                     variant="outline" 

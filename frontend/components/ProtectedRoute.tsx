@@ -15,13 +15,13 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const checkAuth = () => {
       // Check if user is authenticated
       if (!authService.isAuthenticated()) {
-        router.push("/login")
+        router.push("/auth/login")
         return
       }
 
       const user = authService.getCurrentUser()
       if (!user) {
-        router.push("/login")
+        router.push("/auth/login")
         return
       }
 

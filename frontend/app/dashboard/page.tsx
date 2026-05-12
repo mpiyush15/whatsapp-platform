@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Plus, Loader2, FolderOpen, Zap } from "lucide-react"
+import { Plus, Loader2, FolderOpen } from "lucide-react"
 import { authService } from "@/lib/auth"
 
 interface Project {
@@ -32,7 +32,12 @@ export default function DashboardPage() {
 
       const user = authService.getCurrentUser()
       if (!user) {
-        router.push("/login")
+        router.push("/auth/login")
+        return
+      }
+
+      if (user.type === 'internal' && user.role === 'superadmin') {
+        router.replace('/dashboard/superadmin')
         return
       }
 
@@ -149,7 +154,7 @@ export default function DashboardPage() {
                 return (
                   <Link
                     key={projectId}
-                    href={`/projects/${projectId}/live-chat`}
+                    href={`/projects/${projectId}`}
                     className="bg-white rounded-xl shadow-md hover:shadow-xl border border-gray-200 p-6 transition-all duration-200 hover:scale-105 cursor-pointer group"
                   >
                     {/* Card Header */}

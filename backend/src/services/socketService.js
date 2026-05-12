@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { Server } from 'socket.io';
+import mongoose from 'mongoose';
 import { JWT_SECRET } from '../config/jwt.js';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
@@ -300,30 +301,58 @@ export const initSocketIO = (server) => {
      */
     socket.on('mark_conversation_read', async (data) => {
       try {
-        const { conversationId } = data;
-        const accountId = socket.accountId;
+        const emitConversationUpdated = (accountId, payload = {}) => {
+          const normalizedPayload = {
+            conversationId: payload.conversationId,
+            _id: payload._id,
+            unreadCount: typeof payload.unreadCount === 'number' ? payload.unreadCount : undefined,
+            lastMessagePreview: payload.lastMessagePreview,
+            lastMessageAt: payload.lastMessageAt,
+            lastMessageType: payload.lastMessageType,
+          };
+
+          io.to(`account:${accountId}`).emit('conversation_updated', normalizedPayload);
+          io.to(`user:${accountId}`).emit('conversation_updated', normalizedPayload);
+        };
+
+        const { conversationId } = data || {};
+        const accountId = String(socket.accountId || '');
 
         if (!conversationId || !accountId) {
           logger.error('❌ mark_conversation_read: Missing conversationId or accountId');
           return;
         }
 
-        // Query by conversationId (string) not _id (ObjectId)
-        const conversation = await Conversation.findOneAndUpdate(
-          { conversationId, accountId },
+        const normalizedConversationId = String(conversationId);
+
+        // Primary: query by business conversationId
+        let conversation = await Conversation.findOneAndUpdate(
+          { conversationId: normalizedConversationId, accountId },
           { unreadCount: 0 },
           { new: true }
         );
 
+        // Fallback: support callers accidentally passing Mongo _id
+        if (!conversation && mongoose.Types.ObjectId.isValid(normalizedConversationId)) {
+          conversation = await Conversation.findOneAndUpdate(
+            { _id: normalizedConversationId, accountId },
+            { unreadCount: 0 },
+            { new: true }
+          );
+        }
+
         if (!conversation) {
-          logger.warn(`⚠️ Conversation not found: ${conversationId}`);
+          logger.warn(`⚠️ Conversation not found: ${normalizedConversationId}`);
           return;
         }
+
+        const resolvedConversationId = String(conversation.conversationId || normalizedConversationId);
 
         // Mark all unread messages in conversation as read
         await Message.updateMany(
           { 
-            conversationId: conversationId,
+            accountId,
+            conversationId: resolvedConversationId,
             isRead: { $ne: true }
           },
           { 
@@ -332,11 +361,11 @@ export const initSocketIO = (server) => {
           }
         );
 
-        logger.info(`✓ Conversation ${conversationId} marked as read in DB`);
+        logger.info(`✓ Conversation ${resolvedConversationId} marked as read in DB`);
 
-        // Broadcast updated conversation to all agents in account
-        io.to(`account:${accountId}`).emit('conversation_updated', {
-          conversationId,
+        emitConversationUpdated(accountId, {
+          conversationId: resolvedConversationId,
+          _id: conversation._id,
           unreadCount: 0
         });
 

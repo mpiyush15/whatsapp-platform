@@ -45,15 +45,15 @@ export function CallbackHandler() {
         if (response.ok) {
           const data = await response.json();
           console.log('✅ OAuth success:', data);
-          router.push('/dashboard/client/settings?whatsapp=connected');
+          router.push('/dashboard?whatsapp=connected');
         } else {
           const error = await response.json();
           console.error('❌ Backend error:', error);
-          router.push(`/dashboard/client/settings?error=${error.message || 'exchange_failed'}`);
+          router.push(`/dashboard?error=${error.message || 'exchange_failed'}`);
         }
       } catch (error) {
         console.error('❌ Error:', error);
-        router.push('/dashboard/client/settings?error=callback_error');
+        router.push('/dashboard?error=callback_error');
       }
     };
 

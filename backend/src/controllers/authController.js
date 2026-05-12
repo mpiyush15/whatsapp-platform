@@ -2,12 +2,15 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { generateToken } from '../middlewares/jwtAuth.js';
 import Account from '../models/Account.js';
+import HealthcareStaff from '../models/HealthcareStaff.js';
 import User from '../models/User.js';
 import PricingPlan from '../models/PricingPlan.js';
 import { emailService } from '../services/emailService.js';
+import creditLedgerService from '../services/creditLedgerService.js';
 import logger from '../utils/logger.js';
 import { sendSuccess, sendValidationError, sendConflict, sendUnauthorized } from '../utils/responseHandler.js';
 import { handleControllerError } from '../utils/errorHandler.js';
+import { resolveStaffRoutes } from '../constants/healthcareStaffRoutes.js';
 
 export const login = async (req, res) => {
   try {
@@ -54,17 +57,53 @@ export const login = async (req, res) => {
       return sendUnauthorized(res, 'Invalid email or password');
     }
     
+    let tokenType = account?.type || 'client';
+    if (!account && user) {
+      const orgAccount = await Account.findOne({ accountId: user.accountId });
+      if (orgAccount?.type === 'client') {
+        tokenType = 'client';
+      } else {
+        tokenType = 'internal';
+      }
+    }
+
     const tokenUser = {
       email: authEntity.email,
       accountId: authEntity.accountId || authEntity._id.toString(),
       name: authEntity.name,
       role: authEntity.role || 'user',
-      type: authEntity.type || (user ? 'internal' : 'client'), // Mark superadmin as internal
+      type: tokenType,
       workspaceId: authEntity.accountId || authEntity._id.toString(),
       isDemoAccount: authEntity.isDemoAccount || false,
       demoLabel: authEntity.demoLabel || null,
       demoNote: authEntity.demoNote || null
     };
+
+    if (user) {
+      const staffRecords = await HealthcareStaff.find({
+        accountId: tokenUser.accountId,
+        email: tokenUser.email,
+        status: 'active',
+      }).select('projectId role allowedRoutes allowedModules linkedDoctorId linkedNurseId');
+
+      if (staffRecords.length > 0) {
+        tokenUser.staffRole = staffRecords[0].role || null;
+        tokenUser.healthcareRoutesByProject = staffRecords.reduce((acc, row) => {
+          if (!row.projectId) return acc;
+          acc[row.projectId] = resolveStaffRoutes(row);
+          return acc;
+        }, {});
+        tokenUser.healthcareStaffProfileByProject = staffRecords.reduce((acc, row) => {
+          if (!row.projectId) return acc;
+          acc[row.projectId] = {
+            role: row.role || null,
+            linkedDoctorId: row.linkedDoctorId || null,
+            linkedNurseId: row.linkedNurseId || null,
+          };
+          return acc;
+        }, {});
+      }
+    }
     
     const token = generateToken(tokenUser);
     
@@ -222,6 +261,36 @@ export const signup = async (req, res) => {
     }
 
     await newAccount.save();
+
+    // Step 8: signup credit rule (idempotent). Non-blocking for signup UX.
+    try {
+      const selectedPricingPlan = await PricingPlan.findOne({
+        name: { $regex: planName, $options: 'i' },
+        isActive: true,
+      });
+
+      if (selectedPricingPlan) {
+        const signupCreditResult = await creditLedgerService.grantSignupCredits({
+          accountId,
+          plan: selectedPricingPlan,
+          source: 'system',
+          referenceType: 'system',
+          referenceId: accountId,
+          eventKey: `signup:${accountId}`,
+        });
+
+        logger.info('🎁 Signup credits rule applied', {
+          accountId,
+          plan: selectedPricingPlan.name,
+          creditsGranted: signupCreditResult.creditsGranted || 0,
+          posted: signupCreditResult.posted,
+          skipped: signupCreditResult.skipped || false,
+          duplicate: signupCreditResult.isDuplicate || false,
+        });
+      }
+    } catch (creditErr) {
+      logger.error('⚠️ Signup credit grant failed:', creditErr.message);
+    }
 
     logger.info('✅ New account created (PENDING):', {
       accountId,

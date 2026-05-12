@@ -5,6 +5,7 @@
   "scripts": {
     "start": "cd backend && npm start",
     "build": "cd backend && npm install && cd ../frontend && npm install --legacy-peer-deps",
+    "build:prod": "cd backend && npm install && node --check server.js && cd ../frontend && npm install --legacy-peer-deps && npm run build",
     "dev": "cd backend && npm run dev & cd frontend && npm run dev"
   }
 }

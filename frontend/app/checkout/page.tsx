@@ -172,7 +172,7 @@ function CheckoutPage() {
         setProcessing(false)
         // Wait 2 seconds then redirect to dashboard
         setTimeout(() => {
-          router.push('/dashboard/client/subscriptions')
+          router.push('/dashboard')
         }, 2000)
       } else {
         // Modal closed without payment

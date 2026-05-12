@@ -1,4 +1,4 @@
-import Broadcast from '../src/models/Broadcast.js';
+import broadcastRepository from '../src/repositories/broadcastRepository.js';
 import broadcastExecutionService from '../src/services/broadcastExecutionService.js';
 
 /**
@@ -45,37 +45,16 @@ class BroadcastQueueWorker {
   async processQueue() {
     while (this.isRunning) {
       try {
-        // Find pending, running, or scheduled broadcasts
-        const broadcasts = await Broadcast.find({
-          $or: [
-            { status: 'running', 'stats.pending': { $gt: 0 } },           // Resume running broadcasts
-            { status: 'scheduled', 'scheduling.scheduledTime': { $exists: true, $lte: new Date() } }, // Process scheduled broadcasts
-            { status: 'draft', scheduling: { $exists: true }, 'scheduling.scheduledTime': { $lte: new Date() } } // Legacy support
-          ]
-        }).sort({ createdAt: 1 });
+        // Repository handles all pending/scheduled/running filter logic
+        const broadcasts = await broadcastRepository.findPending();
 
         for (const broadcast of broadcasts) {
-          // Handle scheduled broadcasts (status: 'scheduled')
-          if (broadcast.status === 'scheduled' && broadcast.scheduling?.scheduledTime) {
-            const now = new Date();
-            if (now >= broadcast.scheduling.scheduledTime) {
-              console.log(`📅 Starting scheduled broadcast ${broadcast._id} (scheduled for ${broadcast.scheduling.scheduledTime})`);
-              await this.executeBroadcast(broadcast);
-            }
-          }
-          // Handle draft broadcasts with scheduled time (legacy)
-          else if (broadcast.status === 'draft' && broadcast.scheduling?.scheduledTime) {
-            const now = new Date();
-            if (now >= broadcast.scheduling.scheduledTime) {
-              console.log(`📅 Starting scheduled broadcast ${broadcast._id}`);
-              await this.executeBroadcast(broadcast);
-            }
-          }
-          // Resume running broadcasts
-          else if (broadcast.status === 'running' && broadcast.stats.pending > 0) {
+          if (broadcast.status === 'scheduled' || broadcast.status === 'draft') {
+            console.log(`📅 Starting scheduled broadcast ${broadcast._id}`);
+          } else {
             console.log(`⏳ Resuming broadcast ${broadcast._id}`);
-            await this.executeBroadcast(broadcast);
           }
+          await this.executeBroadcast(broadcast);
         }
 
         // Wait before next check
@@ -104,11 +83,8 @@ class BroadcastQueueWorker {
     } catch (error) {
       console.error(`Error executing broadcast ${broadcast._id}:`, error);
 
-      // Mark as failed
-      await Broadcast.findByIdAndUpdate(broadcast._id, {
-        status: 'failed',
-        completedAt: new Date()
-      });
+      // Mark as failed via repository
+      await broadcastRepository.updateStatus(broadcast._id, 'failed', { completedAt: new Date() });
     }
   }
 
@@ -123,20 +99,8 @@ class BroadcastQueueWorker {
    * Get queue statistics
    */
   async getQueueStats() {
-    const total = await Broadcast.countDocuments();
-    const running = await Broadcast.countDocuments({ status: 'running' });
-    const completed = await Broadcast.countDocuments({ status: 'completed' });
-    const failed = await Broadcast.countDocuments({ status: 'failed' });
-    const pending = await Broadcast.countDocuments({ status: 'draft' });
-
-    return {
-      total,
-      running,
-      completed,
-      failed,
-      pending,
-      isRunning: this.isRunning
-    };
+    const stats = await broadcastRepository.getQueueStats();
+    return { ...stats, isRunning: this.isRunning };
   }
 }
 

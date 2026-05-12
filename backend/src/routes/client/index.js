@@ -21,6 +21,7 @@ import accountRoutes from './account.js';
 import invoicesRoutes from './invoices.js';
 import subscriptionRoutes from './subscription.js';
 import analyticsRoutes from './analytics.js';
+import supportRoutes from './support.js';
 
 // Mount subroutes with client protection
 router.use('/messages', clientOnly, messagesRoutes);
@@ -34,6 +35,7 @@ router.use('/account', clientOnly, accountRoutes);
 router.use('/invoices', clientOnly, invoicesRoutes);
 router.use('/subscription', clientOnly, subscriptionRoutes);
 router.use('/analytics', clientOnly, analyticsRoutes);
+router.use('/support', clientOnly, supportRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

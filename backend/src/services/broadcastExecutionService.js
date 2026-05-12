@@ -1,8 +1,9 @@
-import Broadcast from '../models/Broadcast.js';
 import Message from '../models/Message.js';
 import Contact from '../models/Contact.js';
 import whatsappService from './whatsappService.js';
 import logger from '../utils/logger.js';
+import broadcastRepository from '../repositories/broadcastRepository.js';
+import { dispatchWebhookEvent } from './webhookDispatcherService.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 export class BroadcastExecutionService {
@@ -34,10 +35,7 @@ export class BroadcastExecutionService {
     // ⚠️ CRITICAL: Ensure accountId is string for conversationId consistency
     const accountIdStr = accountId.toString ? accountId.toString() : accountId;
     
-    const broadcast = await Broadcast.findOne({
-      _id: broadcastId,
-      accountId
-    });
+    const broadcast = await broadcastRepository.findById(broadcastId, accountId);
 
     if (!broadcast) {
       throw new NotFoundError('Broadcast not found');
@@ -62,59 +60,80 @@ export class BroadcastExecutionService {
 
     if (recipients.length === 0) {
       logger.info('⚠️  No recipients found, marking as completed\n');
-      broadcast.status = 'completed';
-      broadcast.completedAt = new Date();
-      await broadcast.save();
+      await broadcastRepository.updateStatus(broadcastId, 'completed', {
+        completedAt: new Date(),
+        'stats.inProgress': 0,
+        'stats.pending': 0,
+      });
       return;
     }
 
-    // Start execution
-    broadcast.status = 'running';
-    broadcast.stats.inProgress = recipients.length;
-    broadcast.stats.pending = recipients.length;
-    broadcast.startedAt = new Date();
-    await broadcast.save();
+    // Build a Set of phones already sent (crash recovery: skip duplicates on resume)
+    const alreadySent = new Set(broadcast.sentPhones || []);
+    if (alreadySent.size > 0) {
+      logger.info(`⏭️  Skipping ${alreadySent.size} already-sent recipients (resume mode)`);
+    }
+
+    // Resume-safe counters: carry forward previous persisted stats when available.
+    // `sent` should never be lower than count of `sentPhones`.
+    let sent = Math.max(Number(broadcast.stats?.sent || 0), alreadySent.size);
+    let failed = Number(broadcast.stats?.failed || 0);
+    const initialPending = Math.max(recipients.length - sent - failed, 0);
+
+    // Start execution — mark running via repository
+    await broadcastRepository.updateStatus(broadcastId, 'running', {
+      startedAt: new Date(),
+      'stats.inProgress': initialPending,
+      'stats.pending': initialPending,
+      'stats.sent': sent,
+      'stats.failed': failed,
+    });
 
     // Process messages with throttling
     const throttleRate = broadcast.throttleRate || 50;
     const messageDelayMs = 1000 / throttleRate;
 
-    let sent = 0;
-    let failed = 0;
-
     for (let i = 0; i < recipients.length; i++) {
       const recipient = recipients[i];
+
+      // ✅ Crash recovery: skip phones already delivered on a previous run
+      if (alreadySent.has(recipient)) {
+        logger.info(`⏭️  [${i + 1}/${recipients.length}] Already sent to ${recipient} — skipping`);
+        continue;
+      }
 
       try {
         // Send message (pass accountIdStr for consistent conversationId format)
         await this.sendBroadcastMessage(accountIdStr, phoneNumberId, broadcast, recipient);
         sent++;
+        alreadySent.add(recipient);
 
-        broadcast.stats.sent = sent;
-        broadcast.stats.inProgress = recipients.length - i - 1;
-        broadcast.stats.pending = recipients.length - sent;
+        // Persist the phone so a crash after this point won't re-send
+        await broadcastRepository.markPhoneSent(broadcastId, recipient);
+
         logger.info(`✅ [${i + 1}/${recipients.length}] Message sent to ${recipient}`);
 
       } catch (error) {
         failed++;
-        const errorDetails = {
+
+        // Persist error log via repository
+        await broadcastRepository.pushErrorLog(broadcastId, {
           phoneNumber: recipient,
           error: error.message,
-          errorCode: error.code,
-          timestamp: new Date()
-        };
-        broadcast.errorLog.push(errorDetails);
+          errorCode: error.code
+        });
 
-        broadcast.stats.failed = failed;
-        broadcast.stats.inProgress = recipients.length - i - 1;
-        broadcast.stats.pending = recipients.length - sent;
-        
         logger.error(`❌ [${i + 1}/${recipients.length}] Failed to send to ${recipient}: ${error.message}`);
       }
 
-      // Save progress every 10 messages
+      // Save progress stats every 10 messages
       if ((i + 1) % 10 === 0) {
-        await broadcast.save();
+        await broadcastRepository.saveProgress(broadcastId, {
+          sent,
+          failed,
+          pending: Math.max(recipients.length - sent - failed, 0),
+          inProgress: Math.max(recipients.length - i - 1, 0)
+        });
       }
 
       // Throttling delay
@@ -123,10 +142,20 @@ export class BroadcastExecutionService {
       }
     }
 
-    // Mark as completed
-    broadcast.status = 'completed';
-    broadcast.completedAt = new Date();
-    await broadcast.save();
+    // Final progress checkpoint so stats are exact even for batches < 10.
+    await broadcastRepository.saveProgress(broadcastId, {
+      sent,
+      failed,
+      pending: Math.max(recipients.length - sent - failed, 0),
+      inProgress: 0,
+    });
+
+    // Mark as completed via repository
+    await broadcastRepository.updateStatus(broadcastId, 'completed', {
+      completedAt: new Date(),
+      'stats.pending': 0,
+      'stats.inProgress': 0,
+    });
 
     logger.info(`\n${'═'.repeat(60)}`);
     logger.info(`✅ BROADCAST EXECUTION COMPLETED`);
@@ -135,6 +164,19 @@ export class BroadcastExecutionService {
     logger.info(`Total Failed: ${failed}/${recipients.length}`);
     logger.info(`Success Rate: ${((sent / recipients.length) * 100).toFixed(2)}%`);
     logger.info(`${'═'.repeat(60)}\n`);
+
+    dispatchWebhookEvent({
+      accountId,
+      projectId: broadcast?.projectId || null,
+      eventType: 'broadcast.completed',
+      payload: {
+        broadcastId: String(broadcast?._id || broadcastId),
+        totalRecipients: recipients.length,
+        sent,
+        failed,
+      },
+      source: 'broadcast-execution',
+    }).catch((err) => logger.error('broadcast.completed webhook dispatch failed', err));
 
     return {
       broadcastId: broadcast._id,
@@ -370,10 +412,7 @@ export class BroadcastExecutionService {
    * Resume interrupted broadcast
    */
   async resumeBroadcast(accountId, broadcastId, phoneNumberId) {
-    const broadcast = await Broadcast.findOne({
-      _id: broadcastId,
-      accountId
-    });
+    const broadcast = await broadcastRepository.findById(broadcastId, accountId);
 
     if (!broadcast) {
       throw new NotFoundError('Broadcast not found');

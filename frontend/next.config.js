@@ -22,41 +22,43 @@ const nextConfig = {
 
   /* Webpack optimization for tree-shaking and code splitting */
   webpack: (config, { isServer }) => {
-    config.optimization = {
-      ...config.optimization,
-      sideEffects: false,
-      splitChunks: {
-        chunks: 'all',
-        cacheGroups: {
-          // Separate node_modules from app code
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: 'vendors',
-            priority: 10,
-            reuseExistingChunk: true,
-          },
-          // Extract common code shared between pages
-          common: {
-            minChunks: 2,
-            priority: 5,
-            reuseExistingChunk: true,
-            name: 'common',
-          },
-          // Socket.io client bundle separately
-          socket: {
-            test: /[\\/]node_modules[\\/]socket\.io-client[\\/]/,
-            name: 'socket-io',
-            priority: 15,
-          },
-          // Separate charts/visualization libraries if used
-          charts: {
-            test: /[\\/]node_modules[\\/](recharts|chart\.js)[\\/]/,
-            name: 'charts',
-            priority: 12,
+    if (!isServer) {
+      config.optimization = {
+        ...config.optimization,
+        sideEffects: false,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            // Separate node_modules from app code
+            vendor: {
+              test: /[\\/]node_modules[\\/]/,
+              name: 'vendors',
+              priority: 10,
+              reuseExistingChunk: true,
+            },
+            // Extract common code shared between pages
+            common: {
+              minChunks: 2,
+              priority: 5,
+              reuseExistingChunk: true,
+              name: 'common',
+            },
+            // Socket.io client bundle separately
+            socket: {
+              test: /[\\/]node_modules[\\/]socket\.io-client[\\/]/,
+              name: 'socket-io',
+              priority: 15,
+            },
+            // Separate charts/visualization libraries if used
+            charts: {
+              test: /[\\/]node_modules[\\/](recharts|chart\.js)[\\/]/,
+              name: 'charts',
+              priority: 12,
+            },
           },
         },
-      },
-    };
+      };
+    }
     return config;
   },
 

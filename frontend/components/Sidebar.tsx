@@ -5,12 +5,13 @@ import { usePathname } from 'next/navigation'
 import { 
   LayoutDashboard, MessageSquare, Users, Megaphone, FileText, Bot, Target, 
   BarChart3, Users2, CreditCard, Settings, LogOut, Lock, User,
-  Building2, BookOpen, Activity, DollarSign, Receipt, Sliders,
-  ChevronLeft, ChevronRight, X
+  Building2, BookOpen, Activity, DollarSign, Receipt, Sliders, GitBranch,
+  ChevronLeft, ChevronRight, X, Calendar, Package, Archive, ShieldCheck, UserPlus
 } from 'lucide-react'
 import { authService, UserRole } from '@/lib/auth'
 import { getSidebarItems } from '@/lib/rbac'
-import { useState, useEffect } from 'react'
+import { routeKeyFromDashboardHref, staffRoutesForProject, staffWelcomePath, canOpenStaffWelcomePage } from '@/lib/healthcareStaffRoutes'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 
 const iconMap = {
   LayoutDashboard,
@@ -30,23 +31,126 @@ const iconMap = {
   Activity,
   DollarSign,
   Receipt,
-  Sliders
+  Sliders,
+  GitBranch,
+  Calendar,
+  Package,
+  Archive,
+  ShieldCheck,
+  UserPlus
 }
+
+const healthcareLabelToModule: Record<string, string> = {
+  Patients: 'patients',
+  Appointments: 'appointments',
+  'Front Desk': 'frontdesk',
+  Doctors: 'doctors',
+  Staff: 'doctors',
+  Nurses: 'nurses',
+  Prescriptions: 'prescriptions',
+  'Medicine master': 'pharmacy',
+  Inventory: 'inventory',
+  Billing: 'billing',
+  Compliance: 'compliance',
+  Chatbot: 'whatsapp',
+  Templates: 'whatsapp',
+  Broadcasts: 'whatsapp',
+  'Live Chat': 'whatsapp',
+  'Flow Builder': 'flow-builder',
+}
+
+const defaultHealthcareModules = [
+  'patients',
+  'appointments',
+  'doctors',
+  'prescriptions',
+  'whatsapp',
+]
 
 interface SidebarProps {
   projectId?: string
+  vertical?: 'whatsapp' | 'healthcare' | 'ecommerce'
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
 
-export default function Sidebar({ projectId, mobileOpen = false, onMobileClose }: SidebarProps) {
+export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, vertical: verticalProp }: SidebarProps) {
   const pathname = usePathname()
   const [isClient, setIsClient] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const [enabledHealthcareModules, setEnabledHealthcareModules] = useState<string[] | null>(null)
+  const navRef = useRef<HTMLElement | null>(null)
+  const preservedScrollRef = useRef<number | null>(null)
+
+  const projectVertical = verticalProp ?? 'whatsapp'
 
   useEffect(() => {
     setIsClient(true)
   }, [])
+
+  useEffect(() => {
+    if (!projectId || projectVertical !== 'healthcare') {
+      setEnabledHealthcareModules(null)
+      return
+    }
+
+    let cancelled = false
+
+    const loadClinicModules = async () => {
+      try {
+        const token = authService.getToken()
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api'
+        const response = await fetch(`${apiUrl}/healthcare/clinic/${encodeURIComponent(projectId)}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+        const payload = await response.json().catch(() => null)
+        const modules = payload?.data?.enabledModules
+        if (!cancelled) {
+          setEnabledHealthcareModules(Array.isArray(modules) && modules.length ? modules : defaultHealthcareModules)
+        }
+      } catch {
+        if (!cancelled) setEnabledHealthcareModules(defaultHealthcareModules)
+      }
+    }
+
+    loadClinicModules()
+    window.addEventListener('clinic-modules-updated', loadClinicModules)
+    return () => {
+      cancelled = true
+      window.removeEventListener('clinic-modules-updated', loadClinicModules)
+    }
+  }, [projectId, projectVertical])
+
+  const preserveScroll = () => {
+    if (navRef.current) {
+      preservedScrollRef.current = navRef.current.scrollTop
+    }
+  }
+
+  useLayoutEffect(() => {
+    if (!navRef.current) return
+
+    if (preservedScrollRef.current !== null) {
+      navRef.current.scrollTop = preservedScrollRef.current
+      preservedScrollRef.current = null
+    }
+
+    const activeItem = navRef.current.querySelector('[data-active="true"]') as HTMLElement | null
+    if (!activeItem) return
+
+    const navRect = navRef.current.getBoundingClientRect()
+    const itemRect = activeItem.getBoundingClientRect()
+
+    const isAbove = itemRect.top < navRect.top
+    const isBelow = itemRect.bottom > navRect.bottom
+
+    if (isAbove || isBelow) {
+      activeItem.scrollIntoView({ behavior: 'auto', block: 'nearest' })
+    }
+  }, [pathname])
 
   const user = authService.getCurrentUser()
   if (!user || !isClient) return null
@@ -55,12 +159,51 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose }
   const isPlanActive = user.status === 'active' && user.plan && user.plan !== 'free'
   const isSuperAdmin = user.role === UserRole.SUPERADMIN
   const isInProject = !!projectId
+  const isHealthcareStaffUser = Boolean(user.staffRole)
+    || Boolean(user.healthcareRoutesByProject && Object.keys(user.healthcareRoutesByProject).length > 0)
+    || Boolean(user.healthcareAccessByProject && Object.keys(user.healthcareAccessByProject).length > 0)
+  const staffAllowedRoutes = projectId ? staffRoutesForProject(user, projectId) : []
 
   const items = getSidebarItems(user.role as UserRole)
-  const updatedItems = items.map(item => ({
-    ...item,
-    href: projectId ? item.href.replace('/dashboard', basePath) : item.href
-  }))
+  const updatedItems = items
+    .filter(item => {
+      const routeKey = routeKeyFromDashboardHref(item.href)
+      const moduleKey = healthcareLabelToModule[item.label]
+      const enabledByClinic = !moduleKey || !enabledHealthcareModules || enabledHealthcareModules.includes(moduleKey)
+
+      // Healthcare items: only show when project vertical is healthcare
+      if ((item as any).vertical === 'healthcare') {
+        if (projectVertical !== 'healthcare') return false
+        if (!isHealthcareStaffUser) {
+          if (item.label === 'Overview') return true
+          if (item.label === 'Clinic Setup') return true
+          return enabledByClinic
+        }
+        return enabledByClinic && staffAllowedRoutes.includes(routeKey)
+      }
+      // Non-healthcare items: when vertical is healthcare, show only selected items
+      if (projectVertical === 'healthcare') {
+        if (isHealthcareStaffUser) {
+          return enabledByClinic && staffAllowedRoutes.includes(routeKey)
+        }
+        const alwaysShowGroups = ['⚙️ System', '📈 Analytics']
+        const alwaysShowLabels = ['Dashboard', 'Live Chat', 'Broadcasts', 'Templates', 'Chatbot', 'Flow Builder']
+        if (moduleKey && enabledHealthcareModules && !enabledHealthcareModules.includes(moduleKey)) {
+          return false
+        }
+        return alwaysShowGroups.includes((item as any).group ?? '') || alwaysShowLabels.includes(item.label)
+      }
+      return true
+    })
+    .map(item => {
+      let href = projectId ? item.href.replace('/dashboard', basePath) : item.href
+      if (projectId && isHealthcareStaffUser && item.label === 'Dashboard') {
+        if (canOpenStaffWelcomePage(user, staffAllowedRoutes)) {
+          href = staffWelcomePath(projectId)
+        }
+      }
+      return { ...item, href }
+    })
 
   const handleLogout = async () => {
     try {
@@ -106,11 +249,11 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose }
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 overflow-y-auto">
+      <nav ref={navRef} className="flex-1 p-3 overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {(() => {
           const visibleItems = updatedItems.filter((item) => {
             if ((item as any).superAdminOnly) return false
-            const lockedFeatures = ['whatsapp', 'contacts', 'broadcasts', 'campaigns', 'chatbot', 'templates']
+            const lockedFeatures = ['whatsapp', 'contacts', 'broadcasts', 'campaigns', 'chatbot', 'flow', 'healthcare', 'templates']
             const alwaysVisible = ['dashboard', 'billing', 'settings', 'account']
             return isInProject ||
               alwaysVisible.some(v => item.href.includes(v)) ||
@@ -123,6 +266,30 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose }
             const g = (item as any).group ?? '__none__'
             if (!groups.includes(g)) groups.push(g)
           })
+
+          // In healthcare projects, prioritize healthcare navigation first.
+          if (projectVertical === 'healthcare') {
+            const healthcareGroupOrder: Record<string, number> = {
+              '🏥 Healthcare • Core': 0,
+              '🏥 Healthcare • Front Desk': 1,
+              '🏥 Healthcare • Clinical': 2,
+              '🏥 Healthcare • Pharmacy': 3,
+              '🏥 Healthcare • Billing': 4,
+              '🏥 Healthcare • Compliance': 5,
+              '__none__': 6,
+              '💬 Conversations': 7,
+              '📢 Marketing': 8,
+              '📈 Analytics': 9,
+              '⚙️ System': 10,
+            }
+
+            groups.sort((a, b) => {
+              const aRank = healthcareGroupOrder[a] ?? 999
+              const bRank = healthcareGroupOrder[b] ?? 999
+              if (aRank !== bRank) return aRank - bRank
+              return 0
+            })
+          }
 
           return groups.map((groupKey) => {
             const groupItems = visibleItems.filter(i => ((i as any).group ?? '__none__') === groupKey)
@@ -140,20 +307,24 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose }
                 <div className="space-y-0.5">
                   {groupItems.map((item) => {
                     const Icon = iconMap[item.icon as keyof typeof iconMap]
-                    const isActive = item.label === 'Dashboard'
+                    const isActive = (item.label === 'Dashboard' || item.label === 'Overview')
                       ? pathname === item.href
                       : pathname === item.href || pathname.startsWith(item.href + '/')
-                    const lockedFeatures = ['whatsapp', 'contacts', 'broadcasts', 'campaigns', 'chatbot', 'templates']
+                    const lockedFeatures = ['whatsapp', 'contacts', 'broadcasts', 'campaigns', 'chatbot', 'flow', 'healthcare', 'templates']
                     const isFeatureLocked = !isInProject && !isSuperAdmin && !isPlanActive &&
                       lockedFeatures.some(f => item.href.includes(f))
 
                     return (
-                      <div key={item.href} className="relative group">
+                      <div key={item.href} className="relative group" data-active={isActive ? 'true' : 'false'}>
                         <Link
                           href={isFeatureLocked ? '#' : item.href}
                           onClick={(e) => {
-                            if (isFeatureLocked) e.preventDefault()
-                            else if (onMobileClose) onMobileClose()
+                            if (isFeatureLocked) {
+                              e.preventDefault()
+                            } else {
+                              preserveScroll()
+                              if (onMobileClose) onMobileClose()
+                            }
                           }}
                           title={collapsed && !isMobile ? item.label : ''}
                           className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition relative

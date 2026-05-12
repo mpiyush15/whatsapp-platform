@@ -5,6 +5,8 @@ import conversationService from '../services/conversationService.js';
 import internalNoteService from '../services/internalNoteService.js';
 import tagService from '../services/tagService.js';
 import whatsappService from '../services/whatsappService.js';
+import liveChatConversationService from '../services/liveChatConversationService.js';
+import messageRepository from '../repositories/messageRepository.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
 import { emitToConversation, emitToAccount } from '../services/liveChat-socketHandler.js';
 import Conversation from '../models/Conversation.js';
@@ -396,20 +398,10 @@ router.patch('/:conversationId', async (req, res) => {
       });
     }
 
-    // Update conversation
-    const conversation = await Conversation.findOneAndUpdate(
-      { _id: conversationId, accountId },
-      updates,
-      { new: true }
-    ).populate('assignedAgentId', 'name email');
-
-    if (!conversation) {
-      return res.status(404).json({
-        success: false,
-        message: 'Conversation not found',
-        error: 'NOT_FOUND'
-      });
-    }
+    // Update conversation via service
+    const conversation = await liveChatConversationService.updateConversationDetails(
+      conversationId, accountId, updates
+    );
 
     // Emit real-time update
     emitToConversation(accountId, conversationId, 'conversation_updated', {
@@ -1134,122 +1126,35 @@ router.post('/:conversationId/send-message', async (req, res) => {
     const agentId = req.user._id;
     const agentName = req.user.name || 'Agent';
 
-    // If emoji reaction only (no text)
-    if (!text || !text.trim()) {
-      // If it's just a reaction/emoji, allow it
-      if (!emoji) {
-        return res.status(400).json({
-          success: false,
-          message: 'Message text or emoji cannot be empty',
-          error: 'EMPTY_MESSAGE'
-        });
-      }
-    }
-
-    // Get conversation by conversationId (string) not _id
-    const conversation = await Conversation.findOne({
-      conversationId: conversationId,
-      accountId
-    });
-
-    if (!conversation) {
-      return res.status(404).json({
-        success: false,
-        message: 'Conversation not found',
-        error: 'NOT_FOUND'
-      });
-    }
-
-    // Import s3Service for media upload
-    const { uploadToS3 } = await import('../services/s3Service.js');
-    
-    // Handle media upload to S3 if mediaUrl is provided
-    let finalMediaUrl = mediaUrl;
-    if (mediaUrl && mediaUrl.startsWith('data:')) {
-      try {
-        // Convert dataURL to buffer
-        const matches = mediaUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        if (matches && matches.length === 3) {
-          const mimeType = matches[1];
-          const base64Data = matches[2];
-          const buffer = Buffer.from(base64Data, 'base64');
-          
-          // Upload to S3
-          const s3Result = await uploadToS3(
-            buffer,
-            accountId,
-            mediaType || 'media',
-            mimeType,
-            `message-${Date.now()}`
-          );
-          
-          finalMediaUrl = s3Result.s3Url;
-          logger.info(`✅ Media uploaded to S3: ${finalMediaUrl}`);
-        }
-      } catch (err) {
-        logger.error('❌ Error uploading media to S3:', err.message);
-        // Continue with dataURL if S3 fails
-      }
-    }
-
-    // Import Message model
-    // Message already imported at top
-
-    // If replying to a message, verify it exists
-    let replyToMessageId = null;
-    if (replyToId) {
-      const replyToMessage = await Message.findOne({ _id: replyToId, conversationId });
-      if (!replyToMessage) {
-        return res.status(404).json({
-          success: false,
-          message: 'Message to reply to not found',
-          error: 'REPLY_TO_NOT_FOUND'
-        });
-      }
-      replyToMessageId = replyToId;
-    }
-
-    // Create message
-    const message = await Message.create({
+    const {
+      message,
+      conversation,
+      finalMediaUrl,
+      replyToMessageId,
+      text: normalizedText,
+      mediaType: normalizedMediaType,
+      emoji: normalizedEmoji,
+    } = await liveChatConversationService.createOutboundMessageForConversation({
+      conversationId,
       accountId,
-      conversationId: conversation.conversationId,
-      phoneNumberId: conversation.phoneNumberId,
-      recipientPhone: conversation.userPhone,
-      recipientName: conversation.userName,
-      senderRole: 'agent',
-      senderName: agentName,
-      messageType: mediaType ? 'media' : 'text',
-      direction: 'outbound',
-      content: { text: text || '', mediaUrl: finalMediaUrl, mediaType, emoji },
-      status: 'sent',
-      sentAt: new Date(),
-      sentByAgentId: agentId,
-      replyTo: replyToMessageId,
-      reactions: []
+      agentId,
+      agentName,
+      text,
+      mediaUrl,
+      mediaType,
+      replyToId,
+      emoji,
     });
-
-    // Update conversation
-    await Conversation.findOneAndUpdate(
-      { conversationId: conversation.conversationId, accountId },
-      {
-        lastMessageAt: new Date(),
-        lastMessagePreview: text ? text.substring(0, 100) : `📎 ${mediaType || 'Media'}`,
-        lastMessageType: mediaType ? 'media' : 'text',
-        messageCount: conversation.messageCount + 1
-      }
-    );
-
-    logger.info(`✅ Message sent: ${message._id} | Reply: ${replyToMessageId ? '✓' : '✗'} | Emoji: ${emoji ? '✓' : '✗'}`);
 
     // 🚀 SEND TO WHATSAPP API IN BACKGROUND (non-blocking)
-    if (text && conversation.phoneNumberId && conversation.userPhone) {
+    if (normalizedText && conversation.phoneNumberId && conversation.userPhone) {
       // Don't await this - let it run in background
       whatsappService
         .sendTextMessage(
           accountId,
           conversation.phoneNumberId,
           conversation.userPhone,
-          text
+          normalizedText
         )
         .then(() => {
           logger.info(`✅ Message delivered to WhatsApp: ${conversation.userPhone}`);
@@ -1279,10 +1184,10 @@ router.post('/:conversationId/send-message', async (req, res) => {
       conversationId: conversation.conversationId,
       senderRole: 'agent',
       senderName: agentName,
-      text: text || '',
+      text: normalizedText,
       mediaUrl: finalMediaUrl,
-      mediaType,
-      emoji,
+      mediaType: normalizedMediaType,
+      emoji: normalizedEmoji,
       replyTo: replyToMessageId,
       status: 'sent',
       createdAt: message.sentAt
@@ -1294,6 +1199,14 @@ router.post('/:conversationId/send-message', async (req, res) => {
       data: message
     });
   } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+        error: error.code || 'REQUEST_FAILED'
+      });
+    }
+
     logger.error('❌ Error sending message:', error);
     return res.status(500).json({
       success: false,
@@ -1312,76 +1225,9 @@ router.get('/stats', async (req, res) => {
     const accountId = req.account.accountId;
     const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = req.query;
 
-    // Convert month/year to date range
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+    const stats = await liveChatConversationService.getConversationStats(accountId, month, year);
 
-    logger.info('📊 Fetching stats for:', { accountId, month, year, startDate, endDate });
-
-    // Import Message model
-    const { default: Message } = await import('../models/Message.js');
-
-    // Count messages by direction
-    const messageStats = await Message.aggregate([
-      {
-        $match: {
-          accountId: accountId,
-          createdAt: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: '$direction',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    // Count total unread conversations
-    const unreadStats = await Conversation.countDocuments({
-      accountId: accountId,
-      unreadCount: { $gt: 0 }
-    });
-
-    // Count total conversations
-    const totalConversations = await Conversation.countDocuments({
-      accountId: accountId
-    });
-
-    // Parse message stats
-    let messagesSent = 0;
-    let messagesReceived = 0;
-    
-    messageStats.forEach(stat => {
-      if (stat._id === 'outbound') {
-        messagesSent = stat.count;
-      } else if (stat._id === 'inbound') {
-        messagesReceived = stat.count;
-      }
-    });
-
-    const totalMessages = messagesSent + messagesReceived;
-
-    const stats = {
-      messagesSent,
-      messagesReceived,
-      totalMessages,
-      unreadCount: unreadStats,
-      broadcastedCount: totalConversations,
-      period: {
-        month: parseInt(month),
-        year: parseInt(year),
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString()
-      }
-    };
-
-    logger.info('✅ Stats calculated:', stats);
-
-    return res.status(200).json({
-      success: true,
-      data: stats
-    });
+    return res.status(200).json({ success: true, data: stats });
   } catch (error) {
     logger.error('❌ Error fetching stats:', error);
     return res.status(500).json({
@@ -1402,63 +1248,19 @@ router.post('/:conversationId/messages/:messageId/reactions', async (req, res) =
     const { emoji } = req.body;
     const accountId = req.account.accountId;
 
-    if (!emoji) {
-      return res.status(400).json({
-        success: false,
-        message: 'Emoji is required',
-        error: 'MISSING_EMOJI'
-      });
-    }
-
-    // Message model already imported at top
-
-    // Find message
-    const message = await Message.findOne({
-      _id: messageId,
-      conversationId,
-      accountId
-    });
-
-    if (!message) {
-      return res.status(404).json({
-        success: false,
-        message: 'Message not found',
-        error: 'NOT_FOUND'
-      });
-    }
-
-    // Initialize reactions array if not exists
-    if (!message.reactions) {
-      message.reactions = [];
-    }
-
-    // Check if reaction already exists
-    const existingReaction = message.reactions.find(r => r.emoji === emoji);
-    if (existingReaction) {
-      existingReaction.addedAt = new Date();
-    } else {
-      message.reactions.push({
-        emoji,
-        addedAt: new Date()
-      });
-    }
-
-    await message.save();
+    const message = await liveChatConversationService.addMessageReaction(
+      messageId, conversationId, accountId, emoji
+    );
 
     logger.info(`😊 Reaction added: ${emoji} on message ${messageId}`);
 
-    return res.status(200).json({
-      success: true,
-      message: 'Reaction added',
-      data: message
-    });
+    return res.status(200).json({ success: true, message: 'Reaction added', data: message });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, message: error.message, error: error.code });
+    }
     logger.error('❌ Error adding reaction:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to add reaction',
-      error: error.message
-    });
+    return res.status(500).json({ success: false, message: 'Failed to add reaction', error: error.message });
   }
 });
 
@@ -1482,79 +1284,23 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
     logger.info(`  - file mimetype: ${file ? file.mimetype : 'N/A'}`);
     logger.info(`  - caption: ${caption || '(none)'}`);
 
-    if (!file) {
-      logger.error(`❌ No file received in request`);
-      return res.status(400).json({
-        success: false,
-        message: 'No file provided',
-        error: 'NO_FILE'
-      });
-    }
-
-    // Get conversation
-    const conversation = await Conversation.findOne({
-      conversationId: conversationId,
-      accountId
-    });
-
-    if (!conversation) {
-      return res.status(404).json({
-        success: false,
-        message: 'Conversation not found',
-        error: 'NOT_FOUND'
-      });
-    }
-
-    // Determine media type from file MIME type
-    const mimeType = file.mimetype;
-    let mediaType = 'document'; // default
-
-    if (mimeType.startsWith('image/')) {
-      mediaType = 'image';
-    } else if (mimeType.startsWith('video/')) {
-      mediaType = 'video';
-    } else if (mimeType.startsWith('audio/')) {
-      mediaType = 'audio';
-    } else if (mimeType.includes('pdf') || mimeType.includes('document')) {
-      mediaType = 'document';
-    }
-
-    logger.info(`📎 Media file received: ${file.originalname} (${mediaType}) | Size: ${file.size} bytes`);
-
-    // Convert file buffer to base64 dataURL for immediate display
-    const base64Data = file.buffer.toString('base64');
-    const dataUrl = `data:${mimeType};base64,${base64Data}`;
-
-    // Create message record
-    const message = await Message.create({
+    const {
+      message,
+      conversation,
+      mediaType,
+      mimeType,
+      dataUrl,
+      caption: normalizedCaption,
+      fileName,
+      fileBuffer,
+    } = await liveChatConversationService.createMediaMessageForConversation({
+      conversationId,
       accountId,
-      conversationId: conversation.conversationId,
-      phoneNumberId: conversation.phoneNumberId,
-      recipientPhone: conversation.userPhone,
-      recipientName: conversation.userName,
-      senderRole: 'agent',
-      senderName: agentName,
-      messageType: 'media',
-      direction: 'outbound',
-      content: { text: caption || '', mediaUrl: dataUrl, mediaType, filename: file.originalname },
-      status: 'sent',
-      sentAt: new Date(),
-      sentByAgentId: agentId,
-      reactions: []
+      agentId,
+      agentName,
+      caption,
+      file,
     });
-
-    // Update conversation
-    await Conversation.findOneAndUpdate(
-      { conversationId: conversation.conversationId, accountId },
-      {
-        lastMessageAt: new Date(),
-        lastMessagePreview: `📎 ${mediaType.charAt(0).toUpperCase() + mediaType.slice(1)}`,
-        lastMessageType: 'media',
-        messageCount: conversation.messageCount + 1
-      }
-    );
-
-    logger.info(`✅ Media message saved: ${message._id}`);
 
     // 🚀 SEND TO WHATSAPP API IN BACKGROUND (non-blocking)
     if (conversation.phoneNumberId && conversation.userPhone) {
@@ -1565,21 +1311,21 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
           conversation.userPhone,
           null, // mediaUrl - will be uploaded
           mediaType,
-          caption || '',
+          normalizedCaption,
           {
-            fileBuffer: file.buffer,
+            fileBuffer,
             mimeType: mimeType,
-            filename: file.originalname
+            filename: fileName
           }
         )
         .then(() => {
           logger.info(`✅ Media delivered to WhatsApp: ${conversation.userPhone}`);
           
           // Update message to delivered
-          Message.findByIdAndUpdate(message._id, { status: 'delivered' }).catch(err => {
+          messageRepository.updateById(message._id, { status: 'delivered' }).catch(err => {
             logger.error('Error updating message status:', err.message);
           });
-          
+
           // Emit delivery confirmation
           emitToConversation(accountId, conversation.conversationId, 'message_delivered', {
             messageId: message._id,
@@ -1599,7 +1345,7 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
       conversationId: conversation.conversationId,
       senderRole: 'agent',
       senderName: agentName,
-      text: caption || '',
+      text: normalizedCaption,
       mediaUrl: dataUrl, // Base64 dataURL for immediate display
       mediaType: mediaType,
       status: 'sent',
@@ -1612,6 +1358,18 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
       data: message
     });
   } catch (error) {
+    if (error?.statusCode) {
+      if (error.code === 'NO_FILE') {
+        logger.error(`❌ No file received in request`);
+      }
+
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+        error: error.code || 'REQUEST_FAILED'
+      });
+    }
+
     logger.error('❌ Error sending media message:', error);
     return res.status(500).json({
       success: false,

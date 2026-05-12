@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowRight, Mail, Lock } from "lucide-react"
 import Navbar from "@/components/Navbar"
-import { login } from "@/lib/auth"
+import { login, UserRole, getPostLoginRedirect } from "@/lib/auth"
 import { getCurrentDomain, isAppDomain, isPublicDomain, redirectToDomain } from "@/lib/domain"
 
 export default function LoginPage() {
@@ -25,53 +25,27 @@ export default function LoginPage() {
       const result = await login(email, password)
       if (result.success) {
         setSuccess(true)
-        
-        // Get JWT token to check user type
-        const token = localStorage.getItem('token')
-        let redirectPath = "/dashboard"
-        const currentDomain = getCurrentDomain()
-        
-        if (token) {
-          try {
-            const payload = JSON.parse(atob(token.split('.')[1]))
-            console.log('Login payload:', payload)
-            
-            // Redirect based on account type
-            if (payload.type === 'internal' && payload.role === 'superadmin') {
-              redirectPath = "/dashboard/superadmin"
-              // Admin goes to admin.domain
-              setTimeout(() => {
-                redirectToDomain('admin', redirectPath)
-              }, 1500)
-            } else if (payload.type === 'client' || payload.type === 'agency') {
-              // Phase 3: Both client and agency use new project-based dashboard
-              redirectPath = "/dashboard"
-              // Clients go to app.domain
-              if (isAppDomain()) {
-                // Already on app.domain, just push
-                setTimeout(() => {
-                  router.push(redirectPath)
-                }, 1500)
-              } else {
-                // On public domain (replysys.com) or localhost → redirect to app.domain
-                setTimeout(() => {
-                  redirectToDomain('app', redirectPath)
-                }, 1500)
-              }
-            }
-          } catch (e) {
-            console.error('Error parsing token:', e)
-            // Fallback redirect
-            setTimeout(() => {
-              router.push(redirectPath)
-            }, 1500)
+
+        const loggedInUser = result.user
+        const redirectPath = getPostLoginRedirect(loggedInUser || null)
+
+        setTimeout(() => {
+          if (loggedInUser?.type === 'internal' && loggedInUser.role === UserRole.SUPERADMIN) {
+            redirectToDomain('admin', redirectPath)
+            return
           }
-        } else {
-          // No token, fallback redirect
-          setTimeout(() => {
-            router.push(redirectPath)
-          }, 1500)
-        }
+
+          if (loggedInUser?.type === 'client' || loggedInUser?.type === 'agency') {
+            if (isAppDomain()) {
+              router.push(redirectPath)
+            } else {
+              redirectToDomain('app', redirectPath)
+            }
+            return
+          }
+
+          router.push(redirectPath)
+        }, 1500)
       } else {
         setError(result.error || "Login failed")
       }

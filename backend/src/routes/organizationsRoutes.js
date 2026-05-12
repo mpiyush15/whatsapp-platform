@@ -5,6 +5,7 @@
 
 import express from 'express';
 import logger from '../utils/logger.js';
+import { requireSuperAdmin } from '../middlewares/jwtAuth.js';
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 import {
   getAllOrganizations,
@@ -16,7 +17,8 @@ import {
   generatePaymentLink,
   createInvoice,
   resetOrganizationPassword,
-  assignPlanToOrganization
+  assignPlanToOrganization,
+  setOrganizationInternalFlag
 } from '../controllers/organizationsController.js';
 
 const router = express.Router();
@@ -90,5 +92,12 @@ router.post('/:id/reset-password', resetOrganizationPassword);
  * @access  Admin only (requires JWT auth)
  */
 router.put('/:accountId/assign-plan', assignPlanToOrganization);
+
+/**
+ * @route   PATCH /api/admin/organizations/:accountId/set-internal
+ * @desc    Toggle internal billing-exempt org flag
+ * @access  Superadmin only
+ */
+router.patch('/:accountId/set-internal', requireSuperAdmin, setOrganizationInternalFlag);
 
 export default router;

@@ -10,7 +10,7 @@ import { requireJWT } from './middlewares/jwtAuth.js';
 import requireSubscription from './middlewares/requireSubscription.js';
 import { subdomainDetectionMiddleware } from './middlewares/subdomainDetection.js';
 import { validateWebhookSignature } from './middlewares/webhookSignatureValidator.js';
-import { validateDomain, requireAdminDomain, requireAppDomain, enforceProjectIsolation } from './middlewares/domainMiddleware.js';
+import { validateDomain, requireAdminDomain, requireAppDomain, requireSupportDomain, enforceProjectIsolation } from './middlewares/domainMiddleware.js';
 
 // Import Sentry for error tracking
 import { initSentry, sentryErrorHandler } from './config/sentry.js';
@@ -41,6 +41,7 @@ import paymentReminderRoutes from './routes/paymentReminderRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import { startPaymentStatusPoller } from './jobs/paymentStatusPoller.js';
+import { startPaymentTimeoutScheduler } from './schedulers/paymentTimeoutScheduler.js';
 import jobRoutes from './routes/jobRoutes.js';
 import demoRoutes from './routes/demoRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
@@ -53,11 +54,15 @@ import apiKeyRoutes from './routes/apiKeyRoutes.js';
 import businessPermissionsRoutes from './routes/businessPermissionsRoutes.js';
 import enumsRoutes from './routes/enumsRoutes.js';
 import projectRoutes from './routes/projects.js';
+import creditPackRoutes from './routes/creditPackRoutes.js';
+import supportRoutes from './routes/supportRoutes.js';
+import healthcareRoutes from './routes/healthcareRoutes.js';
 
 // Import live chat routes
 import liveChatConversationRoutes from './routes/liveChat-conversationRoutes.js';
 import liveChatMessageRoutes from './routes/liveChat-messageRoutes.js';
 import liveChatTagRoutes from './routes/liveChat-tagRoutes.js';
+import clinicRoutes from './routes/clinicRoutes.js';
 import mediaRoutes from '../routes/media.js';
 
 // Load environment variables
@@ -160,7 +165,7 @@ app.use((req, res, next) => {
 app.use(subdomainDetectionMiddleware);
 
 // Domain validation middleware (Enforce admin.domain vs app.domain separation)
-app.use(validateDomain(['admin', 'app']));
+app.use(validateDomain(['admin', 'app', 'support', 'healthcare']));
 
 // Serve static files (uploads)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -336,6 +341,7 @@ app.use('/api/enums', enumsRoutes);
 
 // Mount external API routes (API KEY AUTH only - for third-party integrations)
 app.use('/api/external', externalApiRoutes);
+app.use('/api/v1', externalApiRoutes);
 
 // Mount project routes (JWT AUTH only - multi-project scoping)
 app.use('/api/projects', requireJWT, projectRoutes);
@@ -353,6 +359,8 @@ app.use('/api/chatbots', requireJWT, requireSubscription, chatbotRoutes);
 app.use('/api/messages', requireJWT, requireSubscription, messageRoutes);
 app.use('/api/conversations', requireJWT, requireSubscription, conversationRoutes);
 app.use('/api/contacts', requireJWT, requireSubscription, contactRoutes);
+app.use('/api/healthcare', requireJWT, requireSubscription, healthcareRoutes);
+app.use('/api/clinic', requireJWT, requireSubscription, clinicRoutes);
 app.use('/api/segments', requireJWT, requireSubscription, segmentRoutes);
 app.use('/api/broadcasts', requireJWT, requireSubscription, broadcastRoutes);
 app.use('/api/campaigns', requireJWT, requireSubscription, campaignRoutes);
@@ -363,6 +371,9 @@ app.use('/api/pricing', pricingRoutes);
 
 // Mount subscription routes (JWT AUTH for user subscriptions)
 app.use('/api/subscriptions', requireJWT, subscriptionRoutes);
+
+// Mount credit pack routes (JWT AUTH for clients + SUPERADMIN for management)
+app.use('/api/dashboard/superadmin/credit-packs', creditPackRoutes);
 
 // Mount payment routes (JWT AUTH - for payment history and admin stats)
 app.use('/api/payment', requireJWT, paymentRoutes);
@@ -380,6 +391,9 @@ app.use('/api/crm', requireJWT, requireSubscription, crmRoutes);
 app.use('/api/live-chat/conversations', requireAppDomain, requireJWT, requireSubscription, liveChatConversationRoutes);
 app.use('/api/live-chat/messages', requireAppDomain, requireJWT, requireSubscription, liveChatMessageRoutes);
 app.use('/api/live-chat/tags', requireJWT, requireSubscription, liveChatTagRoutes);
+
+// Mount support routes (SUPPORT DOMAIN ONLY - support inbox and ticket workflows)
+app.use('/api/support', requireSupportDomain, requireJWT, supportRoutes);
 
 // Mount media routes (JWT AUTH - for media proxy and downloads)
 app.use('/api/media', requireJWT, mediaRoutes);
@@ -482,6 +496,9 @@ export const setupSocketIO = (io) => {
 
   // Start payment status poller (auto-checks pending payments every 10 seconds)
   startPaymentStatusPoller();
+
+  // Start payment timeout scheduler (runs every 15 minutes)
+  startPaymentTimeoutScheduler();
 };
 
 export default app;

@@ -36,6 +36,13 @@ interface StoredContact {
   updatedAt?: string
 }
 
+interface QuotaErrorInfo {
+  resource?: string
+  limit?: number
+  used?: number
+  message: string
+}
+
 export default function ContactsPage() {
   const params = useParams()
   const projectId = params.projectId as string
@@ -50,6 +57,7 @@ export default function ContactsPage() {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [importSummary, setImportSummary] = useState("")
   const [newContact, setNewContact] = useState({ userName: "", userPhone: "", tags: "" })
+  const [quotaError, setQuotaError] = useState<QuotaErrorInfo | null>(null)
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050/api"
 
@@ -233,6 +241,18 @@ export default function ContactsPage() {
 
     const data = await response.json()
     if (!response.ok || data?.success === false) {
+      if (response.status === 429 || data?.code === 'QUOTA_EXCEEDED') {
+        const quotaMessage = data?.error || data?.message || 'Quota exceeded'
+        throw Object.assign(new Error(quotaMessage), {
+          isQuotaError: true,
+          quota: {
+            resource: data?.resource,
+            limit: data?.limit,
+            used: data?.used,
+            message: quotaMessage,
+          }
+        })
+      }
       throw new Error(data?.error || data?.message || 'Failed to save contact')
     }
 
@@ -256,6 +276,7 @@ export default function ContactsPage() {
     }
 
     const tags = newContact.tags.split(",").map((t) => t.trim()).filter(Boolean)
+    setQuotaError(null)
 
     try {
       setIsSavingContact(true)
@@ -280,6 +301,9 @@ export default function ContactsPage() {
       setShowCreateModal(false)
       setNewContact({ userName: "", userPhone: "", tags: "" })
     } catch (error: any) {
+      if (error?.isQuotaError) {
+        setQuotaError(error.quota)
+      }
       alert(error.message || 'Failed to create contact')
     } finally {
       setIsSavingContact(false)
@@ -293,6 +317,7 @@ export default function ContactsPage() {
     try {
       setIsImporting(true)
       setImportSummary("")
+      setQuotaError(null)
       const text = await file.text()
       const lines = text.split(/\r?\n/).filter(Boolean)
 
@@ -321,6 +346,11 @@ export default function ContactsPage() {
       const results = await Promise.allSettled(payloads.map((payload) => createContactInDb(payload)))
       const successCount = results.filter((r) => r.status === 'fulfilled').length
       const failedCount = results.length - successCount
+
+      const quotaFailure = results.find((r) => r.status === 'rejected' && (r.reason as any)?.isQuotaError) as PromiseRejectedResult | undefined
+      if (quotaFailure?.reason?.quota) {
+        setQuotaError(quotaFailure.reason.quota)
+      }
 
       const createdContacts: StoredContact[] = results
         .filter((r): r is PromiseFulfilledResult<StoredContact | null> => r.status === 'fulfilled')
@@ -493,6 +523,23 @@ export default function ContactsPage() {
             </div>
           </div>
         </div>
+
+        {quotaError && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">
+            <p className="text-sm font-semibold">Usage limit reached</p>
+            <p className="text-sm mt-1">
+              {quotaError.message}
+              {typeof quotaError.used === 'number' && typeof quotaError.limit === 'number'
+                ? ` (${quotaError.used}/${quotaError.limit})`
+                : ''}
+            </p>
+            <div className="mt-2 flex items-center gap-3 text-sm">
+              <a href="/dashboard/features/billing" className="font-semibold underline">Upgrade plan</a>
+              <span>or</span>
+              <a href="/dashboard/features/billing" className="font-semibold underline">Top up credits</a>
+            </div>
+          </div>
+        )}
 
         {/* Create Contact Modal */}
         {showCreateModal && (

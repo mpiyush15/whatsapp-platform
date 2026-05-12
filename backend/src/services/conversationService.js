@@ -1,10 +1,11 @@
-import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import InternalNote from '../models/InternalNote.js';
 import ActivityTimeline from '../models/ActivityTimeline.js';
 import ConversationAssignment from '../models/ConversationAssignment.js';
 import Contact from '../models/Contact.js';
 import Tag from '../models/Tag.js';
+import conversationRepository from '../repositories/conversationRepository.js';
+import messageRepository from '../repositories/messageRepository.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -19,68 +20,14 @@ import { handleControllerError, ValidationError, NotFoundError, UnauthorizedErro
  */
 export const listConversations = async (accountId, workspaceId, phoneNumberId, filters = {}) => {
   const {
-    status = null,
-    assignedToMe = false,
-    agentId = null,
-    tags = [],
-    search = '',
     limit = 50,
     offset = 0
   } = filters;
 
-  // Build base query - always include accountId
-  const query = {
-    accountId
-  };
+  const query = conversationRepository.buildListQuery(accountId, workspaceId, phoneNumberId, filters);
 
-  // Handle workspaceId filter
-  if (workspaceId && workspaceId.trim()) {
-    // If workspaceId is provided, filter by it
-    query.workspaceId = workspaceId;
-  } else {
-    // If no workspaceId provided, fetch ALL conversations for account
-    // (don't filter by workspace at all - remove the problematic $or)
-    // This allows fetching conversations regardless of workspace
-  }
-
-  // Handle phoneNumberId filter (independent of workspaceId)
-  if (phoneNumberId && phoneNumberId.trim()) {
-    query.phoneNumberId = phoneNumberId;
-  }
-
-  // Status filter
-  if (status) {
-    query.status = status;
-  }
-
-  // Assigned to specific agent
-  if (assignedToMe && agentId) {
-    query.assignedAgentId = agentId;
-  }
-
-  // Tag filter
-  if (tags && tags.length > 0) {
-    query.tags = { $in: tags };
-  }
-
-  // Search filter (name, phone, last message)
-  if (search && search.trim()) {
-    // Use $or for search conditions
-    query.$or = [
-      { userName: { $regex: search.trim(), $options: 'i' } },
-      { userPhone: { $regex: search.trim(), $options: 'i' } },
-      { lastMessagePreview: { $regex: search.trim(), $options: 'i' } }
-    ];
-  }
-
-  const conversations = await Conversation.find(query)
-    .sort({ lastMessageAt: -1 })
-    .skip(offset)
-    .limit(limit)
-    .populate('assignedAgentId', 'name email')
-    .lean();
-
-  const total = await Conversation.countDocuments(query);
+  const conversations = await conversationRepository.findWithFilters(query, limit, offset);
+  const total = await conversationRepository.countByQuery(query);
 
   return {
     conversations,
@@ -93,10 +40,7 @@ export const listConversations = async (accountId, workspaceId, phoneNumberId, f
  * Get single conversation with all related data
  */
 export const getConversationDetail = async (conversationId, accountId) => {
-  const conversation = await Conversation.findOne({
-    _id: conversationId,
-    accountId
-  }).populate('assignedAgentId', 'name email phone status');
+  const conversation = await conversationRepository.findByIdAndAccount(conversationId, accountId);
 
   if (!conversation) {
     throw new NotFoundError('Conversation not found');
@@ -133,20 +77,7 @@ export const getConversationDetail = async (conversationId, accountId) => {
  * Assign conversation to agent
  */
 export const assignConversation = async (conversationId, agentId, accountId, reason = 'manual') => {
-  const conversation = await Conversation.findOneAndUpdate(
-    { _id: conversationId, accountId },
-    {
-      assignedAgentId: agentId,
-      $push: {
-        assignmentHistory: {
-          agentId,
-          assignedAt: new Date(),
-          reason
-        }
-      }
-    },
-    { new: true }
-  ).populate('assignedAgentId', 'name email');
+  const conversation = await conversationRepository.assignToAgent(conversationId, accountId, agentId, reason);
 
   // Create assignment record for tracking
   await ConversationAssignment.create({
@@ -179,14 +110,16 @@ export const assignConversation = async (conversationId, agentId, accountId, rea
  * Close conversation
  */
 export const closeConversation = async (conversationId, accountId, reason = 'manual', closedByAgentId = null) => {
-  const conversation = await Conversation.findOneAndUpdate(
-    { _id: conversationId, accountId },
-    {
-      status: 'closed',
-      unreadCount: 0
-    },
-    { new: true }
+  const conversation = await conversationRepository.updateStatus(
+    conversationId,
+    accountId,
+    'closed',
+    { unreadCount: 0 }
   );
+
+  if (!conversation) {
+    throw new NotFoundError('Conversation not found');
+  }
 
   // Update assignment record
   if (conversation.assignedAgentId) {
@@ -223,11 +156,11 @@ export const closeConversation = async (conversationId, accountId, reason = 'man
  * Reopen conversation
  */
 export const reopenConversation = async (conversationId, accountId, reopenedByAgentId = null) => {
-  const conversation = await Conversation.findOneAndUpdate(
-    { _id: conversationId, accountId },
-    { status: 'open' },
-    { new: true }
-  );
+  const conversation = await conversationRepository.updateStatus(conversationId, accountId, 'open');
+
+  if (!conversation) {
+    throw new NotFoundError('Conversation not found');
+  }
 
   // Log in activity timeline
   await ActivityTimeline.create({
@@ -258,13 +191,11 @@ export const addTagToConversation = async (conversationId, tagName, accountId) =
   }
 
   // Add tag to conversation
-  const conversation = await Conversation.findOneAndUpdate(
-    { _id: conversationId, accountId },
-    {
-      $addToSet: { tags: tagName } // Only add if not already present
-    },
-    { new: true }
-  );
+  const conversation = await conversationRepository.addTag(conversationId, accountId, tagName);
+
+  if (!conversation) {
+    throw new NotFoundError('Conversation not found');
+  }
 
   // Increment tag usage count
   await Tag.updateOne(
@@ -287,13 +218,11 @@ export const addTagToConversation = async (conversationId, tagName, accountId) =
  * Remove tag from conversation
  */
 export const removeTagFromConversation = async (conversationId, tagName, accountId) => {
-  const conversation = await Conversation.findOneAndUpdate(
-    { _id: conversationId, accountId },
-    {
-      $pull: { tags: tagName }
-    },
-    { new: true }
-  );
+  const conversation = await conversationRepository.removeTag(conversationId, accountId, tagName);
+
+  if (!conversation) {
+    throw new NotFoundError('Conversation not found');
+  }
 
   // Decrement tag usage count
   const tag = await Tag.findOne({ accountId, name: tagName });
@@ -379,10 +308,7 @@ export const updateConversationMetrics = async (conversationId, accountId) => {
     .sort({ createdAt: 1 })
     .lean();
 
-  const conversation = await Conversation.findOne({
-    _id: conversationId,
-    accountId
-  }).lean();
+  const conversation = await conversationRepository.findLeanByIdAndAccount(conversationId, accountId);
 
   let responseTime = null;
   let resolutionTime = null;
@@ -402,44 +328,27 @@ export const updateConversationMetrics = async (conversationId, accountId) => {
   }
 
   // Update conversation
-  await Conversation.updateOne(
-    { _id: conversationId, accountId },
-    {
-      messageCount,
-      responseTime,
-      resolutionTime
-    }
-  );
+  await conversationRepository.updateMetrics(conversationId, accountId, {
+    messageCount,
+    responseTime,
+    resolutionTime
+  });
 };
 
 /**
  * Mark conversation as read by agent
  */
 export const markConversationAsRead = async (conversationId, agentId, accountId) => {
-  const conversation = await Conversation.findOneAndUpdate(
-    { _id: conversationId, accountId },
-    {
-      unreadCount: 0,
-      lastReadBy: {
-        agentId,
-        readAt: new Date()
-      }
-    },
-    { new: true }
-  );
+  const conversation = await conversationRepository.markAsRead(conversationId, accountId, agentId);
+
+  if (!conversation) {
+    throw new NotFoundError('Conversation not found');
+  }
+
+  const resolvedConversationId = conversation.conversationId || conversationId;
 
   // Mark all messages as read by this agent
-  await Message.updateMany(
-    { conversationId, accountId },
-    {
-      $addToSet: {
-        readBy: {
-          agentId,
-          readAt: new Date()
-        }
-      }
-    }
-  );
+  await messageRepository.markReadByAgent(resolvedConversationId, accountId, agentId);
 
   return conversation;
 };

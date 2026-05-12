@@ -1,4 +1,4 @@
-import { sendSuccess, sendValidationError, sendNotFound } from '../utils/responseHandler.js';
+import { sendSuccess, sendValidationError, sendNotFound, sendForbidden, sendError } from '../utils/responseHandler.js';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import mongoose from 'mongoose';
@@ -57,7 +57,7 @@ export const getAllOrganizations = async (req, res) => {
     // Query accounts collection - this contains all organizations
     const Account = mongoose.model('Account');
     const organizations = await Account.find({})
-      .select('accountId name email company type role status createdAt')
+      .select('accountId name email company type role status isInternal createdAt')
       .sort({ createdAt: -1 })
       .lean(); // Convert to plain JavaScript objects, not Mongoose documents
     
@@ -238,6 +238,46 @@ export const assignPlanToOrganization = async (req, res) => {
   }
 }
 
+export const setOrganizationInternalFlag = async (req, res) => {
+  try {
+    if (req.user?.role !== 'superadmin') {
+      return sendForbidden(res, 'Only superadmin can update internal organization flag');
+    }
+
+    const { accountId } = req.params;
+    const { isInternal } = req.body;
+
+    if (typeof isInternal !== 'boolean') {
+      return sendValidationError(res, 'isInternal (boolean) is required');
+    }
+
+    const Account = mongoose.model('Account');
+    const account = await Account.findOne({ accountId });
+
+    if (!account) {
+      return sendNotFound(res, 'Organization not found');
+    }
+
+    account.isInternal = isInternal;
+    await account.save();
+
+    logger.info('✅ Organization internal flag updated', {
+      accountId,
+      isInternal,
+      updatedBy: req.user?.email || req.user?.accountId || 'unknown'
+    });
+
+    return sendSuccess(res, {
+      accountId: account.accountId,
+      name: account.name,
+      isInternal: account.isInternal,
+      updatedAt: account.updatedAt,
+    }, 'Organization internal flag updated');
+  } catch (error) {
+    return handleControllerError(res, error, 'setOrganizationInternalFlag');
+  }
+};
+
 export default { 
   createOrganization, 
   getOrganization, 
@@ -250,5 +290,6 @@ export default {
   generatePaymentLink,
   createInvoice,
   resetOrganizationPassword,
-  assignPlanToOrganization
+  assignPlanToOrganization,
+  setOrganizationInternalFlag
 };

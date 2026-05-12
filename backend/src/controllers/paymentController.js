@@ -8,6 +8,7 @@ import Account from '../models/Account.js';
 import Subscription from '../models/Subscription.js';
 import Invoice from '../models/Invoice.js';
 import { emailService } from '../services/emailService.js';
+import billingLifecycleService from '../services/billingLifecycleService.js';
 
 export const initiatePayment = async (req, res) => {
   try {
@@ -43,164 +44,22 @@ export const confirmPayment = async (req, res) => {
   try {
     // Cashfree can send data via POST body or query params
     const webhookData = { ...req.body, ...req.query };
-    const { orderId, orderStatus, txStatus, txMsg, orderAmount, referenceId } = webhookData;
+    const { orderId, orderStatus } = webhookData;
     
     logger.info('📝 Payment webhook received:', {
       orderId,
       orderStatus,
-      txStatus,
-      txMsg,
-      orderAmount,
-      referenceId,
       fullBody: req.body,
       fullQuery: req.query
     });
 
-    // Find payment by orderId
-    const payment = await Payment.findOne({ orderId });
-    if (!payment) {
-      logger.warn('⚠️ Payment not found for orderId:', orderId);
-      logger.warn('   Checking all orderId formats...');
-      
-      // Try to find by any orderId field
-      const allPayments = await Payment.find({}).limit(5);
-      logger.warn('   Sample orders in DB:', allPayments.map(p => p.orderId));
-      
-      return sendSuccess(res, { orderId, status: 'notfound' }, 'Payment record not found');
-    }
-
-    // Update payment with webhook data
-    payment.gatewayOrderId = orderId;
-    payment.gatewayPaymentId = referenceId;
-    payment.status = orderStatus; // Store Cashfree's exact status: PAID, PENDING, FAILED, etc.
-    payment.completedAt = new Date();
-    payment.webhookData = webhookData;
-    
-    await payment.save();
-    logger.info('✅ Payment updated:', payment._id);
-
-    // If payment successful - Check multiple status formats from Cashfree
-    // Cashfree can send: PAID, completed, SUCCESS
-    const isPaymentSuccessful = 
-      orderStatus === 'PAID' || 
-      orderStatus === 'completed' || 
-      orderStatus === 'SUCCESS' ||
-      (txStatus === 'SUCCESS' && orderStatus !== 'FAILED' && orderStatus !== 'PENDING');
-    
-    logger.info('🔍 Payment check:', {
-      orderStatus,
-      txStatus,
-      isPaymentSuccessful
+    const result = await billingLifecycleService.processPaymentLifecycle({
+      body: webhookData,
+      source: 'legacy_confirm_payment',
+      requestId: `legacy-${Date.now()}`,
     });
 
-    if (isPaymentSuccessful) {
-      // 1. Create subscription for the org
-      try {
-        const newSubscription = new Subscription({
-          subscriptionId: `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          accountId: payment.accountId,
-          planId: payment.planId,
-          status: 'active',
-          billingCycle: payment.billingCycle || 'monthly',
-          pricing: {
-            amount: payment.amount,
-            finalAmount: payment.amount,
-            currency: 'INR'
-          },
-          startDate: new Date(),
-          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          renewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          paymentGateway: 'cashfree',
-          paymentStatus: 'completed',
-          paymentAmount: payment.amount,
-          orderId: payment.orderId,
-          transactionId: payment._id.toString(),
-          createdAt: new Date()
-        });
-        await newSubscription.save();
-        logger.info('✅ Subscription created:', newSubscription._id);
-
-        // 2. Link subscription to account
-        try {
-          await Account.findOneAndUpdate(
-            { accountId: payment.accountId },
-            { subscriptionId: newSubscription.subscriptionId },
-            { new: true }
-          );
-          logger.info('✅ Account linked to subscription');
-        } catch (linkErr) {
-          logger.error('⚠️ Error linking subscription to account:', linkErr.message);
-        }
-
-        // 3. Generate invoice
-        try {
-          const account = await Account.findOne({ accountId: payment.accountId });
-          
-          const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-          const newInvoice = new Invoice({
-            invoiceId: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            invoiceNumber: invoiceNumber,
-            accountId: payment.accountId,
-            subscriptionId: newSubscription._id,
-            invoiceDate: new Date(),
-            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-            periodStart: newSubscription.startDate,
-            periodEnd: newSubscription.endDate,
-            billTo: {
-              name: account?.name || 'Customer',
-              email: account?.email || '',
-              company: account?.companyName || 'N/A',
-              address: account?.address || 'N/A'
-            },
-            lineItems: [{
-              description: `${payment.planId} Plan - ${payment.billingCycle} Billing`,
-              quantity: 1,
-              unitPrice: payment.amount,
-              amount: payment.amount
-            }],
-            subtotal: payment.amount,
-            taxRate: 0,
-            taxAmount: 0,
-            totalAmount: payment.amount,
-            currency: 'INR',
-            status: 'issued',
-            paymentStatus: 'paid',
-            paymentMethod: 'cashfree',
-            notes: `Auto-generated invoice for subscription renewal`,
-            createdAt: new Date()
-          });
-          
-          await newInvoice.save();
-          logger.info('✅ Invoice created:', newInvoice._id, 'Number:', invoiceNumber);
-
-          // 4. Send invoice email
-          try {
-            if (account?.email) {
-              await emailService.sendInvoiceEmail({
-                to: account.email,
-                invoiceNumber: invoiceNumber,
-                amount: payment.amount,
-                planId: payment.planId,
-                accountName: account.name
-              });
-              logger.info('✅ Invoice email sent to:', account.email);
-            }
-          } catch (emailErr) {
-            logger.error('⚠️ Error sending invoice email:', emailErr.message);
-          }
-        } catch (invoiceErr) {
-          logger.error('⚠️ Error generating invoice:', invoiceErr.message);
-        }
-      } catch (subErr) {
-        logger.error('⚠️ Error in payment processing:', subErr.message);
-      }
-    }
-
-    return sendSuccess(res, { 
-      orderId, 
-      status: payment.status,
-      accountId: payment.accountId 
-    }, 'Payment processed successfully');
+    return sendSuccess(res, result, result.message || 'Payment processed successfully');
   } catch (error) {
     logger.error('❌ confirmPayment error:', error);
     return handleControllerError(res, error, 'confirmPayment');

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { CreditCard, Download, Plus, TrendingUp, AlertCircle } from 'lucide-react';
+import { BuyCreditModal } from '@/components/BuyCreditModal';
 
 interface BillingTabProps {
   projectId: string;
@@ -53,6 +54,7 @@ export default function BillingTab({ projectId, accountId }: BillingTabProps) {
     to: new Date().toISOString().split('T')[0],
   });
   const [filterPeriod, setFilterPeriod] = useState('last7');
+  const [buyCreditModalOpen, setBuyCreditModalOpen] = useState(false);
 
   // ✅ CRITICAL: Fetch data with projectId in URL path
   useEffect(() => {
@@ -135,7 +137,7 @@ export default function BillingTab({ projectId, accountId }: BillingTabProps) {
   };
 
   const handleBuyCredits = async () => {
-    alert('Redirect to payment gateway');
+    setBuyCreditModalOpen(true);
   };
 
   const handleAddPaymentMethod = async () => {
@@ -425,6 +427,22 @@ export default function BillingTab({ projectId, accountId }: BillingTabProps) {
           </div>
         </div>
       </div>
+
+      <BuyCreditModal
+        isOpen={buyCreditModalOpen}
+        onClose={() => setBuyCreditModalOpen(false)}
+        currentCredits={Number(plan?.creditBalance || 0)}
+        projectId={projectId}
+        onSuccess={(credits) => {
+          setPlan((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              creditBalance: Number(prev.creditBalance || 0) + Number(credits || 0),
+            };
+          });
+        }}
+      />
 
       {/* ===== RECENT INVOICES SECTION ===== */}
       {invoices.length > 0 && (

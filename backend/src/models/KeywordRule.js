@@ -55,6 +55,10 @@ const keywordRuleSchema = new mongoose.Schema({
     text: String,
     templateName: String,
     templateParams: [String],
+    flowGraph: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined
+    },
     // Workflow support - array of response steps
     workflow: [{
       id: String,
@@ -113,6 +117,12 @@ const keywordRuleSchema = new mongoose.Schema({
   triggerCount: {
     type: Number,
     default: 0
+  },
+  successRate: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
   },
   lastTriggeredAt: Date
 }, {

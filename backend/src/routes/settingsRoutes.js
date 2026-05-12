@@ -2,7 +2,7 @@ import express from 'express';
 import settingsController from '../controllers/settingsController.js';
 import templateController from '../controllers/templateController.js';
 import { getWhatsAppStatus, disconnectWhatsApp, recordOAuthInitiation } from '../controllers/whatsappStatusController.js';
-import { validateProjectFromQuery } from '../middleware/projectAuth.js';
+import { validateProjectFromQuery, checkProjectQuota } from '../middleware/projectAuth.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -25,7 +25,7 @@ router.post('/whatsapp/disconnect', disconnectWhatsApp);
 // Phone Number Management (JWT Auth - from app.js)
 router.get('/phone-numbers', settingsController.getPhoneNumbers);
 router.post('/phone-numbers/sync', settingsController.syncPhoneNumbersFromMeta); // NEW: Manual sync - MUST be before /:id routes
-router.post('/phone-numbers', settingsController.addPhoneNumber);
+router.post('/phone-numbers', checkProjectQuota('phoneNumber'), settingsController.addPhoneNumber);
 router.put('/phone-numbers/:id', settingsController.updatePhoneNumber);
 router.delete('/phone-numbers/:id', settingsController.deletePhoneNumber);
 router.post('/phone-numbers/:id/test', settingsController.testPhoneNumber);

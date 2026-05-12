@@ -32,7 +32,11 @@
 
 import express from 'express';
 import multer from 'multer';
-import { requireApiKey } from '../middlewares/apiKeyAuth.js';
+import crypto from 'crypto';
+import { requireApiKey, requireApiScope } from '../middlewares/apiKeyAuth.js';
+import { apiRateLimiter } from '../middlewares/apiRateLimiter.js';
+import WebhookEndpoint from '../models/WebhookEndpoint.js';
+import { dispatchWebhookEvent } from '../services/webhookDispatcherService.js';
 
 // Import controllers
 import * as messageController from '../controllers/messageController.js';
@@ -49,6 +53,7 @@ const router = express.Router();
 
 // Apply API Key auth to ALL external routes
 router.use(requireApiKey);
+router.use(apiRateLimiter);
 
 // Configure multer for media uploads
 const storage = multer.memoryStorage();
@@ -73,7 +78,7 @@ const upload = multer({
  *   "message": "Hello world!"
  * }
  */
-router.post('/messages/send', resolvePhoneNumber, messageController.sendTextMessage);
+router.post('/messages/send', requireApiScope('messages:write'), resolvePhoneNumber, messageController.sendTextMessage);
 
 /**
  * POST /api/external/messages/send-template
@@ -86,7 +91,7 @@ router.post('/messages/send', resolvePhoneNumber, messageController.sendTextMess
  *   "templateLanguage": "en"
  * }
  */
-router.post('/messages/send-template', resolvePhoneNumber, messageController.sendTemplateMessage);
+router.post('/messages/send-template', requireApiScope('messages:write'), resolvePhoneNumber, messageController.sendTemplateMessage);
 
 /**
  * POST /api/external/messages/send-media
@@ -98,20 +103,20 @@ router.post('/messages/send-template', resolvePhoneNumber, messageController.sen
  * - mediaType: image | video | document
  * - caption: (optional) media caption
  */
-router.post('/messages/send-media', upload.single('file'), resolvePhoneNumber, messageController.sendMediaMessage);
+router.post('/messages/send-media', requireApiScope('messages:write'), upload.single('file'), resolvePhoneNumber, messageController.sendMediaMessage);
 
 /**
  * GET /api/external/messages
  * List all messages for the account
  * Query params: ?limit=50&offset=0&phoneNumber=xxx
  */
-router.get('/messages', messageController.getMessages);
+router.get('/messages', requireApiScope('messages:read'), messageController.getMessages);
 
 /**
  * GET /api/external/messages/:id
  * Get a specific message
  */
-router.get('/messages/:id', messageController.getMessage);
+router.get('/messages/:id', requireApiScope('messages:read'), messageController.getMessage);
 
 // ============================================
 // CONTACT ROUTES
@@ -129,20 +134,20 @@ router.get('/messages/:id', messageController.getMessage);
  *   "tags": ["vip", "customer"]
  * }
  */
-router.post('/contacts', contactController.createContact);
+router.post('/contacts', requireApiScope('contacts:write'), contactController.createContact);
 
 /**
  * GET /api/external/contacts
  * List all contacts
  * Query params: ?limit=50&offset=0&search=john
  */
-router.get('/contacts', contactController.getContacts);
+router.get('/contacts', requireApiScope('contacts:read'), contactController.getContacts);
 
 /**
  * GET /api/external/contacts/:id
  * Get a specific contact
  */
-router.get('/contacts/:id', contactController.getContacts);
+router.get('/contacts/:id', requireApiScope('contacts:read'), contactController.getContacts);
 
 /**
  * PUT /api/external/contacts/:id
@@ -155,13 +160,13 @@ router.get('/contacts/:id', contactController.getContacts);
  *   "tags": ["vip"]
  * }
  */
-router.put('/contacts/:id', contactController.updateContact);
+router.put('/contacts/:id', requireApiScope('contacts:write'), contactController.updateContact);
 
 /**
  * DELETE /api/external/contacts/:id
  * Delete a contact
  */
-router.delete('/contacts/:id', contactController.deleteContact);
+router.delete('/contacts/:id', requireApiScope('contacts:write'), contactController.deleteContact);
 
 // ============================================
 // BROADCAST ROUTES
@@ -179,26 +184,26 @@ router.delete('/contacts/:id', contactController.deleteContact);
  *   "scheduledFor": "2025-12-25T10:00:00Z" (optional)
  * }
  */
-router.post('/broadcasts', broadcastController.createBroadcast);
+router.post('/broadcasts', requireApiScope('broadcasts:write'), broadcastController.createBroadcast);
 
 /**
  * GET /api/external/broadcasts
  * List all broadcasts
  * Query params: ?limit=50&offset=0&status=pending
  */
-router.get('/broadcasts', broadcastController.getBroadcasts);
+router.get('/broadcasts', requireApiScope('broadcasts:read'), broadcastController.getBroadcasts);
 
 /**
  * GET /api/external/broadcasts/:id
  * Get broadcast details
  */
-router.get('/broadcasts/:id', broadcastController.getBroadcastById);
+router.get('/broadcasts/:id', requireApiScope('broadcasts:read'), broadcastController.getBroadcastById);
 
 /**
  * GET /api/external/broadcasts/:id/status
  * Get broadcast delivery status
  */
-router.get('/broadcasts/:id/status', broadcastController.getBroadcastStats);
+router.get('/broadcasts/:id/status', requireApiScope('broadcasts:read'), broadcastController.getBroadcastStats);
 
 // ============================================
 // ACCOUNT & HEALTH ROUTES
@@ -260,6 +265,165 @@ router.get('/account/config', async (req, res) => {
       code: 'ACCOUNT_CONFIG_ERROR',
       message: 'Failed to fetch account configuration'
     });
+  }
+});
+
+// ============================================
+// WEBHOOK ENDPOINT ROUTES
+// ============================================
+
+const DEFAULT_EVENTS = ['message.received', 'conversation.assigned', 'contact.created', 'broadcast.completed'];
+
+router.get('/webhooks', requireApiScope('webhooks:write'), async (req, res) => {
+  try {
+    const list = await WebhookEndpoint.find({
+      accountId: req.account.accountId,
+      ...(req.projectId ? { $or: [{ projectId: req.projectId }, { projectId: null }] } : {}),
+    })
+      .sort({ createdAt: -1 })
+      .select('-secret');
+
+    return res.json({ success: true, data: { webhooks: list } });
+  } catch (error) {
+    logger.error('list webhooks error', error);
+    return res.status(500).json({ success: false, message: 'Failed to list webhooks' });
+  }
+});
+
+router.post('/webhooks', requireApiScope('webhooks:write'), async (req, res) => {
+  try {
+    const { name, url, events, enabled = true, secret } = req.body || {};
+    if (!name || !url) {
+      return res.status(400).json({ success: false, message: 'name and url are required' });
+    }
+
+    const webhookSecret = String(secret || `whsec_${crypto.randomBytes(16).toString('hex')}`);
+
+    const created = await WebhookEndpoint.create({
+      accountId: req.account.accountId,
+      projectId: req.projectId || null,
+      apiKeyId: req.apiKeyId || null,
+      name: String(name),
+      url: String(url),
+      secret: webhookSecret,
+      events: Array.isArray(events) && events.length > 0 ? events : DEFAULT_EVENTS,
+      enabled: Boolean(enabled),
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        webhook: {
+          _id: created._id,
+          accountId: created.accountId,
+          projectId: created.projectId,
+          name: created.name,
+          url: created.url,
+          events: created.events,
+          enabled: created.enabled,
+          createdAt: created.createdAt,
+        },
+        secret: webhookSecret,
+      },
+      message: 'Webhook endpoint created',
+    });
+  } catch (error) {
+    logger.error('create webhook error', error);
+    return res.status(500).json({ success: false, message: 'Failed to create webhook endpoint' });
+  }
+});
+
+router.post('/webhooks/register', requireApiScope('webhooks:write'), async (req, res) => {
+  return res.redirect(307, `${req.baseUrl}/webhooks`);
+});
+
+router.patch('/webhooks/:id', requireApiScope('webhooks:write'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, url, events, enabled } = req.body || {};
+
+    const updated = await WebhookEndpoint.findOneAndUpdate(
+      { _id: id, accountId: req.account.accountId },
+      {
+        ...(name !== undefined ? { name: String(name) } : {}),
+        ...(url !== undefined ? { url: String(url) } : {}),
+        ...(Array.isArray(events) ? { events } : {}),
+        ...(enabled !== undefined ? { enabled: Boolean(enabled) } : {}),
+      },
+      { new: true }
+    ).select('-secret');
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Webhook endpoint not found' });
+    }
+
+    return res.json({ success: true, data: { webhook: updated }, message: 'Webhook endpoint updated' });
+  } catch (error) {
+    logger.error('update webhook error', error);
+    return res.status(500).json({ success: false, message: 'Failed to update webhook endpoint' });
+  }
+});
+
+router.delete('/webhooks/:id', requireApiScope('webhooks:write'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const removed = await WebhookEndpoint.findOneAndDelete({ _id: id, accountId: req.account.accountId });
+    if (!removed) {
+      return res.status(404).json({ success: false, message: 'Webhook endpoint not found' });
+    }
+    return res.json({ success: true, data: { id }, message: 'Webhook endpoint deleted' });
+  } catch (error) {
+    logger.error('delete webhook error', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete webhook endpoint' });
+  }
+});
+
+router.post('/webhooks/:id/test', requireApiScope('webhooks:write'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const endpoint = await WebhookEndpoint.findOne({ _id: id, accountId: req.account.accountId });
+    if (!endpoint) {
+      return res.status(404).json({ success: false, message: 'Webhook endpoint not found' });
+    }
+
+    const result = await dispatchWebhookEvent({
+      accountId: req.account.accountId,
+      projectId: endpoint.projectId || req.projectId || null,
+      eventType: 'webhook.test',
+      payload: {
+        webhookId: String(endpoint._id),
+        byApiKey: String(req.apiKeyId || ''),
+      },
+      source: 'external-api',
+    });
+
+    return res.json({ success: true, data: result, message: 'Webhook test dispatched' });
+  } catch (error) {
+    logger.error('webhook test error', error);
+    return res.status(500).json({ success: false, message: 'Failed to dispatch webhook test event' });
+  }
+});
+
+// Explicit event dispatch endpoint for integrations that need immediate callback fanout tests
+router.post('/events/dispatch', requireApiScope('webhooks:write'), async (req, res) => {
+  try {
+    const { eventType, payload = {} } = req.body || {};
+    if (!eventType) {
+      return res.status(400).json({ success: false, message: 'eventType is required' });
+    }
+
+    const result = await dispatchWebhookEvent({
+      accountId: req.account.accountId,
+      projectId: req.projectId || null,
+      eventType: String(eventType),
+      payload,
+      source: 'external-api',
+    });
+
+    return res.json({ success: true, data: result, message: 'Event dispatched' });
+  } catch (error) {
+    logger.error('event dispatch error', error);
+    return res.status(500).json({ success: false, message: 'Failed to dispatch event' });
   }
 });
 

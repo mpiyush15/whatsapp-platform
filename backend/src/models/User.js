@@ -33,11 +33,10 @@ const userSchema = new mongoose.Schema({
     default: false
   },
 
-  // Account & Role
+  // Workspace / org account this user belongs to (not unique — many staff share one client accountId)
   accountId: {
     type: String,
     required: true,
-    unique: true,
     index: true
   },
   role: {

@@ -1,343 +1,403 @@
 "use client"
 
-import { useState, useEffect } from 'react'
-import { AlertCircle, CheckCircle, X, CreditCard, Calendar, DollarSign } from 'lucide-react'
-import { ErrorToast } from '@/components/ErrorToast'
+import Link from "next/link"
+import { useEffect, useState } from "react"
+import { AlertCircle, Building2, Calendar, CreditCard, RefreshCw, Zap } from "lucide-react"
+import { API_URL } from "@/lib/config/api"
+import { UsageMeterCard } from "@/components/UsageMeterCard"
+import { BuyCreditModal } from "@/components/BuyCreditModal"
 
-interface Subscription {
+type SubscriptionRecord = {
   _id: string
-  subscriptionId: string
-  accountId: string
-  planId: {
-    _id: string
-    name: string
-    monthlyPrice: number
-    yearlyPrice: number
+  subscriptionId?: string
+  planName?: string
+  status?: string
+  billingCycle?: string
+  startDate?: string
+  renewalDate?: string
+  createdAt?: string
+}
+
+type PaymentRecord = {
+  _id: string
+  amount?: number
+  status?: string
+  planName?: string
+  billingCycle?: string
+  orderId?: string
+  createdAt?: string
+}
+
+type UsageStats = {
+  messagesPerDay: number | null
+  messagesUsedToday: number
+  contacts: number | null
+  contactsUsed: number
+  phoneNumbers: number | null
+  phoneNumbersUsed: number
+}
+
+type BillingTriggers = {
+  lowCredit?: {
+    threshold: number
+    currentBalance: number
+    isLow: boolean
+    severity: "warning" | "high" | "critical"
+    cta?: string
+    message?: string
   }
-  status: 'active' | 'paused' | 'cancelled' | 'expired' | 'pending_payment'
-  billingCycle: 'monthly' | 'annual'
-  pricing: {
-    amount: number
-    discount: number
-    finalAmount: number
-    currency: string
+  renewal?: {
+    renewalDate: string | null
+    daysToRenewal: number | null
+    currentStage: number | null
+    timeline: Array<{ day: number; label: string; status: "upcoming" | "current" | "completed" }>
+    cta?: string
   }
-  startDate: string
-  endDate: string
-  renewalDate: string
-  createdAt: string
+}
+
+function formatDate(value?: string) {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+  return date.toLocaleDateString("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
+function normalizeCycle(value?: string) {
+  if (!value) return "monthly"
+  const cycle = value.toLowerCase()
+  if (cycle === "annual") return "yearly"
+  return cycle
+}
+
+function getStatusBadge(status?: string) {
+  const normalized = (status || "inactive").toLowerCase()
+  if (normalized === "active") return "bg-green-100 text-green-800"
+  if (normalized === "paused") return "bg-yellow-100 text-yellow-800"
+  if (normalized === "cancelled") return "bg-red-100 text-red-800"
+  if (normalized === "expired") return "bg-gray-100 text-gray-800"
+  return "bg-blue-100 text-blue-800"
 }
 
 export default function SubscriptionsPage() {
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showCancelModal, setShowCancelModal] = useState(false)
-  const [cancellationReason, setCancellationReason] = useState('')
+  const [subscription, setSubscription] = useState<SubscriptionRecord | null>(null)
+  const [latestPayment, setLatestPayment] = useState<PaymentRecord | null>(null)
+  const [usage, setUsage] = useState<UsageStats | null>(null)
+  const [triggers, setTriggers] = useState<BillingTriggers | null>(null)
+  const [buyCreditModalOpen, setBuyCreditModalOpen] = useState(false)
+  const [currentCredits, setCurrentCredits] = useState(0)
+  const [isInternal, setIsInternal] = useState(false)
 
-  useEffect(() => {
-    fetchSubscription()
-  }, [])
+  const fetchJson = async (path: string) => {
+    const token = localStorage.getItem("token") || localStorage.getItem("authToken")
+    const response = await fetch(`${API_URL}${path}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
 
-  const fetchSubscription = async () => {
+    const payload = await response.json()
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.message || payload?.error || "Request failed")
+    }
+    return payload?.data
+  }
+
+  const loadData = async () => {
     try {
       setLoading(true)
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/subscription/my-subscription`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-          }
-        }
+      setError(null)
+
+      const [subscriptionData, paymentData, usageData, triggerData] = await Promise.all([
+        fetchJson("/subscriptions/my-subscriptions"),
+        fetchJson("/subscriptions/payments?status=completed"),
+        fetchJson("/subscriptions/usage").catch(() => null),
+        fetchJson("/subscriptions/triggers").catch(() => null),
+      ])
+
+      const subscriptions = Array.isArray(subscriptionData?.subscriptions)
+        ? subscriptionData.subscriptions
+        : []
+
+      const payments = Array.isArray(paymentData?.payments)
+        ? paymentData.payments
+        : []
+
+      setSubscription(subscriptions[0] || null)
+      setLatestPayment(payments[0] || null)
+      setUsage(
+        usageData?.metrics
+          ? {
+              messagesPerDay: usageData.metrics.messagesPerDay?.limit ?? null,
+              messagesUsedToday: usageData.metrics.messagesPerDay?.used ?? 0,
+              contacts: usageData.metrics.contacts?.limit ?? null,
+              contactsUsed: usageData.metrics.contacts?.used ?? 0,
+              phoneNumbers: usageData.metrics.phoneNumbers?.limit ?? null,
+              phoneNumbersUsed: usageData.metrics.phoneNumbers?.used ?? 0,
+            }
+          : null
       )
-      const data = await response.json()
-      if (data.success) {
-        setSubscription(data.data)
-      }
+      setTriggers(triggerData || null)
+      setCurrentCredits(subscriptionData?.currentCredits || 0)
+      setIsInternal(usageData?.isInternal === true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch subscription')
+      setError(err instanceof Error ? err.message : "Failed to load subscriptions")
+      setSubscription(null)
+      setLatestPayment(null)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCancelSubscription = async () => {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/subscription/cancel`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-          },
-          body: JSON.stringify({ reason: cancellationReason })
-        }
-      )
-      const data = await response.json()
-      if (data.success) {
-        setShowCancelModal(false)
-        fetchSubscription()
-        setError(null)
-      } else {
-        setError(data.message)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel subscription')
-    }
-  }
-
-  const handlePauseSubscription = async () => {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/subscription/pause`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-          }
-        }
-      )
-      const data = await response.json()
-      if (data.success) {
-        fetchSubscription()
-        setError(null)
-      } else {
-        setError(data.message)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to pause subscription')
-    }
-  }
-
-  const handleResumeSubscription = async () => {
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/subscription/resume`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-          }
-        }
-      )
-      const data = await response.json()
-      if (data.success) {
-        fetchSubscription()
-        setError(null)
-      } else {
-        setError(data.message)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resume subscription')
-    }
-  }
+  useEffect(() => {
+    loadData()
+  }, [])
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your subscription...</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="text-center text-gray-600">Loading subscription details...</div>
       </div>
     )
   }
-
-  if (!subscription) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center">
-            <AlertCircle className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">No Active Subscription</h2>
-            <p className="text-gray-700 mb-6 max-w-md mx-auto">
-              You don't have an active subscription yet. Choose a plan to get started and enjoy all features.
-            </p>
-            <a
-              href="/pricing"
-              className="inline-block bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-semibold transition-colors"
-            >
-              View Plans
-            </a>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-700', badge: 'bg-green-100 text-green-800' }
-      case 'paused':
-        return { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-800' }
-      case 'cancelled':
-        return { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', badge: 'bg-red-100 text-red-800' }
-      case 'expired':
-        return { bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-700', badge: 'bg-gray-100 text-gray-800' }
-      case 'pending_payment':
-        return { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-800' }
-      default:
-        return { bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-700', badge: 'bg-gray-100 text-gray-800' }
-    }
-  }
-
-  const colors = getStatusColor(subscription.status)
-  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        {error && <ErrorToast message={error} onDismiss={() => setError(null)} />}
-
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Subscription Details</h1>
-          <p className="text-gray-600">Manage your active subscription and billing information</p>
-        </div>
-
-        {/* Main Card */}
-        <div className={`${colors.bg} border-2 ${colors.border} rounded-xl p-8 mb-8`}>
-          {/* Status Badge */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">{subscription.planId.name} Plan</h2>
-              <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${colors.badge} capitalize`}>
-                {subscription.status === 'pending_payment' ? 'Pending Payment' : subscription.status}
-              </span>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-gray-900">
-                {subscription.pricing.currency} {subscription.pricing.finalAmount}
-                <span className="text-lg text-gray-600 font-normal">/{subscription.billingCycle === 'monthly' ? 'month' : 'year'}</span>
-              </div>
-            </div>
+    <div className="min-h-screen bg-gray-50 p-6 md:p-8">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Subscription</h1>
+            <p className="text-sm text-gray-600">Canonical lifecycle state from subscription and payment contracts.</p>
           </div>
-
-          {/* Pricing Details */}
-          <div className="grid grid-cols-3 gap-4 mb-6 py-6 border-t border-b border-gray-300/30">
-            <div>
-              <p className="text-gray-600 text-sm mb-1">Original Price</p>
-              <p className="text-xl font-bold text-gray-900">{subscription.pricing.currency} {subscription.pricing.amount}</p>
-            </div>
-            {subscription.pricing.discount > 0 && (
-              <div>
-                <p className="text-gray-600 text-sm mb-1">Discount</p>
-                <p className="text-xl font-bold text-green-600">-{subscription.pricing.currency} {subscription.pricing.discount}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-gray-600 text-sm mb-1">Final Amount</p>
-              <p className="text-xl font-bold text-gray-900">{subscription.pricing.currency} {subscription.pricing.finalAmount}</p>
-            </div>
-          </div>
-
-          {/* Key Dates */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div className="flex items-start gap-4">
-              <Calendar className={`w-6 h-6 ${colors.text} flex-shrink-0 mt-1`} />
-              <div>
-                <p className="text-gray-600 text-sm">Start Date</p>
-                <p className="text-lg font-semibold text-gray-900">{formatDate(subscription.startDate)}</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <Calendar className={`w-6 h-6 ${colors.text} flex-shrink-0 mt-1`} />
-              <div>
-                <p className="text-gray-600 text-sm">Renewal Date</p>
-                <p className="text-lg font-semibold text-gray-900">{formatDate(subscription.renewalDate)}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Subscription ID */}
-          <div className="bg-gray-100 rounded-lg p-4 mb-6">
-            <p className="text-gray-600 text-sm mb-1">Subscription ID</p>
-            <p className="font-mono text-gray-900 break-all">{subscription.subscriptionId}</p>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            {subscription.status === 'active' && (
-              <>
-                <button
-                  onClick={handlePauseSubscription}
-                  className="flex-1 bg-yellow-600 text-white py-3 rounded-lg hover:bg-yellow-700 font-semibold transition-colors"
-                >
-                  Pause Subscription
-                </button>
-                <button
-                  onClick={() => setShowCancelModal(true)}
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg hover:bg-red-700 font-semibold transition-colors"
-                >
-                  Cancel Subscription
-                </button>
-              </>
-            )}
-            {subscription.status === 'paused' && (
-              <button
-                onClick={handleResumeSubscription}
-                className="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-semibold transition-colors"
+          <div className="flex items-center gap-2">
+            {!isInternal && (
+              <Link
+                href="/dashboard/features/change-plan"
+                className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
               >
-                Resume Subscription
-              </button>
+                Change Plan
+              </Link>
             )}
-            <a
-              href="/checkout"
-              className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-semibold transition-colors text-center"
+            <button
+              onClick={loadData}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
             >
-              Upgrade Plan
-            </a>
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
           </div>
         </div>
 
-        {/* Cancel Modal */}
-        {showCancelModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-8 max-w-md w-full">
-              <h3 className="text-xl font-bold text-gray-900 mb-4">Cancel Subscription?</h3>
-              <p className="text-gray-600 mb-4">
-                Are you sure you want to cancel your subscription? You'll lose access to all features at the end of your billing period.
-              </p>
-              <textarea
-                placeholder="Tell us why (optional)"
-                value={cancellationReason}
-                onChange={(e) => setCancellationReason(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                rows={3}
-              />
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowCancelModal(false)}
-                  className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-50 font-semibold transition-colors"
-                >
-                  Keep Subscription
-                </button>
-                <button
-                  onClick={handleCancelSubscription}
-                  className="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 font-semibold transition-colors"
-                >
-                  Cancel Anyway
-                </button>
-              </div>
+        {error ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        ) : null}
+
+        {isInternal && (
+          <div className="flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4">
+            <Building2 className="h-5 w-5 shrink-0 text-indigo-600" />
+            <div>
+              <p className="text-sm font-semibold text-indigo-900">Internal account — billing not applicable</p>
+              <p className="text-xs text-indigo-700 mt-0.5">This organisation is marked internal. All resource limits are unlimited and billing actions are disabled.</p>
             </div>
           </div>
         )}
 
-        {/* Help Section */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Need Help?</h3>
-          <p className="text-gray-600 mb-4">
-            Have questions about your subscription? Visit our help center or contact our support team.
-          </p>
-          <div className="flex gap-3">
-            <a href="/contact" className="text-blue-600 hover:text-blue-700 font-semibold">
-              Contact Support →
-            </a>
+        {triggers?.lowCredit?.isLow ? (
+          <div
+            className={`rounded-lg border p-4 ${
+              triggers.lowCredit.severity === "critical"
+                ? "border-red-300 bg-red-50"
+                : triggers.lowCredit.severity === "high"
+                  ? "border-orange-300 bg-orange-50"
+                  : "border-amber-300 bg-amber-50"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Low credit warning</p>
+                <p className="mt-1 text-sm text-gray-700">
+                  {triggers.lowCredit.message || "Your credit balance is below the configured warning threshold."}
+                </p>
+                <p className="mt-2 text-xs text-gray-600">
+                  Balance: {triggers.lowCredit.currentBalance} · Threshold: {triggers.lowCredit.threshold}
+                </p>
+              </div>
+              <button
+                onClick={() => setBuyCreditModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Buy Credits
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
+
+        {!subscription ? (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-8 text-center">
+            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-blue-600" />
+            <h2 className="text-xl font-bold text-gray-900">No active subscription</h2>
+            <p className="mt-2 text-sm text-gray-700">Start checkout to activate a plan and billing lifecycle.</p>
+            <Link
+              href="/checkout"
+              className="mt-5 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Start Checkout
+            </Link>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-white p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Current plan</p>
+                <h2 className="mt-1 text-2xl font-bold text-gray-900">{subscription.planName || "Plan"}</h2>
+                <div className="mt-2">
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${getStatusBadge(subscription.status)}`}>
+                    {subscription.status || "inactive"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Billing cycle</p>
+                <p className="text-lg font-semibold capitalize text-gray-900">{normalizeCycle(subscription.billingCycle)}</p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <Calendar className="h-4 w-4" />
+                  Renewal date
+                </div>
+                <p className="mt-1 text-lg font-semibold text-gray-900">{formatDate(subscription.renewalDate)}</p>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <CreditCard className="h-4 w-4" />
+                  Latest payment
+                </div>
+                <p className="mt-1 text-lg font-semibold text-gray-900">
+                  {latestPayment ? `₹${Number(latestPayment.amount || 0).toLocaleString("en-IN")}` : "No payment yet"}
+                </p>
+                {latestPayment?.orderId ? (
+                  <p className="mt-1 text-xs text-gray-500">Order: {latestPayment.orderId}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {triggers?.renewal?.timeline?.length ? (
+              <div className="mt-6 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-indigo-900">Renewal reminder timeline</p>
+                    <p className="text-xs text-indigo-700">
+                      {typeof triggers.renewal.daysToRenewal === "number"
+                        ? `${triggers.renewal.daysToRenewal} day(s) to renewal`
+                        : "Renewal schedule unavailable"}
+                    </p>
+                  </div>
+                  {typeof triggers.renewal.currentStage === "number" ? (
+                    <span className="rounded-full bg-indigo-600 px-2 py-1 text-xs font-semibold text-white">
+                      D-{triggers.renewal.currentStage}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {triggers.renewal.timeline.map((item) => (
+                    <span
+                      key={item.day}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        item.status === "current"
+                          ? "bg-indigo-600 text-white"
+                          : item.status === "completed"
+                            ? "bg-indigo-200 text-indigo-800"
+                            : "bg-white text-indigo-700 border border-indigo-200"
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {/* Usage Meters */}
+            {usage && (
+              <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Usage & Limits</h3>
+                  <button
+                    onClick={() => setBuyCreditModalOpen(true)}
+                    className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-600 text-white text-sm font-medium rounded-lg hover:bg-yellow-700"
+                  >
+                    <Zap className="h-4 w-4" />
+                    Buy Credits
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <UsageMeterCard
+                    label="Messages Today"
+                    used={usage.messagesUsedToday}
+                    limit={usage.messagesPerDay}
+                    unit="messages"
+                    warningThreshold={80}
+                  />
+                  <UsageMeterCard
+                    label="Contacts"
+                    used={usage.contactsUsed}
+                    limit={usage.contacts}
+                    unit="contacts"
+                    warningThreshold={80}
+                  />
+                  <UsageMeterCard
+                    label="Phone Numbers"
+                    used={usage.phoneNumbersUsed}
+                    limit={usage.phoneNumbers}
+                    unit="numbers"
+                    warningThreshold={80}
+                  />
+                </div>
+              </div>
+            )}
+
+            {subscription.subscriptionId ? (
+              <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">Subscription ID</p>
+                <p className="mt-1 break-all font-mono text-sm text-gray-900">{subscription.subscriptionId}</p>
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/dashboard/features/billing" className="rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+                Open Billing Center
+              </Link>
+              <Link href="/dashboard/features/invoices" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100">
+                View Invoices
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Buy Credit Modal */}
+      <BuyCreditModal
+        isOpen={buyCreditModalOpen}
+        onClose={() => setBuyCreditModalOpen(false)}
+        onSuccess={(credits) => {
+          setCurrentCredits(currentCredits + credits)
+          loadData() // Refresh data
+        }}
+        currentCredits={currentCredits}
+      />
     </div>
   )
 }

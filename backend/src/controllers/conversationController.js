@@ -1,21 +1,39 @@
 import { sendSuccess, sendValidationError, sendNotFound } from '../utils/responseHandler.js';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
-import mongoose from 'mongoose';
+import * as conversationService from '../services/conversationService.js';
+import * as messageService from '../services/messageService.js';
+import { dispatchWebhookEvent } from '../services/webhookDispatcherService.js';
 
 export const getConversation = async (req, res) => {
   try {
+    const accountId = req.user?.accountId;
     const { conversationId } = req.params;
-    return sendSuccess(res, { conversationId }, 'Conversation retrieved');
+
+    const conversation = await conversationService.getConversationDetail(conversationId, accountId);
+    return sendSuccess(res, { conversation }, 'Conversation retrieved');
   } catch (error) {
+    if (error.name === 'NotFoundError') {
+      return sendNotFound(res, 'Conversation not found');
+    }
     return handleControllerError(res, error, 'getConversation');
   }
 };
 
 export const listConversations = async (req, res) => {
   try {
-    const { status, limit = 50, offset = 0 } = req.query;
-    return sendSuccess(res, { conversations: [], total: 0 }, 'Conversations retrieved');
+    const accountId = req.user?.accountId;
+    const workspaceId = req.query?.workspaceId || req.user?.workspaceId || null;
+    const phoneNumberId = req.query?.phoneNumberId || null;
+
+    const result = await conversationService.listConversations(accountId, workspaceId, phoneNumberId, {
+      status: req.query?.status || null,
+      search: req.query?.search || '',
+      limit: parseInt(req.query?.limit || '50', 10),
+      offset: parseInt(req.query?.offset || '0', 10)
+    });
+
+    return sendSuccess(res, result, 'Conversations retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'listConversations');
   }
@@ -23,6 +41,7 @@ export const listConversations = async (req, res) => {
 
 export const assignConversation = async (req, res) => {
   try {
+    const accountId = req.user?.accountId;
     const { conversationId } = req.params;
     const { agentId } = req.body;
 
@@ -30,18 +49,31 @@ export const assignConversation = async (req, res) => {
       return sendValidationError(res, 'Agent ID required');
     }
 
-    return sendSuccess(res, { conversationId, agentId }, 'Conversation assigned');
+    const conversation = await conversationService.assignConversation(conversationId, agentId, accountId, 'manual');
+
+    dispatchWebhookEvent({
+      accountId,
+      projectId: req.projectId || conversation?.projectId || null,
+      eventType: 'conversation.assigned',
+      payload: {
+        conversationId,
+        agentId,
+      },
+      source: 'conversation-controller',
+    }).catch((err) => logger.error('conversation.assigned webhook dispatch failed', err));
+
+    return sendSuccess(res, { conversation }, 'Conversation assigned');
   } catch (error) {
+    if (error.name === 'NotFoundError') {
+      return sendNotFound(res, 'Conversation not found');
+    }
     return handleControllerError(res, error, 'assignConversation');
   }
 };
 
 export const getConversations = async (req, res) => {
   try {
-    const user = req.user;
-    const db = mongoose.connection.db;
-    const conversations = await db.collection('conversations').find({ accountId: user.accountId }).toArray();
-    return sendSuccess(res, { conversations }, 'Conversations retrieved');
+    return listConversations(req, res);
   } catch (error) {
     return handleControllerError(res, error, 'getConversations');
   }
@@ -49,8 +81,14 @@ export const getConversations = async (req, res) => {
 
 export const getConversationMessages = async (req, res) => {
   try {
+    const accountId = req.user?.accountId;
     const { conversationId } = req.params;
-    return sendSuccess(res, { conversationId, messages: [] }, 'Messages retrieved');
+    const limit = parseInt(req.query?.limit || '50', 10);
+    const offset = parseInt(req.query?.offset || '0', 10);
+
+    const result = await messageService.getMessages(conversationId, accountId, limit, offset);
+
+    return sendSuccess(res, result, 'Messages retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getConversationMessages');
   }
@@ -58,27 +96,66 @@ export const getConversationMessages = async (req, res) => {
 
 export const getContactStatus = async (req, res) => {
   try {
-    const { contactId } = req.params;
-    return sendSuccess(res, { contactId, online: false }, 'Contact status retrieved');
+    const accountId = req.user?.accountId;
+    const { conversationId } = req.params;
+
+    const conversation = await conversationService.getConversationDetail(conversationId, accountId);
+
+    return sendSuccess(res, {
+      conversationId,
+      contactPhone: conversation.userPhone,
+      contactName: conversation.userName,
+      online: false,
+      lastMessageAt: conversation.lastMessageAt || null
+    }, 'Contact status retrieved');
   } catch (error) {
+    if (error.name === 'NotFoundError') {
+      return sendNotFound(res, 'Conversation not found');
+    }
     return handleControllerError(res, error, 'getContactStatus');
   }
 };
 
 export const replyToConversation = async (req, res) => {
   try {
+    const accountId = req.user?.accountId;
     const { conversationId } = req.params;
     const { message } = req.body;
-    return sendSuccess(res, { conversationId, messageId: `msg_${Date.now()}` }, 'Reply sent');
+
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return sendValidationError(res, 'Message is required');
+    }
+
+    const sentMessage = await messageService.sendMessage(
+      conversationId,
+      message,
+      'text',
+      accountId,
+      req.body?.phoneNumberId || null,
+      req.user?._id || null
+    );
+
+    return sendSuccess(res, { message: sentMessage }, 'Reply sent');
   } catch (error) {
+    if (error.name === 'NotFoundError') {
+      return sendNotFound(res, 'Conversation not found');
+    }
     return handleControllerError(res, error, 'replyToConversation');
   }
 };
 
 export const markAsRead = async (req, res) => {
   try {
+    const accountId = req.user?.accountId;
     const { conversationId } = req.params;
-    return sendSuccess(res, { conversationId, markedAsRead: true }, 'Marked as read');
+
+    const conversation = await conversationService.markConversationAsRead(
+      conversationId,
+      req.user?._id || null,
+      accountId
+    );
+
+    return sendSuccess(res, { conversationId, markedAsRead: true, unreadCount: conversation?.unreadCount || 0 }, 'Marked as read');
   } catch (error) {
     return handleControllerError(res, error, 'markAsRead');
   }
@@ -86,10 +163,23 @@ export const markAsRead = async (req, res) => {
 
 export const updateStatus = async (req, res) => {
   try {
+    const accountId = req.user?.accountId;
     const { conversationId } = req.params;
     const { status } = req.body;
-    return sendSuccess(res, { conversationId, status }, 'Status updated');
+
+    if (!status || !['open', 'closed'].includes(status)) {
+      return sendValidationError(res, 'Status must be either open or closed');
+    }
+
+    const conversation = status === 'closed'
+      ? await conversationService.closeConversation(conversationId, accountId, 'manual', req.user?._id || null)
+      : await conversationService.reopenConversation(conversationId, accountId, req.user?._id || null);
+
+    return sendSuccess(res, { conversation }, 'Status updated');
   } catch (error) {
+    if (error.name === 'NotFoundError') {
+      return sendNotFound(res, 'Conversation not found');
+    }
     return handleControllerError(res, error, 'updateStatus');
   }
 };

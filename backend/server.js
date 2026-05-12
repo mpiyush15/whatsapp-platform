@@ -2,6 +2,7 @@ import app from './src/app.js';
 import mongoose from 'mongoose';
 import { createServer } from 'http';
 import dotenv from 'dotenv';
+import { fixUsersAccountIdIndex } from './src/utils/fixUsersAccountIdIndex.js';
 import initializeSocket, { broadcastToProject, broadcastToAccount, sendNotificationToUser } from './src/socket/socketHandler.js';
 import { setupSocketIOHandlers } from './src/services/liveChat-socketHandler.js';
 import { initializeSocketIO } from './src/services/liveChat-socketService.js';
@@ -32,8 +33,9 @@ app.locals.sendNotificationToUser = sendNotificationToUser;
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log('✅ MongoDB connected successfully');
+    await fixUsersAccountIdIndex();
   })
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err.message);

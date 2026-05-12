@@ -36,7 +36,7 @@ const workflowSessionSchema = new mongoose.Schema({
     id: String,
     type: { 
       type: String, 
-      enum: ['text', 'buttons', 'list', 'question', 'condition', 'calendar', 'form'] 
+      enum: ['text', 'buttons', 'list', 'question', 'condition', 'calendar', 'form', 'vertical_action'] 
     },
     text: String,
     buttons: [{
@@ -69,6 +69,14 @@ const workflowSessionSchema = new mongoose.Schema({
       availableDays: [String], // ['monday', 'tuesday', etc.]
       timeSlots: [String], // ['09:00', '10:00', '14:00', etc.]
       duration: Number // minutes
+    },
+    // Vertical action execution
+    vertical: String,
+    action: String,
+    actionConfig: {
+      type: Map,
+      of: String,
+      default: {}
     }
   }],
   currentStepIndex: {

@@ -50,6 +50,8 @@ export const cashfreeService = {
         }
       }
 
+      const notifyUrl = orderData.notifyUrl || `${backendUrl}/api/payments/cashfree`;
+
       const response = await axios.post(
         `${CASHFREE_BASE_URL}/orders`,
         {
@@ -62,7 +64,7 @@ export const cashfreeService = {
             customer_phone: orderData.phone || '9999999999'
           },
           order_meta: {
-            notify_url: `${backendUrl}/api/payment/webhook/confirm`,
+            notify_url: notifyUrl,
             return_url: `${frontendUrl}/payment-success?orderId=${orderData.orderId}&status=success`,
             payment_methods: 'cc,dc,upi,nb,paylater',
             internal_account_id: orderData.accountId // ✅ Store internal accountId in metadata
@@ -81,6 +83,7 @@ export const cashfreeService = {
         success: true,
         orderId: response.data.order_id,
         paymentSessionId: response.data.payment_session_id,
+        sessionId: response.data.payment_session_id,
         redirectUrl: response.data.payment_url,
         cfOrderId: response.data.cf_order_id
       };

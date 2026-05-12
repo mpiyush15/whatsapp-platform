@@ -10,6 +10,7 @@ import PhoneNumber from '../models/PhoneNumber.js';
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
 import Campaign from '../models/Campaign.js';
+import { dispatchWebhookEvent } from '../services/webhookDispatcherService.js';
 
 const refreshCampaignStatsFromMessages = async (campaignId, accountId) => {
   const [sentCount, failedCount, deliveredOrReadCount, readCount] = await Promise.all([
@@ -415,6 +416,21 @@ export const handleWebhook = async (req, res) => {
                 );
                 
                 logger.info(`✅ Conversation updated: ${updatedConversation._id}`);
+
+                dispatchWebhookEvent({
+                  accountId,
+                  projectId: updatedConversation?.projectId || null,
+                  eventType: 'message.received',
+                  payload: {
+                    conversationId,
+                    messageId: String(savedMessage?._id || ''),
+                    waMessageId: messageId,
+                    from: customerPhone,
+                    type,
+                    text: content,
+                  },
+                  source: 'whatsapp-webhook',
+                }).catch((err) => logger.error('message.received webhook dispatch failed', err));
                 
                 // Emit real-time event for agents to specific conversation room
                 if (req.app.locals.io) {
@@ -438,12 +454,18 @@ export const handleWebhook = async (req, res) => {
                   });
                   
                   // Also emit account-wide to update conversation list
-                  req.app.locals.io.to(`account:${accountId}`).emit('conversation_updated', {
+                  const conversationUpdatePayload = {
                     conversationId,
+                    _id: updatedConversation?._id,
                     phoneNumberId,
+                    unreadCount: updatedConversation?.unreadCount,
                     lastMessagePreview: content.substring(0, 100),
-                    lastMessageAt: new Date(timestamp * 1000)
-                  });
+                    lastMessageAt: new Date(timestamp * 1000),
+                    lastMessageType: type
+                  };
+
+                  req.app.locals.io.to(`account:${accountId}`).emit('conversation_updated', conversationUpdatePayload);
+                  req.app.locals.io.to(`user:${accountId}`).emit('conversation_updated', conversationUpdatePayload);
                   
                   logger.info(`📡 Events emitted to room: ${conversationRoomName}`);
                 }

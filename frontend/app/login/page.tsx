@@ -6,7 +6,7 @@ import { ErrorToast } from "@/components/ErrorToast"
 import Link from "next/link"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { authService } from "@/lib/auth"
+import { authService, getPostLoginRedirect } from "@/lib/auth"
 
 declare global {
   interface Window {
@@ -48,7 +48,7 @@ export default function LoginPage() {
       if (isAuthenticated && token) {
         // User is already logged in - redirect to dashboard
         console.log("✅ Session found - Redirecting to dashboard")
-        router.push("/dashboard")
+        router.replace(getPostLoginRedirect(authService.getCurrentUser()))
         return
       } else {
         // User is not logged in - allow access to login page
@@ -139,7 +139,7 @@ export default function LoginPage() {
         localStorage.setItem('token', data.token);
         
         console.log('✅ Google login successful:', data.user.email);
-        router.push('/dashboard');
+        router.replace(getPostLoginRedirect(authService.getCurrentUser()));
       } else {
         throw new Error(data.message || 'Google login failed');
       }
@@ -173,7 +173,7 @@ export default function LoginPage() {
       // Set session lock and activity timer
       localStorage.setItem('replysys_session_lock', SESSION_LOCK_KEY);
       localStorage.setItem('replysys_last_activity', Date.now().toString());
-      router.push("/dashboard")
+      router.replace(getPostLoginRedirect(result.user || authService.getCurrentUser()))
     } else {
       setError(result.error || "Login failed")
       setIsLoading(false)

@@ -76,6 +76,7 @@ export const requireJWT = async (req, res, next) => {
       name: account.name,
       email: account.email,
       type: account.type,
+      isInternal: Boolean(account.isInternal),
       plan: account.plan,
       status: account.status,
       _id: account._id  // Include _id explicitly

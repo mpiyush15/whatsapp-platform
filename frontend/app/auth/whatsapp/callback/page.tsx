@@ -12,14 +12,14 @@ function CallbackContent() {
     
     if (!code) {
       console.log('❌ No auth code in callback');
-      setTimeout(() => router.push('/dashboard/client/settings'), 2000);
+      setTimeout(() => router.push('/dashboard'), 2000);
       return;
     }
 
     console.log('✅ Auth code received:', code);
     
     setTimeout(() => {
-      router.push(`/dashboard/client/settings?oauth_code=${code}`);
+      router.push(`/dashboard?oauth_code=${code}`);
     }, 1000);
   }, [searchParams, router]);
 

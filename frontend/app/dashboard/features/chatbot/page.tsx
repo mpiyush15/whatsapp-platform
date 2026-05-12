@@ -7,7 +7,7 @@ import { ErrorToast } from "@/components/ErrorToast"
 import { LeadStatus } from "@/lib/enums"
 import { authService } from "@/lib/auth"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
 
 const getHeaders = () => {
   const token = authService.getToken()

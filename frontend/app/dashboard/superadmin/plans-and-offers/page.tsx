@@ -11,12 +11,21 @@ interface Plan {
   description: string
   monthlyPrice: number
   yearlyPrice: number
+  monthlyDiscount?: number
+  quarterlyDiscount?: number
+  yearlyDiscount?: number
+  annualDiscount?: number
   setupFee: number
   signupCredits: number
   monthlyCredits: number
   isActive: boolean
   isPopular: boolean
   publishedToPublic: boolean
+  limits?: {
+    messages?: number | null
+    contacts?: number | null
+    phoneNumbers?: number | null
+  }
   features?: { included: string[] }
 }
 
@@ -40,6 +49,13 @@ export default function PlansOffersPage() {
     setupFee: '',
     signupCredits: '',
     monthlyCredits: '',
+    monthlyDiscount: '',
+    quarterlyDiscount: '',
+    yearlyDiscount: '',
+    annualDiscount: '',
+    messagesPerDayLimit: '',
+    contactsLimit: '',
+    phoneNumbersLimit: '',
     description: '',
     isActive: true,
     isPopular: false,
@@ -89,6 +105,13 @@ export default function PlansOffersPage() {
       setupFee: '',
       signupCredits: '',
       monthlyCredits: '',
+      monthlyDiscount: '',
+      quarterlyDiscount: '',
+      yearlyDiscount: '',
+      annualDiscount: '',
+      messagesPerDayLimit: '',
+      contactsLimit: '',
+      phoneNumbersLimit: '',
       description: '',
       isActive: true,
       isPopular: false,
@@ -106,6 +129,13 @@ export default function PlansOffersPage() {
       setupFee: plan.setupFee.toString(),
       signupCredits: plan.signupCredits.toString(),
       monthlyCredits: plan.monthlyCredits.toString(),
+      monthlyDiscount: plan.monthlyDiscount?.toString() || '',
+      quarterlyDiscount: plan.quarterlyDiscount?.toString() || '',
+      yearlyDiscount: plan.yearlyDiscount?.toString() || '',
+      annualDiscount: plan.annualDiscount?.toString() || '',
+      messagesPerDayLimit: plan.limits?.messages?.toString() || '',
+      contactsLimit: plan.limits?.contacts?.toString() || '',
+      phoneNumbersLimit: plan.limits?.phoneNumbers?.toString() || '',
       description: plan.description || '',
       isActive: plan.isActive,
       isPopular: plan.isPopular,
@@ -138,6 +168,15 @@ export default function PlansOffersPage() {
         setupFee: formData.setupFee ? parseInt(formData.setupFee, 10) : 0,
         signupCredits: formData.signupCredits ? parseInt(formData.signupCredits, 10) : 0,
         monthlyCredits: formData.monthlyCredits ? parseInt(formData.monthlyCredits, 10) : 0,
+        monthlyDiscount: formData.monthlyDiscount ? parseInt(formData.monthlyDiscount, 10) : 0,
+        quarterlyDiscount: formData.quarterlyDiscount ? parseInt(formData.quarterlyDiscount, 10) : 0,
+        yearlyDiscount: formData.yearlyDiscount ? parseInt(formData.yearlyDiscount, 10) : 0,
+        annualDiscount: formData.annualDiscount ? parseInt(formData.annualDiscount, 10) : 0,
+        limits: {
+          messages: formData.messagesPerDayLimit ? parseInt(formData.messagesPerDayLimit, 10) : null,
+          contacts: formData.contactsLimit ? parseInt(formData.contactsLimit, 10) : null,
+          phoneNumbers: formData.phoneNumbersLimit ? parseInt(formData.phoneNumbersLimit, 10) : null,
+        },
         description: formData.description,
         isActive: formData.isActive,
         isPopular: formData.isPopular,
@@ -267,6 +306,25 @@ export default function PlansOffersPage() {
                       <p className="font-bold">₹{showDetails.monthlyCredits}</p>
                     </div>
                   )}
+
+                  <div className="pt-3 border-t">
+                    <p className="text-gray-600 font-semibold mb-2">Discount Cycles</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <p>Monthly: <span className="font-semibold">{showDetails.monthlyDiscount || 0}%</span></p>
+                      <p>Quarterly: <span className="font-semibold">{showDetails.quarterlyDiscount || 0}%</span></p>
+                      <p>Yearly: <span className="font-semibold">{showDetails.yearlyDiscount || 0}%</span></p>
+                      <p>Annual: <span className="font-semibold">{showDetails.annualDiscount || 0}%</span></p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t">
+                    <p className="text-gray-600 font-semibold mb-2">Usage Limits</p>
+                    <div className="grid grid-cols-1 gap-1 text-sm">
+                      <p>Messages/day: <span className="font-semibold">{showDetails.limits?.messages ?? 'Unlimited'}</span></p>
+                      <p>Contacts: <span className="font-semibold">{showDetails.limits?.contacts ?? 'Unlimited'}</span></p>
+                      <p>Phone numbers: <span className="font-semibold">{showDetails.limits?.phoneNumbers ?? 'Unlimited'}</span></p>
+                    </div>
+                  </div>
 
                   {showDetails.features?.included && showDetails.features.included.length > 0 && (
                     <div className="pt-3">
@@ -458,6 +516,93 @@ export default function PlansOffersPage() {
                   placeholder="0"
                   className="w-full px-3 py-2 border rounded-lg"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Monthly Discount %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.monthlyDiscount}
+                    onChange={(e) => setFormData({ ...formData, monthlyDiscount: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Quarterly Discount %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.quarterlyDiscount}
+                    onChange={(e) => setFormData({ ...formData, quarterlyDiscount: e.target.value })}
+                    placeholder="10"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Yearly Discount %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.yearlyDiscount}
+                    onChange={(e) => setFormData({ ...formData, yearlyDiscount: e.target.value })}
+                    placeholder="15"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Annual Discount %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formData.annualDiscount}
+                    onChange={(e) => setFormData({ ...formData, annualDiscount: e.target.value })}
+                    placeholder="20"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Messages / Day Limit</label>
+                  <input
+                    type="number"
+                    value={formData.messagesPerDayLimit}
+                    onChange={(e) => setFormData({ ...formData, messagesPerDayLimit: e.target.value })}
+                    placeholder="1000"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Contacts Limit</label>
+                  <input
+                    type="number"
+                    value={formData.contactsLimit}
+                    onChange={(e) => setFormData({ ...formData, contactsLimit: e.target.value })}
+                    placeholder="5000"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Phone Numbers Limit</label>
+                  <input
+                    type="number"
+                    value={formData.phoneNumbersLimit}
+                    onChange={(e) => setFormData({ ...formData, phoneNumbersLimit: e.target.value })}
+                    placeholder="1"
+                    className="w-full px-3 py-2 border rounded-lg"
+                  />
+                </div>
               </div>
 
               <div>

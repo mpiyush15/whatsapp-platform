@@ -59,6 +59,14 @@ const ProjectSchema = new mongoose.Schema({
     webhookSecret: String
   },
 
+  // Vertical — determines which feature set is active for this project
+  vertical: {
+    type: String,
+    enum: ['whatsapp', 'healthcare', 'ecommerce'],
+    default: 'whatsapp',
+    index: true
+  },
+
   // Status & Metadata
   status: {
     type: String,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { authService, User as UserType } from "@/lib/auth"
-import { LayoutDashboard, MessageSquare, Users, Megaphone, FileText, Bot, Calendar, BarChart3 } from "lucide-react"
+import { LayoutDashboard, MessageSquare, Users, Megaphone, FileText, Bot, Calendar, BarChart3, LifeBuoy } from "lucide-react"
 import Link from "next/link"
 
 export default function FeaturesPage() {
@@ -62,6 +62,13 @@ export default function FeaturesPage() {
       icon: BarChart3,
       description: "View performance metrics",
       color: "cyan"
+    },
+    {
+      name: "Support",
+      href: "/dashboard/features/support",
+      icon: LifeBuoy,
+      description: "Need help? Reach support quickly",
+      color: "teal"
     }
   ]
 

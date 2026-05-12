@@ -80,7 +80,13 @@ const broadcastSchema = new mongoose.Schema(
         error: String,
         timestamp: { type: Date, default: Date.now }
       }
-    ]
+    ],
+    // Crash recovery: phones that have already received the message
+    // Used to skip duplicates when a broadcast resumes after server restart
+    sentPhones: {
+      type: [String],
+      default: []
+    }
   },
   {
     timestamps: true,

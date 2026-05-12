@@ -1,4 +1,6 @@
 import Project from '../models/Project.js';
+import Account from '../models/Account.js';
+import PhoneNumber from '../models/PhoneNumber.js';
 
 /**
  * Project Authorization Middleware
@@ -118,11 +120,11 @@ export async function optionalProjectAccess(req, res, next) {
  * Verifies that project hasn't exceeded plan limits
  * Used before creating new items (messages, contacts, campaigns, etc.)
  */
-export async function checkProjectQuota(resourceType) {
+export function checkProjectQuota(resourceType) {
   return async (req, res, next) => {
     try {
       const { projectId } = req;
-      const { accountId } = req.user;
+      const accountId = req.user?.accountId || req.account?.accountId;
 
       if (!projectId) {
         // No project context, skip quota check
@@ -130,26 +132,57 @@ export async function checkProjectQuota(resourceType) {
         return;
       }
 
+      if (req.account?.isInternal === true) {
+        // Internal org accounts are exempt from billing/quota enforcement
+        next();
+        return;
+      }
+
       // Import models
       const Message = (await import('../models/Message.js')).default;
       const Contact = (await import('../models/Contact.js')).default;
-      const Campaign = (await import('../models/Campaign.js')).default;
+      const Subscription = (await import('../models/Subscription.js')).default;
 
       // Get project and subscription
       const project = await Project.findOne({ projectId, accountId });
-      const Subscription = (await import('../models/Subscription.js')).default;
       const subscription = await Subscription.findOne({ accountId });
+      const account = req.account?._id
+        ? await Account.findById(req.account._id).select('limits isInternal')
+        : await Account.findOne({ accountId }).select('limits isInternal');
 
-      if (!subscription || subscription.status !== 'active') {
+      if ((!subscription || subscription.status !== 'active') && account?.isInternal !== true) {
         return res.status(403).json({
           success: false,
           error: 'Active subscription required'
         });
       }
 
+      const resolvedLimits = {
+        messagesPerDay: Number(subscription?.features?.messagesPerDay ?? account?.limits?.messagesPerDay ?? 0),
+        contacts: Number(subscription?.features?.contacts ?? account?.limits?.contacts ?? 0),
+        phoneNumbers: Number(subscription?.features?.phoneNumbers ?? account?.limits?.phoneNumbers ?? 0),
+      };
+
+      const sendQuotaExceeded = ({ resource, limit, used, message }) => {
+        return res.status(429).json({
+          success: false,
+          code: 'QUOTA_EXCEEDED',
+          resource,
+          error: message,
+          limit,
+          used,
+          upgradeCta: '/dashboard/features/billing',
+          topupCta: '/dashboard/features/billing',
+        });
+      };
+
       // Check limits based on resource type
       switch (resourceType) {
         case 'message':
+          if (!Number.isFinite(resolvedLimits.messagesPerDay) || resolvedLimits.messagesPerDay <= 0) {
+            break;
+          }
+
           // Check daily message limit
           const messageCount = await Message.countDocuments({
             projectId,
@@ -159,46 +192,53 @@ export async function checkProjectQuota(resourceType) {
             }
           });
 
-          if (messageCount >= subscription.features.messagesPerDay) {
-            return res.status(429).json({
-              success: false,
-              error: 'Daily message limit reached',
-              limit: subscription.features.messagesPerDay,
-              used: messageCount
+          if (messageCount >= resolvedLimits.messagesPerDay) {
+            return sendQuotaExceeded({
+              resource: 'messagesPerDay',
+              limit: resolvedLimits.messagesPerDay,
+              used: messageCount,
+              message: 'Daily message limit reached',
             });
           }
           break;
 
         case 'contact':
+          if (!Number.isFinite(resolvedLimits.contacts) || resolvedLimits.contacts <= 0) {
+            break;
+          }
+
           // Check contact limit
           const contactCount = await Contact.countDocuments({
             projectId,
             accountId
           });
 
-          if (contactCount >= subscription.features.contacts) {
-            return res.status(429).json({
-              success: false,
-              error: 'Contact limit reached',
-              limit: subscription.features.contacts,
-              used: contactCount
+          if (contactCount >= resolvedLimits.contacts) {
+            return sendQuotaExceeded({
+              resource: 'contacts',
+              limit: resolvedLimits.contacts,
+              used: contactCount,
+              message: 'Contact limit reached',
             });
           }
           break;
 
         case 'phoneNumber':
+          if (!Number.isFinite(resolvedLimits.phoneNumbers) || resolvedLimits.phoneNumbers <= 0) {
+            break;
+          }
+
           // Check phone number limit
-          const phoneCount = await Project.countDocuments({
-            accountId,
-            whatsappPhoneNumberId: { $exists: true, $ne: null }
+          const phoneCount = await PhoneNumber.countDocuments({
+            accountId
           });
 
-          if (phoneCount >= subscription.features.phoneNumbers) {
-            return res.status(429).json({
-              success: false,
-              error: 'Phone number limit reached',
-              limit: subscription.features.phoneNumbers,
-              used: phoneCount
+          if (phoneCount >= resolvedLimits.phoneNumbers) {
+            return sendQuotaExceeded({
+              resource: 'phoneNumbers',
+              limit: resolvedLimits.phoneNumbers,
+              used: phoneCount,
+              message: 'Phone number limit reached',
             });
           }
           break;

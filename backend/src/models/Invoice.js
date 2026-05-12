@@ -4,6 +4,8 @@ const invoiceSchema = new mongoose.Schema({
   accountId: { type: String, required: true, index: true },
   projectId: { type: String, default: null, index: true },
   invoiceNumber: { type: String, required: true, unique: true },
+  orderId: { type: String, default: null, index: true },
+  paymentId: { type: String, default: null, index: true },
   subscriptionId: { type: String, required: true },
   
   amount: { type: Number, required: true },
@@ -28,5 +30,10 @@ const invoiceSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now, index: true },
   updatedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
+
+invoiceSchema.index(
+  { orderId: 1 },
+  { unique: true, sparse: true, name: 'invoice_order_id_unique_sparse' }
+);
 
 export default mongoose.model('Invoice', invoiceSchema);

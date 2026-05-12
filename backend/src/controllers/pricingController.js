@@ -79,7 +79,7 @@ export const getPlanById = async (req, res) => {
 
 export const createPricingPlan = async (req, res) => {
   try {
-    const { name, monthlyPrice, yearlyPrice, setupFee, signupCredits, monthlyCredits, features, description, publishedToPublic, isPopular, isActive } = req.body;
+    const { name, monthlyPrice, yearlyPrice, setupFee, signupCredits, monthlyCredits, limits, features, description, publishedToPublic, isPopular, isActive } = req.body;
 
     // Validation
     if (!name || monthlyPrice === undefined || yearlyPrice === undefined) {
@@ -100,6 +100,11 @@ export const createPricingPlan = async (req, res) => {
       setupFee: setupFee || 0,
       signupCredits: signupCredits || 0,
       monthlyCredits: monthlyCredits || 0,
+      limits: {
+        messages: limits?.messages ?? null,
+        contacts: limits?.contacts ?? null,
+        phoneNumbers: limits?.phoneNumbers ?? 1,
+      },
       description: description || '',
       features: features || { included: [], excluded: [] },
       publishedToPublic: publishedToPublic !== undefined ? publishedToPublic : true,

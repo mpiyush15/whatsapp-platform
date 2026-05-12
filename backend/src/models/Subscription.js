@@ -4,7 +4,7 @@ const subscriptionSchema = new mongoose.Schema({
   accountId: { type: String, required: true, unique: true, index: true },
   projectId: { type: String, default: null, index: true },
   planName: { type: String, required: true },
-  billingCycle: { type: String, enum: ['monthly', 'yearly'] },
+  billingCycle: { type: String, enum: ['monthly', 'quarterly', 'yearly'] },
   amount: { type: Number, required: true },
   currency: { type: String, default: 'INR' },
   

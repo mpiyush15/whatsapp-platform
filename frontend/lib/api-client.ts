@@ -21,9 +21,7 @@ export async function fetchAPI(
 ): Promise<Response> {
   const { skipAuth = false, ...fetchOptions } = options;
 
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
+  const headers: HeadersInit = {};
 
   // Add JWT token if not skipped
   if (!skipAuth) {
@@ -31,6 +29,11 @@ export async function fetchAPI(
     if (token) {
       (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
     }
+  }
+
+  // Only set JSON content-type when there is a request body
+  if (fetchOptions.body !== undefined && fetchOptions.body !== null) {
+    (headers as Record<string, string>)['Content-Type'] = 'application/json';
   }
 
   const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
@@ -47,7 +50,7 @@ export async function fetchAPI(
     
     // Redirect to login
     if (typeof window !== 'undefined') {
-      window.location.href = '/login';
+      window.location.href = '/auth/login';
     }
     
     throw new Error('Session expired. Please login again.');

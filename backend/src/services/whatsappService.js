@@ -7,6 +7,10 @@ import Contact from '../models/Contact.js';
 import Conversation from '../models/Conversation.js';
 import KeywordRule from '../models/KeywordRule.js';
 import WorkflowSession from '../models/WorkflowSession.js';
+import Patient from '../models/Patient.js';
+import Doctor from '../models/Doctor.js';
+import Appointment from '../models/Appointment.js';
+import ConsentRecord from '../models/ConsentRecord.js';
 import { broadcastMessageStatus } from './socketService.js';
 import { getSignedUrlForS3Object } from './s3Service.js';
 import logger from '../utils/logger.js';
@@ -20,6 +24,319 @@ const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
  * Fully multi-tenant with accountId + phoneNumberId isolation
  */
 class WhatsAppService {
+
+  normalizePhoneDigits(phone = '') {
+    return String(phone || '').replace(/\D/g, '');
+  }
+
+  async resolveHealthcarePatient(accountId, recipientPhone, projectId = null, patientId = null) {
+    if (patientId) {
+      return Patient.findOne({
+        accountId,
+        ...(projectId ? { projectId } : {}),
+        patientId,
+      });
+    }
+
+    const normalized = this.normalizePhoneDigits(recipientPhone);
+    if (!normalized) return null;
+
+    const phoneSuffix = normalized.slice(-10);
+    const suffixRegex = new RegExp(`${phoneSuffix}$`);
+
+    return Patient.findOne({
+      accountId,
+      ...(projectId ? { projectId } : {}),
+      $or: [
+        { whatsappNumber: normalized },
+        { phoneNumber: normalized },
+        { whatsappNumber: suffixRegex },
+        { phoneNumber: suffixRegex },
+      ],
+    }).sort({ updatedAt: -1 });
+  }
+
+  async evaluateHealthcareConsent(accountId, recipientPhone, metadata = {}) {
+    const projectId = metadata.projectId || null;
+    const patient = await this.resolveHealthcarePatient(accountId, recipientPhone, projectId, metadata.patientId || null);
+
+    if (!patient) {
+      return { allowed: true, reason: 'no-patient-match', patient: null };
+    }
+
+    if (patient?.consentSummary?.whatsappOptIn) {
+      return { allowed: true, reason: 'patient-opt-in', patient };
+    }
+
+    const latestConsent = await ConsentRecord.findOne({
+      accountId,
+      ...(projectId ? { projectId } : {}),
+      patientId: patient.patientId,
+      consentType: { $in: ['whatsapp', 'reminder', 'privacy'] },
+    }).sort({ collectedAt: -1, createdAt: -1 });
+
+    if (!latestConsent) {
+      return { allowed: false, reason: 'missing-consent', patient };
+    }
+
+    if (latestConsent.status !== 'granted') {
+      return { allowed: false, reason: `consent-${latestConsent.status}`, patient };
+    }
+
+    if (latestConsent.expiresAt && new Date(latestConsent.expiresAt).getTime() < Date.now()) {
+      return { allowed: false, reason: 'consent-expired', patient };
+    }
+
+    return { allowed: true, reason: 'granted-consent', patient };
+  }
+
+  async enforceHealthcareConsent(accountId, recipientPhone, metadata = {}) {
+    if (!metadata?.healthcareConsentCheck) return;
+
+    const result = await this.evaluateHealthcareConsent(accountId, recipientPhone, metadata);
+    if (!result.allowed) {
+      const patientId = result?.patient?.patientId || metadata?.patientId || 'unknown-patient';
+      throw new ForbiddenError(
+        `Healthcare WhatsApp send blocked due to consent policy (${result.reason}) for patient ${patientId}.`
+      );
+    }
+  }
+
+  getSessionResponsesObject(session) {
+    if (!session?.responses) return {};
+    if (typeof session.responses.toObject === 'function') {
+      return session.responses.toObject();
+    }
+    return Object.fromEntries(session.responses);
+  }
+
+  resolveWorkflowValue(rawValue, session, fallback = '') {
+    const value = String(rawValue || '').trim();
+    if (!value) return fallback;
+
+    const responses = this.getSessionResponsesObject(session);
+
+    // If raw value is directly a variable key
+    if (Object.prototype.hasOwnProperty.call(responses, value)) {
+      return String(responses[value] ?? '').trim() || fallback;
+    }
+
+    // Replace handlebars-style placeholders: {{variable_name}}
+    const resolved = value.replace(/\{\{\s*([a-zA-Z0-9_\-.]+)\s*\}\}/g, (_match, key) => {
+      if (!Object.prototype.hasOwnProperty.call(responses, key)) return '';
+      return String(responses[key] ?? '');
+    }).trim();
+
+    return resolved || fallback;
+  }
+
+  parseDateValue(rawValue, fallbackDate = null) {
+    const str = String(rawValue || '').trim();
+    if (!str) return fallbackDate;
+    const date = new Date(str);
+    return Number.isNaN(date.getTime()) ? fallbackDate : date;
+  }
+
+  async executeHealthcareVerticalAction(session, step) {
+    const action = String(step?.action || '').trim().toLowerCase();
+    const cfg = step?.actionConfig instanceof Map
+      ? Object.fromEntries(step.actionConfig)
+      : (step?.actionConfig || {});
+
+    if (!action) {
+      logger.warn('⚠️ vertical_action skipped: missing action id', { sessionId: String(session?._id || '') });
+      return;
+    }
+
+    if (action === 'create_patient') {
+      const resolvedName = this.resolveWorkflowValue(cfg.nameVar, session, 'Patient');
+      const resolvedPhone = this.normalizePhoneDigits(this.resolveWorkflowValue(cfg.phoneVar, session, session.contactPhone));
+
+      let patient = await this.resolveHealthcarePatient(
+        session.accountId,
+        resolvedPhone || session.contactPhone,
+        session.projectId || null,
+        null
+      );
+
+      if (!patient) {
+        patient = await Patient.create({
+          accountId: session.accountId,
+          projectId: session.projectId || null,
+          fullName: resolvedName,
+          phoneNumber: resolvedPhone || null,
+          whatsappNumber: resolvedPhone || this.normalizePhoneDigits(session.contactPhone) || null,
+          communicationPreferences: { whatsapp: true, sms: false, email: false, calls: true },
+          consentSummary: {
+            privacyAccepted: false,
+            treatmentAccepted: false,
+            whatsappOptIn: true,
+            marketingOptIn: false,
+            consentUpdatedAt: new Date(),
+          },
+          createdBy: 'workflow-bot',
+          updatedBy: 'workflow-bot',
+        });
+      }
+
+      session.saveResponse('patientId', patient.patientId);
+      session.saveResponse('patientName', patient.fullName || resolvedName);
+      logger.info('✅ vertical_action:create_patient', { sessionId: String(session._id), patientId: patient.patientId });
+      return;
+    }
+
+    if (action === 'check_slot') {
+      const doctorIdValue = this.resolveWorkflowValue(cfg.doctorId, session, '');
+      const dateValue = this.resolveWorkflowValue(cfg.date, session, '');
+      const saveAs = String(cfg.saveAs || 'available_slots').trim() || 'available_slots';
+
+      const dayDate = this.parseDateValue(dateValue, new Date());
+      const dayStart = new Date(dayDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const booked = await Appointment.find({
+        accountId: session.accountId,
+        ...(session.projectId ? { projectId: session.projectId } : {}),
+        ...(doctorIdValue ? { doctorId: doctorIdValue } : {}),
+        scheduledAt: { $gte: dayStart, $lte: dayEnd },
+        status: { $nin: ['cancelled', 'no-show'] },
+      }).select('scheduledAt');
+
+      const bookedSet = new Set(booked.map((a) => new Date(a.scheduledAt).toISOString()));
+      const slots = [];
+      for (let hour = 9; hour <= 17; hour += 1) {
+        const slot = new Date(dayStart);
+        slot.setHours(hour, 0, 0, 0);
+        const iso = slot.toISOString();
+        if (!bookedSet.has(iso)) {
+          slots.push(slot.toISOString());
+        }
+      }
+
+      session.saveResponse(saveAs, JSON.stringify(slots.slice(0, 8)));
+      logger.info('✅ vertical_action:check_slot', { sessionId: String(session._id), slots: slots.length });
+      return;
+    }
+
+    if (action === 'book_appointment') {
+      const patientName = this.resolveWorkflowValue(cfg.patientNameVar, session, 'Patient');
+      const slotRaw = this.resolveWorkflowValue(cfg.slotVar, session, '');
+      const doctorIdValue = this.resolveWorkflowValue(cfg.doctorId, session, '');
+      const visitTypeValue = this.resolveWorkflowValue(cfg.visitType, session, 'consultation');
+
+      const normalizedPhone = this.normalizePhoneDigits(session.contactPhone);
+      let patient = await this.resolveHealthcarePatient(session.accountId, normalizedPhone, session.projectId || null, null);
+
+      if (!patient) {
+        patient = await Patient.create({
+          accountId: session.accountId,
+          projectId: session.projectId || null,
+          fullName: patientName,
+          phoneNumber: normalizedPhone || null,
+          whatsappNumber: normalizedPhone || null,
+          createdBy: 'workflow-bot',
+          updatedBy: 'workflow-bot',
+        });
+      }
+
+      let doctor = null;
+      if (doctorIdValue) {
+        doctor = await Doctor.findOne({
+          accountId: session.accountId,
+          ...(session.projectId ? { projectId: session.projectId } : {}),
+          doctorId: doctorIdValue,
+        });
+      }
+      if (!doctor) {
+        doctor = await Doctor.findOne({
+          accountId: session.accountId,
+          ...(session.projectId ? { projectId: session.projectId } : {}),
+          status: 'active',
+        }).sort({ updatedAt: -1 });
+      }
+
+      const scheduledAt = this.parseDateValue(slotRaw, new Date(Date.now() + (60 * 60 * 1000)));
+      const endAt = new Date(scheduledAt.getTime() + (30 * 60 * 1000));
+
+      const normalizedVisitType = ['consultation', 'follow-up', 'procedure', 'lab', 'pharmacy', 'other']
+        .includes(String(visitTypeValue || '').toLowerCase())
+        ? String(visitTypeValue).toLowerCase()
+        : 'consultation';
+
+      const appointment = await Appointment.create({
+        accountId: session.accountId,
+        projectId: session.projectId || null,
+        patientId: patient.patientId,
+        doctorId: doctor?.doctorId || null,
+        patientSnapshot: {
+          entityId: patient.patientId,
+          fullName: patient.fullName,
+          phoneNumber: patient.phoneNumber || patient.whatsappNumber || normalizedPhone,
+        },
+        doctorSnapshot: doctor ? {
+          entityId: doctor.doctorId,
+          fullName: doctor.fullName,
+          specialization: doctor.specialization,
+          phoneNumber: doctor.phoneNumber,
+        } : null,
+        scheduledAt,
+        endAt,
+        durationMinutes: 30,
+        status: 'scheduled',
+        visitType: normalizedVisitType,
+        channel: 'clinic',
+        reason: 'Booked via WhatsApp flow',
+        createdBy: 'workflow-bot',
+        updatedBy: 'workflow-bot',
+      });
+
+      patient.lastVisitAt = scheduledAt;
+      patient.updatedBy = 'workflow-bot';
+      await patient.save();
+
+      session.saveResponse('appointmentId', appointment.appointmentId);
+      session.saveResponse('appointmentTime', scheduledAt.toISOString());
+
+      const doctorText = doctor?.fullName ? ` with Dr. ${doctor.fullName}` : '';
+      await this.sendTextMessage(
+        session.accountId,
+        session.phoneNumberId,
+        session.contactPhone,
+        `✅ Appointment booked${doctorText} on ${scheduledAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}.`,
+        {
+          campaign: 'workflow_vertical_action',
+          action: 'book_appointment',
+          sessionId: session._id.toString(),
+          projectId: session.projectId || null,
+          patientId: patient.patientId,
+          healthcareConsentCheck: true,
+        }
+      );
+
+      logger.info('✅ vertical_action:book_appointment', {
+        sessionId: String(session._id),
+        appointmentId: appointment.appointmentId,
+      });
+      return;
+    }
+
+    logger.warn('⚠️ Unsupported vertical action', { action, sessionId: String(session._id) });
+  }
+
+  async executeVerticalActionStep(session, step) {
+    const vertical = String(step?.vertical || '').trim().toLowerCase();
+    if (vertical === 'healthcare') {
+      await this.executeHealthcareVerticalAction(session, step);
+      return;
+    }
+
+    logger.warn('⚠️ vertical_action skipped for unsupported vertical', {
+      vertical,
+      sessionId: String(session?._id || ''),
+    });
+  }
   
   /**
    * Get phone number config with decrypted token
@@ -265,6 +582,8 @@ class WhatsAppService {
       
       // Clean phone number (remove + and spaces)
       const cleanPhone = recipientPhone.replace(/[\s+()-]/g, '');
+
+      await this.enforceHealthcareConsent(accountId, cleanPhone, metadata);
       
       logger.info('📱 Preparing to send WhatsApp message:');
       logger.info('  Account ID:', accountId);
@@ -345,7 +664,7 @@ class WhatsAppService {
             },
             $setOnInsert: {
               conversationId: conversationIdFormatted,
-              userName: contactName || 'Unknown'
+              userName: 'Unknown'
             }
           },
           { upsert: true, new: true }
@@ -429,6 +748,8 @@ class WhatsAppService {
       }
 
       const cleanPhone = recipientPhone.replace(/[\s+()-]/g, '');
+
+      await this.enforceHealthcareConsent(accountId, cleanPhone, metadata);
 
       logger.info('📋 ========== SENDING TEMPLATE MESSAGE ==========');
       logger.info('Account ID:', accountId);
@@ -902,6 +1223,7 @@ class WhatsAppService {
               phoneNumberId,
               senderPhone,
               rule._id,
+              rule.projectId || null,
               rule.replyContent.workflow,
               rule.timeoutMinutes || 1
             );
@@ -1430,10 +1752,11 @@ class WhatsAppService {
    * @param {string} phoneNumberId 
    * @param {string} contactPhone 
    * @param {string} ruleId 
-   * @param {Array} workflowSteps 
+  * @param {string|null} projectId
+  * @param {Array} workflowSteps 
    * @param {number} timeoutMinutes - Timeout in minutes for user response
    */
-  async startWorkflowSession(accountId, phoneNumberId, contactPhone, ruleId, workflowSteps, timeoutMinutes = 1) {
+  async startWorkflowSession(accountId, phoneNumberId, contactPhone, ruleId, projectId, workflowSteps, timeoutMinutes = 1) {
     try {
       logger.info('🆕 Starting new workflow session for:', contactPhone);
       logger.info('⏰ Timeout set to:', timeoutMinutes, 'minutes');
@@ -1447,6 +1770,7 @@ class WhatsAppService {
       // Create new session
       const session = await WorkflowSession.create({
         accountId,
+        projectId: projectId || null,
         phoneNumberId,
         contactPhone,
         ruleId,
@@ -1519,6 +1843,8 @@ class WhatsAppService {
           step.text || '',
           step.listItems
         );
+      } else if (step.type === 'vertical_action') {
+        await this.executeVerticalActionStep(session, step);
       }
 
       // Button and List steps ALWAYS wait for response
@@ -1787,6 +2113,7 @@ class WhatsAppService {
       const lead = await ChatbotLead.create({
         chatbotId: session.ruleId,
         accountId: session.accountId,
+        projectId: session.projectId || null,
         phoneNumberId: session.phoneNumberId,
         customerPhone: session.contactPhone,
         responses: Object.fromEntries(session.responses),

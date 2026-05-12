@@ -1,7 +1,7 @@
 'use client'
 
 import { useProject } from '@/lib/context/ProjectContext'
-import { Loader2, Phone, CheckCircle, AlertCircle, Plus, RefreshCw } from 'lucide-react'
+import { Loader2, Phone, CheckCircle, AlertCircle, Plus, RefreshCw, CreditCard } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 
@@ -29,6 +29,8 @@ interface MessagingMetrics {
   phoneNumber?: string
 }
 
+type PlanStatus = 'active' | 'inactive' | 'expired' | 'unknown'
+
 export default function ProjectDashboard() {
   const { project, loading, error } = useProject()
   const params = useParams()
@@ -39,10 +41,14 @@ export default function ProjectDashboard() {
   const [connecting, setConnecting] = useState(false)
   const [messagingMetrics, setMessagingMetrics] = useState<MessagingMetrics | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
+  const [planStatus, setPlanStatus] = useState<PlanStatus>('unknown')
+  const [planName, setPlanName] = useState('No active plan')
+  const [planLoading, setPlanLoading] = useState(false)
 
   useEffect(() => {
     if (projectId) {
       fetchConnectedPhones()
+      fetchPlanStatus()
     }
   }, [projectId])
 
@@ -132,6 +138,59 @@ export default function ProjectDashboard() {
       setMessagingMetrics(null)
     } finally {
       setMetricsLoading(false)
+    }
+  }
+
+  const fetchPlanStatus = async () => {
+    try {
+      setPlanLoading(true)
+      const token = getAuthToken()
+      if (!token) {
+        setPlanStatus('unknown')
+        setPlanName('Unable to load plan')
+        return
+      }
+
+      const response = await fetch(`${API_URL}/subscriptions/my-subscriptions`, {
+        method: 'POST',
+        headers: {
+          ...getHeaders(),
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch plan status')
+      }
+
+      const data = await response.json()
+      const subscriptions = data.data?.subscriptions || data.data || []
+
+      if (Array.isArray(subscriptions)) {
+        const activeSub = subscriptions.find((sub: any) => String(sub?.status || '').toLowerCase() === 'active')
+        const hasExpiredSub = subscriptions.some((sub: any) => String(sub?.status || '').toLowerCase() === 'expired')
+
+        if (activeSub) {
+          setPlanStatus('active')
+          setPlanName(activeSub.planName || activeSub.planId?.name || 'Active Plan')
+        } else if (hasExpiredSub) {
+          setPlanStatus('expired')
+          setPlanName('Expired plan')
+        } else {
+          setPlanStatus('inactive')
+          setPlanName('No active plan')
+        }
+      } else {
+        const status = String(subscriptions?.status || 'inactive').toLowerCase() as PlanStatus
+        setPlanStatus(status)
+        setPlanName(subscriptions?.planName || subscriptions?.planId?.name || 'Plan')
+      }
+    } catch (error) {
+      console.error('Error fetching plan status:', error)
+      setPlanStatus('unknown')
+      setPlanName('Unable to load plan')
+    } finally {
+      setPlanLoading(false)
     }
   }
 
@@ -241,6 +300,62 @@ export default function ProjectDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column - Main Content (8 columns) */}
           <div className="lg:col-span-8 space-y-8">
+            {/* Plan Status */}
+            <div className="bg-white rounded-lg border border-gray-200 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Plan Status</p>
+                  <h2 className="text-lg font-bold text-gray-900 mt-1">{planLoading ? 'Checking...' : planName}</h2>
+                  <p className="text-sm mt-2 font-medium flex items-center gap-2">
+                    <span
+                      className={`inline-block w-2.5 h-2.5 rounded-full ${
+                        planStatus === 'active'
+                          ? 'bg-green-500'
+                          : planStatus === 'expired'
+                          ? 'bg-red-500'
+                          : planStatus === 'inactive'
+                          ? 'bg-yellow-500'
+                          : 'bg-gray-400'
+                      }`}
+                    />
+                    <span
+                      className={
+                        planStatus === 'active'
+                          ? 'text-green-700'
+                          : planStatus === 'expired'
+                          ? 'text-red-700'
+                          : planStatus === 'inactive'
+                          ? 'text-yellow-700'
+                          : 'text-gray-600'
+                      }
+                    >
+                      {planLoading
+                        ? 'Loading subscription status'
+                        : planStatus === 'active'
+                        ? 'Active'
+                        : planStatus === 'expired'
+                        ? 'Expired'
+                        : planStatus === 'inactive'
+                        ? 'Inactive'
+                        : 'Unknown'}
+                    </span>
+                  </p>
+                </div>
+                <button
+                  onClick={fetchPlanStatus}
+                  disabled={planLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw size={14} className={planLoading ? 'animate-spin' : ''} />
+                  Refresh
+                </button>
+              </div>
+              <div className="mt-4 inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-teal-50 text-teal-700 text-xs font-semibold">
+                <CreditCard size={14} />
+                Subscription
+              </div>
+            </div>
+
             {/* WhatsApp Messaging Quota */}
             <div className="bg-white rounded-lg border border-gray-200 p-8">
               <div className="flex items-center justify-between gap-4 mb-6">

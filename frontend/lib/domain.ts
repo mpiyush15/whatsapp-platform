@@ -3,7 +3,7 @@
  * Separates admin.domain and app.domain traffic
  */
 
-export type AppDomain = 'admin' | 'app' | 'public';
+export type AppDomain = 'admin' | 'app' | 'support' | 'public';
 
 /**
  * Get current domain type
@@ -25,6 +25,11 @@ export const getCurrentDomain = (): AppDomain => {
   if (host.startsWith('app.')) {
     return 'app';
   }
+
+  // Check for support subdomain
+  if (host.startsWith('support.')) {
+    return 'support';
+  }
   
   // Localhost defaults to app (for development)
   if (host === 'localhost' || host.startsWith('127.')) {
@@ -32,6 +37,7 @@ export const getCurrentDomain = (): AppDomain => {
     const params = new URLSearchParams(window.location.search);
     const override = params.get('domain');
     if (override === 'admin') return 'admin';
+    if (override === 'support') return 'support';
     return 'app';
   }
 
@@ -59,6 +65,13 @@ export const isAppDomain = (): boolean => {
 };
 
 /**
+ * Check if current domain is support
+ */
+export const isSupportDomain = (): boolean => {
+  return getCurrentDomain() === 'support';
+};
+
+/**
  * Check if current domain is the public marketing site (no subdomain)
  */
 export const isPublicDomain = (): boolean => {
@@ -70,7 +83,10 @@ export const isPublicDomain = (): boolean => {
  */
 export const getDomainName = (): string => {
   const domain = getCurrentDomain();
-  return domain === 'admin' ? 'Admin Dashboard' : 'WhatsApp Chat';
+  if (domain === 'admin') return 'Admin Dashboard';
+  if (domain === 'support') return 'Support Dashboard';
+  if (domain === 'public') return 'Public Site';
+  return 'WhatsApp Chat';
 };
 
 /**
@@ -82,19 +98,24 @@ export const redirectToDomain = (targetDomain: AppDomain, path: string = '/') =>
   const host = window.location.hostname;
   const port = window.location.port ? `:${window.location.port}` : '';
   const protocol = window.location.protocol;
+
+  if (targetDomain === 'public') {
+    window.location.href = `${protocol}//${host}${port}${path}`;
+    return;
+  }
   
   // Replace subdomain
   let newHost = host;
-  if (host.startsWith('admin.')) {
-    newHost = host.replace('admin.', targetDomain === 'admin' ? 'admin.' : 'app.');
-  } else if (host.startsWith('app.')) {
-    newHost = host.replace('app.', targetDomain === 'app' ? 'app.' : 'admin.');
+  if (host.startsWith('admin.') || host.startsWith('app.') || host.startsWith('support.')) {
+    newHost = host.replace(/^(admin|app|support)\./, `${targetDomain}.`);
   } else if (!host.includes('.') || host.split('.').length === 2) {
     // Bare domain (e.g. replysys.com) — prepend the target subdomain
     newHost = `${targetDomain}.${host}`;
   } else if (host === 'localhost' || host.startsWith('127.')) {
     // For localhost, just change the search param
-    window.location.href = `${protocol}//${host}${port}${path}?domain=${targetDomain}`;
+    const url = new URL(`${protocol}//${host}${port}${path}`);
+    url.searchParams.set('domain', targetDomain);
+    window.location.href = url.toString();
     return;
   }
   

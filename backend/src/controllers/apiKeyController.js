@@ -6,7 +6,7 @@ import { handleControllerError } from '../utils/errorHandler.js';
 export const generateApiKey = async (req, res) => {
   try {
     const accountId = req.account.accountId;
-    const { name } = req.body;
+    const { name, projectId = null, scopes, rateLimitPerMinute } = req.body;
 
     if (!name) {
       return sendValidationError(res, 'API key name is required');
@@ -17,6 +17,9 @@ export const generateApiKey = async (req, res) => {
     const newKey = await ApiKey.create({
       accountId,
       name,
+      projectId: projectId || null,
+      scopes: Array.isArray(scopes) && scopes.length > 0 ? scopes : undefined,
+      rateLimitPerMinute: Number(rateLimitPerMinute) > 0 ? Number(rateLimitPerMinute) : undefined,
       keyHash,
       keyPrefix
     });
@@ -30,6 +33,9 @@ export const generateApiKey = async (req, res) => {
         name: newKey.name,
         apiKey: apiKey,
         keyPrefix: newKey.keyPrefix,
+        projectId: newKey.projectId,
+        scopes: newKey.scopes,
+        rateLimitPerMinute: newKey.rateLimitPerMinute,
         createdAt: newKey.createdAt,
         expiresAt: newKey.expiresAt,
         warning: '⚠️ Save this API key somewhere safe. You won\'t be able to see it again.'
@@ -53,6 +59,9 @@ export const listApiKeys = async (req, res) => {
         id: key._id,
         name: key.name,
         keyPrefix: key.keyPrefix,
+        projectId: key.projectId,
+        scopes: key.scopes,
+        rateLimitPerMinute: key.rateLimitPerMinute,
         createdAt: key.createdAt,
         lastUsedAt: key.lastUsedAt,
         expiresAt: key.expiresAt,
@@ -117,11 +126,7 @@ export const updateApiKey = async (req, res) => {
   try {
     const accountId = req.account.accountId;
     const { keyId } = req.params;
-    const { name } = req.body;
-
-    if (!name) {
-      return sendValidationError(res, 'API key name is required');
-    }
+    const { name, scopes, rateLimitPerMinute, projectId } = req.body;
 
     const key = await ApiKey.findOne({
       _id: keyId,
@@ -132,14 +137,20 @@ export const updateApiKey = async (req, res) => {
       return sendNotFound(res, 'API key not found');
     }
 
-    key.name = name;
+    if (name) key.name = name;
+    if (Array.isArray(scopes) && scopes.length > 0) key.scopes = scopes;
+    if (Number(rateLimitPerMinute) > 0) key.rateLimitPerMinute = Number(rateLimitPerMinute);
+    if (projectId !== undefined) key.projectId = projectId || null;
     await key.save();
 
     return sendSuccess(res, {
       data: {
         id: key._id,
         name: key.name,
-        keyPrefix: key.keyPrefix
+        keyPrefix: key.keyPrefix,
+        projectId: key.projectId,
+        scopes: key.scopes,
+        rateLimitPerMinute: key.rateLimitPerMinute,
       }
     }, 'API key updated');
   } catch (error) {

@@ -100,7 +100,7 @@ export const getPendingUsers = async (req, res) => {
 
     const { limit = 50, offset = 0 } = req.query;
 
-    const pendingUsers = await Account.find({ status: 'pending' })
+    const pendingUsers = await Account.find({ status: 'pending', isInternal: { $ne: true } })
       .select('_id accountId name email company phone plan billingCycle createdAt')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
@@ -134,7 +134,7 @@ export const getPendingUsers = async (req, res) => {
       };
     });
 
-    const total = await Account.countDocuments({ status: 'pending' });
+    const total = await Account.countDocuments({ status: 'pending', isInternal: { $ne: true } });
 
     logger.info('✅ Fetched pending users:', { count: usersWithAmounts.length, total });
 
@@ -172,6 +172,10 @@ export const sendPaymentReminder = async (req, res) => {
 
     if (!account) {
       return sendNotFound(res, 'Account not found');
+    }
+
+    if (account.isInternal === true) {
+      return sendValidationError(res, 'Internal organization is billing-exempt; reminder not applicable');
     }
 
     if (account.status !== 'pending') {
@@ -231,6 +235,7 @@ export const sendReminderAllPending = async (req, res) => {
     const cutoffTime = new Date(Date.now() - hoursAfterSignup * 60 * 60 * 1000);
     const pendingUsers = await Account.find({
       status: 'pending',
+      isInternal: { $ne: true },
       createdAt: { $lt: cutoffTime }
     }).select('_id name email plan billingCycle createdAt');
 

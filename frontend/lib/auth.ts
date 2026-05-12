@@ -23,9 +23,27 @@ export interface User {
   isDemoAccount?: boolean // Demo account flag
   demoLabel?: string | null // 'demo', 'test', 'staging', null
   demoNote?: string // Demo account description
+  staffRole?: string | null
+  /** Route keys (path under /dashboard). See lib/healthcareStaffRoutes.ts */
+  healthcareRoutesByProject?: Record<string, string[]>
+  healthcareStaffProfileByProject?: Record<string, {
+    role?: string | null
+    linkedDoctorId?: string | null
+    linkedNurseId?: string | null
+  }>
+  /** @deprecated same shape as routes; kept for older sessions */
+  healthcareAccessByProject?: Record<string, string[]>
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050/api"
+const INACTIVITY_LIMIT = 30 * 60 * 1000
+
+const initializeClientSession = (user: User, token: string) => {
+  localStorage.setItem("isAuthenticated", "true")
+  localStorage.setItem("user", JSON.stringify(user))
+  localStorage.setItem("token", token)
+  localStorage.setItem("replysys_last_activity", Date.now().toString())
+}
 
 // Real authentication with backend API
 export const authService = {
@@ -74,13 +92,15 @@ export const authService = {
           billingCycle: data.data.user.billingCycle,
           isDemoAccount: data.data.user.isDemoAccount || false,
           demoLabel: data.data.user.demoLabel || null,
-          demoNote: data.data.user.demoNote || null
+          demoNote: data.data.user.demoNote || null,
+          staffRole: data.data.user.staffRole || null,
+          healthcareRoutesByProject: data.data.user.healthcareRoutesByProject || {},
+          healthcareStaffProfileByProject: data.data.user.healthcareStaffProfileByProject || {},
+          healthcareAccessByProject: data.data.user.healthcareAccessByProject || data.data.user.healthcareRoutesByProject || {}
         }
 
-        // Store JWT token instead of session
-        localStorage.setItem("isAuthenticated", "true")
-        localStorage.setItem("user", JSON.stringify(user))
-        localStorage.setItem("token", token)
+        // Store JWT token and initialize session activity tracking
+        initializeClientSession(user, token)
         
         console.log('✅ Token stored:', {
           isAuthenticated: localStorage.getItem("isAuthenticated"),
@@ -133,10 +153,8 @@ export const authService = {
           demoNote: data.user.demoNote || null
         }
 
-        // Store JWT token instead of session
-        localStorage.setItem("isAuthenticated", "true")
-        localStorage.setItem("user", JSON.stringify(user))
-        localStorage.setItem("token", data.token)
+        // Store JWT token and initialize session activity tracking
+        initializeClientSession(user, data.token)
         
         console.log('✅ Account created and logged in');
 
@@ -186,20 +204,24 @@ export const authService = {
     }
   },
 
-  // Check inactivity timeout (5 minutes)
+  // Check inactivity timeout
   checkInactivityTimeout: () => {
     if (typeof window === "undefined") return false
+
+    if (localStorage.getItem("isAuthenticated") !== "true") return false
+
     const lastActivity = localStorage.getItem("replysys_last_activity")
-    if (!lastActivity) return false
+    if (!lastActivity) {
+      localStorage.setItem("replysys_last_activity", Date.now().toString())
+      return false
+    }
     
     const lastActivityTime = parseInt(lastActivity, 10)
     const currentTime = Date.now()
     const inactivityTime = currentTime - lastActivityTime
-    const INACTIVITY_LIMIT = 5 * 60 * 1000 // 5 minutes
-    
     if (inactivityTime > INACTIVITY_LIMIT) {
       console.log('⏰ Session timeout due to inactivity');
-      authService.logout();
+      void authService.logout();
       return true
     }
     return false
@@ -233,6 +255,32 @@ export const login = async (email: string, password: string) => {
 // Standalone signup function
 export const signup = async (name: string, email: string, password: string, company?: string, phone?: string) => {
   return authService.signup(name, email, password, company, phone)
+}
+
+export const getFirstStaffProjectId = (user: User | null): string | null => {
+  if (!user) return null
+  const routeMap = user.healthcareRoutesByProject || user.healthcareAccessByProject || {}
+  const projectIds = Object.keys(routeMap)
+  return projectIds.length > 0 ? projectIds[0] : null
+}
+
+export const getPostLoginRedirect = (user: User | null): string => {
+  if (!user) return "/dashboard"
+  if (user.type === "internal" && user.role === UserRole.SUPERADMIN) {
+    return "/dashboard/superadmin"
+  }
+
+  const isHealthcareStaffSession =
+    Boolean(user.staffRole) ||
+    Boolean(user.healthcareRoutesByProject && Object.keys(user.healthcareRoutesByProject).length > 0) ||
+    Boolean(user.healthcareAccessByProject && Object.keys(user.healthcareAccessByProject).length > 0)
+
+  if (isHealthcareStaffSession) {
+    const projectId = getFirstStaffProjectId(user)
+    if (projectId) return `/projects/${projectId}/staff`
+  }
+
+  return "/dashboard"
 }
 
 // Role-based permissions

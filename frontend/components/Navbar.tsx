@@ -28,10 +28,9 @@ export default function Navbar() {
     
     if (user.type === 'internal') {
       return '/dashboard/superadmin'
-    } else if (user.type === 'client' && user.accountId === '2600000') {
-      return '/dashboard/company'
     }
-    return '/dashboard/client'
+    // All client/agency users → /dashboard which auto-resolves to /projects/[id]
+    return '/dashboard'
   }
 
   return (

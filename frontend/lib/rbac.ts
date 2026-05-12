@@ -38,6 +38,11 @@ export const routeAccess = {
   // Chatbot - Allow USER role for clients
   '/dashboard/chatbot': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
   '/dashboard/chatbot/builder': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/flow': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/healthcare': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/healthcare/staff': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  // Project-scoped flow routes (allow all)
+  '/projects': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
   
   // Live Chat - Allow USER role for clients
   '/dashboard/live-chat-v2': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
@@ -86,6 +91,8 @@ export const routeAccess = {
   
   // Client Features (now consolidated under /dashboard/features)
   '/dashboard/features/connected-whatsapp': [UserRole.SUPERADMIN, UserRole.ADMIN],
+  '/dashboard/features/support': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
+  '/dashboard/features/change-plan': [UserRole.ADMIN, UserRole.MANAGER],
   
   // SuperAdmin only routes
   '/dashboard/organizations': [UserRole.SUPERADMIN],
@@ -101,9 +108,25 @@ export const routeAccess = {
   '/dashboard/superadmin/system-health': [UserRole.SUPERADMIN],
   '/dashboard/superadmin/platform-billing': [UserRole.SUPERADMIN],
   '/dashboard/superadmin/transactions': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/billing/reconciliation/overview': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/billing/reconciliation/stuck-payments': [UserRole.SUPERADMIN],
   '/dashboard/superadmin/invoices': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/credit-packs': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/billing/triggers': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/internal-users': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/offers': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/plans-and-offers': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/communications/maintenance': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/governance/audit-logs': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/governance/feature-flags': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/governance/exports': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/analytics/revenue-projections': [UserRole.SUPERADMIN],
   '/dashboard/superadmin/website-settings': [UserRole.SUPERADMIN],
   '/dashboard/superadmin/test-data': [UserRole.SUPERADMIN],
+  '/dashboard/support': [UserRole.SUPERADMIN],
+  '/dashboard/support/inbox': [UserRole.SUPERADMIN],
+  '/dashboard/support/tickets': [UserRole.SUPERADMIN],
+  '/dashboard/support/tickets/[ticketId]': [UserRole.SUPERADMIN],
 }
 
 /**
@@ -149,6 +172,117 @@ export const getSidebarItems = (role: UserRole) => {
       group: '💬 Conversations',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
     },
+    {
+      label: 'Flow Builder',
+      href: '/dashboard/flow',
+      icon: 'GitBranch',
+      group: '💬 Conversations',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Overview',
+      href: '/dashboard/healthcare',
+      icon: 'Activity',
+      group: '🏥 Healthcare • Core',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Clinic Setup',
+      href: '/dashboard/healthcare/clinic-setup',
+      icon: 'Building2',
+      group: '🏥 Healthcare • Core',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Patients',
+      href: '/dashboard/healthcare/patients',
+      icon: 'Users',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Doctors',
+      href: '/dashboard/healthcare/doctors',
+      icon: 'BookOpen',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Staff',
+      href: '/dashboard/healthcare/staff',
+      icon: 'UserPlus',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Nurses',
+      href: '/dashboard/healthcare/nurses',
+      icon: 'Users2',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Appointments',
+      href: '/dashboard/healthcare/appointments',
+      icon: 'Calendar',
+      group: '🏥 Healthcare • Front Desk',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Front Desk',
+      href: '/dashboard/healthcare/frontdesk',
+      icon: 'Sliders',
+      group: '🏥 Healthcare • Front Desk',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Prescriptions',
+      href: '/dashboard/healthcare/prescriptions',
+      icon: 'FileText',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Medicine master',
+      href: '/dashboard/healthcare/pharmacy',
+      icon: 'Package',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Inventory',
+      href: '/dashboard/healthcare/inventory',
+      icon: 'Archive',
+      group: '🏥 Healthcare • Pharmacy',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Billing',
+      href: '/dashboard/healthcare/billing',
+      icon: 'CreditCard',
+      group: '🏥 Healthcare • Billing',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Compliance',
+      href: '/dashboard/healthcare/compliance',
+      icon: 'ShieldCheck',
+      group: '🏥 Healthcare • Compliance',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    },
     // ── MARKETING ──
     {
       label: 'Campaigns',
@@ -192,6 +326,14 @@ export const getSidebarItems = (role: UserRole) => {
       href: '/dashboard/settings',
       icon: 'Settings',
       group: '⚙️ System',
+    }
+    ,
+    {
+      label: 'Support Ops',
+      href: '/dashboard/support',
+      icon: 'BookOpen',
+      group: '⚙️ System',
+      roles: [UserRole.SUPERADMIN]
     }
   ]
 
@@ -281,6 +423,11 @@ export const hasPermission = (role: UserRole, feature: keyof typeof featurePermi
  * Check if user can access a route
  */
 export const canAccessRoute = (role: UserRole, route: string): boolean => {
+  const rawRole = String(role || '')
+  if (rawRole === 'support') {
+    return route.startsWith('/dashboard/support')
+  }
+
   const allowedRoles = routeAccess[route as keyof typeof routeAccess]
   return allowedRoles ? allowedRoles.includes(role) : true
 }

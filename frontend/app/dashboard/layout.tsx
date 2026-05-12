@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Send, Users, BarChart3, Settings, 
   Bell, Search, ChevronDown, Menu, X, Megaphone, Bot, Calendar,
   FileText, LogOut, User, ChevronLeft, ChevronRight, Building2, 
-  Activity, DollarSign, Sliders, CreditCard, Receipt, BookOpen
+  Activity, DollarSign, Sliders, CreditCard, Receipt, BookOpen, ShieldAlert
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ErrorToast } from "@/components/ErrorToast"
@@ -47,6 +47,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     
     const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin');
     const isClientTier = pathname.startsWith('/dashboard/client') || pathname.startsWith('/dashboard/features');
+    const isSupportTier = pathname.startsWith('/dashboard/support');
     const isFeaturesTier = pathname.startsWith('/dashboard/features');
     const isDashboardRoot = pathname === '/dashboard';
     
@@ -54,16 +55,27 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
     if (isDashboardRoot) return;
     
     // Only check if on a tier-specific route
-    if (isSuperAdminTier || isClientTier) {
+    if (isSuperAdminTier || isClientTier || isSupportTier) {
       let hasAccess = false;
+      const isSupportStaff = userType === 'internal' && String(userRole) === 'support'
       
       // Superadmin access
       if (userType === 'internal' && userRole === 'superadmin' && isSuperAdminTier) {
         hasAccess = true;
       } 
-      // Client & Agency access (both use /dashboard/client tier)
-      else if ((userType === 'client' || userType === 'agency') && ['admin', 'manager', 'agent', 'user'].includes(userRole) && isClientTier) {
+      // Support foundation access (internal superadmin on support domain)
+      else if (userType === 'internal' && userRole === 'superadmin' && isSupportTier) {
         hasAccess = true;
+      }
+      // Support staff access (support tier only)
+      else if (isSupportStaff && isSupportTier) {
+        hasAccess = true;
+      }
+      // Client & Agency access: redirect them away from old /dashboard/features/* to project-scoped dashboard
+      else if ((userType === 'client' || userType === 'agency') && ['admin', 'manager', 'agent', 'user'].includes(userRole) && isClientTier) {
+        // Old features routes are deprecated. Always push clients to /dashboard which resolves to /projects/[id]
+        router.replace('/dashboard')
+        return;
       }
       
       // If no access, show error
@@ -77,9 +89,11 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Check for inactivity on mount
     if (authService.checkInactivityTimeout()) {
-      router.push('/login?expired=true');
+      router.push('/auth/login?expired=true');
       return;
     }
+
+    authService.updateActivity();
 
     // Track user activity
     const handleActivity = () => {
@@ -87,25 +101,39 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       console.log('📍 Activity tracked at:', new Date().toLocaleTimeString());
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleActivity();
+      }
+    };
+
     // Listen for user activity
     window.addEventListener('mousedown', handleActivity);
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('click', handleActivity);
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('scroll', handleActivity);
     window.addEventListener('touchstart', handleActivity);
+    window.addEventListener('focus', handleActivity);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Check inactivity every 30 seconds
     const inactivityCheckInterval = setInterval(() => {
       if (authService.checkInactivityTimeout()) {
-        router.push('/login?expired=true');
+        router.push('/auth/login?expired=true');
         clearInterval(inactivityCheckInterval);
       }
     }, 30000);
 
     return () => {
       window.removeEventListener('mousedown', handleActivity);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('click', handleActivity);
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('scroll', handleActivity);
       window.removeEventListener('touchstart', handleActivity);
+      window.removeEventListener('focus', handleActivity);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(inactivityCheckInterval);
     };
   }, [router])
@@ -225,49 +253,128 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Determine which tier folder they're in
   const isSuperAdminTier = pathname.startsWith('/dashboard/superadmin')
   const isClientTier = pathname.startsWith('/dashboard/features') || pathname.startsWith('/dashboard/account') || pathname.startsWith('/dashboard/api-keys')
+  const isSupportTier = pathname.startsWith('/dashboard/support')
 
   // Get dashboard href based on tier
   let dashboardHref = '/dashboard'
   if (isSuperAdminTier) dashboardHref = '/dashboard/superadmin'
-  if (isClientTier) dashboardHref = '/dashboard/features'
+  if (isClientTier) dashboardHref = '/dashboard'
+  if (isSupportTier) dashboardHref = '/dashboard/support'
 
   // Create tier-specific navigation
-  let navigation = []
+  let navigationSections: Array<{ title: string | null; items: Array<{ name: string; icon: any; href: string; roles: UserRole[] }> }> = []
 
   if (isSuperAdminTier) {
-    // Superadmin navigation - ONLY superadmin pages
-    navigation = [
-      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/superadmin", roles: [UserRole.SUPERADMIN] },
-      { name: "Organizations", icon: Building2, href: "/dashboard/superadmin/organizations", roles: [UserRole.SUPERADMIN] },
-      { name: "Demo Requests", icon: BookOpen, href: "/dashboard/superadmin/admin/demo-requests", roles: [UserRole.SUPERADMIN] },
-      { name: "System Health", icon: Activity, href: "/dashboard/superadmin/system-health", roles: [UserRole.SUPERADMIN] },
-      { name: "Transactions", icon: CreditCard, href: "/dashboard/superadmin/transactions", roles: [UserRole.SUPERADMIN] },
-      { name: "Subscriptions", icon: CreditCard, href: "/dashboard/superadmin/subscriptions", roles: [UserRole.SUPERADMIN] },
-      { name: "Invoices", icon: Receipt, href: "/dashboard/superadmin/invoices", roles: [UserRole.SUPERADMIN] },
-      { name: "Plans and Offers", icon: Sliders, href: "/dashboard/superadmin/plans-and-offers", roles: [UserRole.SUPERADMIN] },
-      { name: "🧪 Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
+    navigationSections = [
+      {
+        title: 'Overview',
+        items: [
+          { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/superadmin", roles: [UserRole.SUPERADMIN] },
+          { name: "Organizations", icon: Building2, href: "/dashboard/superadmin/organizations", roles: [UserRole.SUPERADMIN] },
+        ],
+      },
+      {
+        title: 'Billing',
+        items: [
+          { name: "Transactions", icon: CreditCard, href: "/dashboard/superadmin/transactions", roles: [UserRole.SUPERADMIN] },
+          { name: "Reconciliation", icon: ShieldAlert, href: "/dashboard/superadmin/billing/reconciliation/overview", roles: [UserRole.SUPERADMIN] },
+          { name: "Subscriptions", icon: CreditCard, href: "/dashboard/superadmin/subscriptions", roles: [UserRole.SUPERADMIN] },
+          { name: "Invoices", icon: Receipt, href: "/dashboard/superadmin/invoices", roles: [UserRole.SUPERADMIN] },
+          { name: "Trigger Monitor", icon: Bell, href: "/dashboard/superadmin/billing/triggers", roles: [UserRole.SUPERADMIN] },
+        ],
+      },
+      {
+        title: 'Commercial',
+        items: [
+          { name: "Plans", icon: Sliders, href: "/dashboard/superadmin/plans-and-offers", roles: [UserRole.SUPERADMIN] },
+          { name: "Credit Packs", icon: DollarSign, href: "/dashboard/superadmin/credit-packs", roles: [UserRole.SUPERADMIN] },
+          { name: "Offers", icon: Megaphone, href: "/dashboard/superadmin/offers", roles: [UserRole.SUPERADMIN] },
+        ],
+      },
+      {
+        title: 'Analytics',
+        items: [
+          { name: "Revenue Projections", icon: BarChart3, href: "/dashboard/superadmin/analytics/revenue-projections", roles: [UserRole.SUPERADMIN] },
+        ],
+      },
+      {
+        title: 'Access Control',
+        items: [
+          { name: "Internal Users", icon: Users, href: "/dashboard/superadmin/internal-users", roles: [UserRole.SUPERADMIN] },
+          { name: "Demo Requests", icon: BookOpen, href: "/dashboard/superadmin/admin/demo-requests", roles: [UserRole.SUPERADMIN] },
+        ],
+      },
+      {
+        title: 'Communications',
+        items: [
+          { name: "Maintenance", icon: Bell, href: "/dashboard/superadmin/communications/maintenance", roles: [UserRole.SUPERADMIN] },
+        ],
+      },
+      {
+        title: 'Governance',
+        items: [
+          { name: "Audit Logs", icon: ShieldAlert, href: "/dashboard/superadmin/governance/audit-logs", roles: [UserRole.SUPERADMIN] },
+          { name: "Feature Flags", icon: Sliders, href: "/dashboard/superadmin/governance/feature-flags", roles: [UserRole.SUPERADMIN] },
+          { name: "Export Center", icon: BookOpen, href: "/dashboard/superadmin/governance/exports", roles: [UserRole.SUPERADMIN] },
+        ],
+      },
+      {
+        title: 'Health',
+        items: [
+          { name: "System Health", icon: Activity, href: "/dashboard/superadmin/system-health", roles: [UserRole.SUPERADMIN] },
+          { name: "Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
+        ],
+      },
     ]
   } else if (isClientTier) {
     // Client tier navigation (for both client & agency account types)
     // Shows all features based on user role - ALL CONSOLIDATED UNDER /dashboard/features
-    navigation = [
-      { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/features", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-      { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-      { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-      { name: "Templates", icon: FileText, href: "/dashboard/features/templates", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Chatbot", icon: Bot, href: "/dashboard/features/chatbot", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
-      { name: "Subscriptions", icon: CreditCard, href: "/dashboard/features/subscriptions", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Invoices", icon: Receipt, href: "/dashboard/features/invoices", roles: [UserRole.ADMIN, UserRole.MANAGER] },
-      { name: "Billing", icon: CreditCard, href: "/dashboard/features/billing", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+    navigationSections = [
+      {
+        title: null,
+        items: [
+          { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/features", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+          { name: "Live Chat", icon: MessageSquare, href: "/dashboard/features/live-chat", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+          { name: "Contacts", icon: Users, href: "/dashboard/features/contacts", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+          { name: "Templates", icon: FileText, href: "/dashboard/features/templates", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+          { name: "Campaigns", icon: Calendar, href: "/dashboard/features/campaigns", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+          { name: "Chatbot", icon: Bot, href: "/dashboard/features/chatbot", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+          { name: "Analytics", icon: BarChart3, href: "/dashboard/features/analytics", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+          { name: "Support", icon: MessageSquare, href: "/dashboard/features/support", roles: [UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER] },
+          { name: "Subscriptions", icon: CreditCard, href: "/dashboard/features/subscriptions", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+          { name: "Change Plan", icon: Sliders, href: "/dashboard/features/change-plan", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+          { name: "Invoices", icon: Receipt, href: "/dashboard/features/invoices", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+          { name: "Billing", icon: CreditCard, href: "/dashboard/features/billing", roles: [UserRole.ADMIN, UserRole.MANAGER] },
+        ],
+      },
+    ]
+  } else if (isSupportTier) {
+    navigationSections = [
+      {
+        title: 'Support Center',
+        items: [
+          { name: 'Overview', icon: LayoutDashboard, href: '/dashboard/support', roles: [UserRole.SUPERADMIN] },
+          { name: 'Inbox', icon: MessageSquare, href: '/dashboard/support/inbox', roles: [UserRole.SUPERADMIN] },
+          { name: 'Tickets', icon: BookOpen, href: '/dashboard/support/tickets', roles: [UserRole.SUPERADMIN] },
+        ],
+      },
     ]
   }
 
   // Filter navigation based on user role
-  const filteredNavigation = user 
-    ? navigation.filter(item => item.roles.includes(user.role))
-    : navigation
+  const filteredNavigationSections = user
+    ? navigationSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => {
+            if (isSupportTier && user.type === 'internal' && String(user.role) === 'support') {
+              return true
+            }
+            return item.roles.includes(user.role)
+          }),
+        }))
+        .filter((section) => section.items.length > 0)
+    : navigationSections
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -291,20 +398,25 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             
             {/* Scrollable Navigation */}
             <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-              {filteredNavigation.map((item) => (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    pathname === item.href
-                      ? "bg-green-600 text-white"
-                      : "text-gray-100 hover:bg-gray-800"
-                  }`}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <item.icon className="h-5 w-5 flex-shrink-0" />
-                  {item.name}
-                </Link>
+              {filteredNavigationSections.map((section) => (
+                <div key={section.title || 'default'} className="mb-4 space-y-1">
+                  {section.title ? <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{section.title}</p> : null}
+                  {section.items.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                        pathname === item.href
+                          ? "bg-green-600 text-white"
+                          : "text-gray-100 hover:bg-gray-800"
+                      }`}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <item.icon className="h-5 w-5 flex-shrink-0" />
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
               ))}
             </nav>
             
@@ -367,25 +479,27 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {filteredNavigation.map((item) => (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  pathname === item.href
-                    ? "bg-green-600 text-white"
-                    : "text-gray-100 hover:bg-gray-800"
-                } ${sidebarCollapsed ? "justify-center" : ""} ${
-                  (item as any).superAdminOnly ? "border-t border-gray-800 mt-2 pt-3" : ""
-                }`}
-                title={sidebarCollapsed ? item.name : ""}
-              >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
-                {!sidebarCollapsed && <span>{item.name}</span>}
-                {!sidebarCollapsed && (item as any).superAdminOnly && (
-                  <span className="ml-auto px-1.5 py-0.5 text-[10px] font-medium bg-purple-500 text-white rounded">SA</span>
-                )}
-              </Link>
+            {filteredNavigationSections.map((section) => (
+              <div key={section.title || 'default'} className="mb-4 space-y-1">
+                {!sidebarCollapsed && section.title ? (
+                  <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{section.title}</p>
+                ) : null}
+                {section.items.map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      pathname === item.href
+                        ? "bg-green-600 text-white"
+                        : "text-gray-100 hover:bg-gray-800"
+                    } ${sidebarCollapsed ? "justify-center" : ""}`}
+                    title={sidebarCollapsed ? item.name : ""}
+                  >
+                    <item.icon className="h-5 w-5 flex-shrink-0" />
+                    {!sidebarCollapsed && <span>{item.name}</span>}
+                  </Link>
+                ))}
+              </div>
             ))}
           </nav>
           <div className="p-4 border-t border-gray-800">

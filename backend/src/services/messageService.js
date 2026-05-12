@@ -1,7 +1,7 @@
-import Message from '../models/Message.js';
-import Conversation from '../models/Conversation.js';
 import ActivityTimeline from '../models/ActivityTimeline.js';
 import whatsappService from './whatsappService.js';
+import messageRepository from '../repositories/messageRepository.js';
+import conversationRepository from '../repositories/conversationRepository.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -24,10 +24,7 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   });
 
   // Get conversation details
-  const conversation = await Conversation.findOne({
-    _id: conversationId,
-    accountId
-  });
+  const conversation = await conversationRepository.findByIdAndAccount(conversationId, accountId);
 
   if (!conversation) {
     logger.error('❌ Conversation not found:', conversationId);
@@ -75,20 +72,14 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
   logger.info('📝 Creating message in DB...');
   
   // Check if similar message was just created (prevent duplicates from race conditions)
-  const recentDuplicate = await Message.findOne({
-    conversationId,
-    accountId,
-    direction: 'outbound',
-    'content.text': content,
-    createdAt: { $gte: new Date(Date.now() - 2000) } // Within last 2 seconds
-  });
+  const recentDuplicate = await messageRepository.findRecentDuplicate(conversationId, accountId, content);
   
   if (recentDuplicate) {
     console.warn('⚠️ Duplicate message detected! Returning existing message:', recentDuplicate._id);
     return recentDuplicate;
   }
   
-  const message = await Message.create({
+  const message = await messageRepository.create({
     accountId,
     phoneNumberId,
     conversationId,
@@ -109,23 +100,7 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
 
   // Update conversation
   logger.info('📝 Updating conversation...');
-  const conv = await Conversation.findById(conversationId);
-  
-  await Conversation.updateOne(
-    { _id: conversationId },
-    {
-      $set: {
-        lastMessageAt: new Date(),
-        updatedAt: new Date(),
-        lastMessagePreview: content.substring(0, 200),
-        lastMessageType: messageType,
-        unreadCount: 0
-      },
-      $inc: {
-        messageCount: 1
-      }
-    }
-  );
+  await conversationRepository.touchAfterOutboundMessage(conversationId, content, messageType);
 
   logger.info('✅ Conversation updated');
 
@@ -154,18 +129,10 @@ export const sendMessage = async (conversationId, content, messageType = 'text',
  * Get messages for a conversation
  */
 export const getMessages = async (conversationId, accountId, limit = 50, offset = 0) => {
-  const messages = await Message.find({
-    conversationId,
-    accountId
-  })
-    .sort({ createdAt: -1 })
-    .skip(offset)
-    .limit(limit)
-    .lean()
-    .exec(); // Ensure lean() executes properly
+  const messages = await messageRepository.findByConversation(conversationId, accountId, limit, offset);
   
   // Count total without executing another heavy query
-  const total = await Message.countDocuments({ conversationId, accountId });
+  const total = await messageRepository.countByConversation(conversationId, accountId);
 
   // Transform messages to frontend format
   const transformedMessages = messages.map(msg => {
@@ -206,7 +173,7 @@ export const getMessages = async (conversationId, accountId, limit = 50, offset 
  * Update message status (delivered, read, etc)
  */
 export const updateMessageStatus = async (messageId, accountId, status, extraData = {}) => {
-  const message = await Message.findOne({ _id: messageId, accountId });
+  const message = await messageRepository.findByIdAndAccount(messageId, accountId);
 
   if (!message) {
     throw new NotFoundError('Message not found');
@@ -224,7 +191,7 @@ export const updateMessageStatus = async (messageId, accountId, status, extraDat
     ...extraData
   });
 
-  const updatedMessage = await Message.findByIdAndUpdate(
+  const updatedMessage = await messageRepository.updateById(
     messageId,
     update,
     { new: true }
@@ -254,7 +221,7 @@ export const updateMessageStatus = async (messageId, accountId, status, extraDat
  * Mark message as read by agent
  */
 export const markMessageAsRead = async (messageId, accountId, agentId) => {
-  const message = await Message.findOne({ _id: messageId, accountId });
+  const message = await messageRepository.findByIdAndAccount(messageId, accountId);
 
   if (!message) {
     throw new NotFoundError('Message not found');
@@ -269,7 +236,7 @@ export const markMessageAsRead = async (messageId, accountId, agentId) => {
       readAt: new Date()
     });
 
-    await message.save();
+    await messageRepository.save(message);
   }
 
   return message;
@@ -279,7 +246,7 @@ export const markMessageAsRead = async (messageId, accountId, agentId) => {
  * Add emoji reaction to message
  */
 export const addReaction = async (messageId, accountId, emoji, agentId) => {
-  const message = await Message.findOne({ _id: messageId, accountId });
+  const message = await messageRepository.findByIdAndAccount(messageId, accountId);
 
   if (!message) {
     throw new NotFoundError('Message not found');
@@ -297,7 +264,7 @@ export const addReaction = async (messageId, accountId, emoji, agentId) => {
       addedAt: new Date()
     });
 
-    await message.save();
+    await messageRepository.save(message);
   }
 
   return message;
@@ -307,7 +274,7 @@ export const addReaction = async (messageId, accountId, emoji, agentId) => {
  * Remove reaction from message
  */
 export const removeReaction = async (messageId, accountId, emoji, agentId) => {
-  const message = await Message.findOne({ _id: messageId, accountId });
+  const message = await messageRepository.findByIdAndAccount(messageId, accountId);
 
   if (!message) {
     throw new NotFoundError('Message not found');
@@ -317,7 +284,7 @@ export const removeReaction = async (messageId, accountId, emoji, agentId) => {
     r => !(r.emoji === emoji && r.addedBy.toString() === agentId.toString())
   );
 
-  await message.save();
+  await messageRepository.save(message);
 
   return message;
 };
@@ -326,14 +293,14 @@ export const removeReaction = async (messageId, accountId, emoji, agentId) => {
  * Forward message to another conversation
  */
 export const forwardMessage = async (messageId, accountId, targetConversationId, forwardingAgentId) => {
-  const sourceMessage = await Message.findOne({ _id: messageId, accountId });
+  const sourceMessage = await messageRepository.findByIdAndAccount(messageId, accountId);
 
   if (!sourceMessage) {
     throw new NotFoundError('Source message not found');
   }
 
   // Create copy of message in target conversation
-  const forwardedMessage = await Message.create({
+  const forwardedMessage = await messageRepository.create({
     accountId,
     phoneNumberId: sourceMessage.phoneNumberId,
     conversationId: targetConversationId,
@@ -373,7 +340,7 @@ export const forwardMessage = async (messageId, accountId, targetConversationId,
  * Handle incoming message from WhatsApp webhook
  */
 export const handleIncomingMessage = async (accountId, conversationId, phoneNumberId, senderPhone, messageData) => {
-  const message = await Message.create({
+  const message = await messageRepository.create({
     accountId,
     phoneNumberId,
     conversationId,
@@ -390,14 +357,10 @@ export const handleIncomingMessage = async (accountId, conversationId, phoneNumb
   });
 
   // Update conversation
-  await Conversation.updateOne(
-    { _id: conversationId },
-    {
-      lastMessageAt: new Date(),
-      lastMessagePreview: messageData.text?.body?.substring(0, 200) || '',
-      lastMessageType: messageData.type || 'text',
-      $inc: { messageCount: 1, unreadCount: 1 }
-    }
+  await conversationRepository.touchAfterIncomingMessage(
+    conversationId,
+    messageData.text?.body || '',
+    messageData.type || 'text'
   );
 
   // Log in activity timeline
@@ -422,17 +385,7 @@ export const handleIncomingMessage = async (accountId, conversationId, phoneNumb
  * Search messages
  */
 export const searchMessages = async (conversationId, accountId, searchText, limit = 50) => {
-  const messages = await Message.find(
-    {
-      conversationId,
-      accountId,
-      'content.text': { $regex: searchText, $options: 'i' }
-    },
-    { score: { $meta: 'textScore' } }
-  )
-    .sort({ score: { $meta: 'textScore' }, createdAt: -1 })
-    .limit(limit)
-    .lean();
+  const messages = await messageRepository.searchByText(conversationId, accountId, searchText, limit);
 
   return messages;
 };

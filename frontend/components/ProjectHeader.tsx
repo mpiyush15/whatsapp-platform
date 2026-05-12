@@ -31,6 +31,38 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
   const [contactsHeaderLoading, setContactsHeaderLoading] = useState(false)
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api'
+
+  const formatSegment = (segment: string) =>
+    segment
+      .split('-')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+
+  const getRouteHeader = () => {
+    const pathOnly = pathname.split('?')[0]
+    const parts = pathOnly.split('/').filter(Boolean)
+
+    const projectIdx = parts.indexOf('projects')
+    const routeParts = projectIdx >= 0 ? parts.slice(projectIdx + 2) : []
+
+    if (routeParts.length === 0) {
+      return { title: 'Dashboard', subtitle: project?.name || 'Project overview' }
+    }
+
+    const healthcareLabel = (segment: string) => {
+      if (routeParts[0] === 'healthcare' && segment === 'pharmacy') return 'Medicine master'
+      return formatSegment(segment)
+    }
+
+    const breadcrumb = routeParts.map(healthcareLabel).join(' / ')
+    const title = healthcareLabel(routeParts[routeParts.length - 1])
+
+    return {
+      title,
+      subtitle: breadcrumb,
+    }
+  }
   
   // Check if on dashboard page
   const isDashboardPage = pathname === `/projects/${projectId}` || pathname === `/projects/${projectId}/`
@@ -404,15 +436,22 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
 
   // Show blank topbar for non-dashboard, non-livechat pages
   if (!isDashboardPage) {
+    const routeHeader = getRouteHeader()
     return (
-      <header className="bg-white border-b border-gray-200 h-16 flex items-center px-6">
-        <button
-          onClick={onMenuClick}
-          className="md:hidden p-2 rounded-lg hover:bg-gray-100"
-          aria-label="Open menu"
-        >
-          <Menu size={20} />
-        </button>
+      <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+            aria-label="Open menu"
+          >
+            <Menu size={20} />
+          </button>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900 truncate">{routeHeader.title}</h2>
+            <p className="text-xs text-gray-500 truncate">{routeHeader.subtitle}</p>
+          </div>
+        </div>
       </header>
     )
   }

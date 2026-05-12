@@ -5,6 +5,7 @@ import { resolvePhoneNumber } from '../middlewares/phoneNumberHelper.js';
 import { messageLimiter } from '../middlewares/rateLimiter.js';
 import validators from '../middlewares/validators.js';
 import handleMulterError from '../middlewares/multerErrorHandler.js';
+import { attachDefaultProject, checkProjectQuota } from '../middleware/projectAuth.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -26,9 +27,9 @@ const upload = multer({
  */
 
 // Send messages (phoneNumberId is optional - will auto-detect from account)
-router.post('/send', messageLimiter, validators.validateSendMessage, resolvePhoneNumber, messageController.sendTextMessage);
-router.post('/send-template', messageLimiter, validators.validateSendTemplateMessage, resolvePhoneNumber, messageController.sendTemplateMessage);
-router.post('/send-media', messageLimiter, upload.single('file'), handleMulterError, resolvePhoneNumber, messageController.sendMediaMessage);
+router.post('/send', attachDefaultProject, checkProjectQuota('message'), messageLimiter, validators.validateSendMessage, resolvePhoneNumber, messageController.sendTextMessage);
+router.post('/send-template', attachDefaultProject, checkProjectQuota('message'), messageLimiter, validators.validateSendTemplateMessage, resolvePhoneNumber, messageController.sendTemplateMessage);
+router.post('/send-media', attachDefaultProject, checkProjectQuota('message'), messageLimiter, upload.single('file'), handleMulterError, resolvePhoneNumber, messageController.sendMediaMessage);
 
 // Get messages
 router.get('/', messageController.getMessages);

@@ -56,7 +56,15 @@ export default function OrganizationsPage() {
     },
     {
       key: "name",
-      label: "Name"
+      label: "Name",
+      render: (value: string, row: any) => (
+        <div className="flex items-center gap-2">
+          <span>{value}</span>
+          {(row.isInternal || row.type === "internal") && (
+            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">Internal</span>
+          )}
+        </div>
+      )
     },
     {
       key: "email",
@@ -121,15 +129,15 @@ export default function OrganizationsPage() {
           </p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <p className="text-sm text-gray-600">Clients</p>
-          <p className="text-3xl font-bold text-blue-600 mt-2">
-            {organizations.filter(o => o.type === 'client').length}
+          <p className="text-sm text-gray-600">Internal</p>
+          <p className="text-3xl font-bold text-indigo-600 mt-2">
+            {organizations.filter(o => o.isInternal || o.type === 'internal').length}
           </p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <p className="text-sm text-gray-600">Agencies</p>
-          <p className="text-3xl font-bold text-green-600 mt-2">
-            {organizations.filter(o => o.type === 'agency').length}
+          <p className="text-sm text-gray-600">Clients</p>
+          <p className="text-3xl font-bold text-blue-600 mt-2">
+            {organizations.filter(o => o.type === 'client').length}
           </p>
         </div>
       </div>

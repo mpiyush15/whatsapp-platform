@@ -35,7 +35,13 @@ export const requireSubscription = async (req, res, next) => {
       });
     }
 
-    // ✅ ALLOW: Superadmins (internal accounts) skip subscription check
+    // ✅ ALLOW: Internal org accounts skip billing/subscription enforcement
+    if (account.isInternal === true) {
+      logger.info(`✅ Internal org account (${accountId}) allowed - isInternal=true`);
+      return next();
+    }
+
+    // ✅ ALLOW: Superadmins (platform internal type) skip subscription check
     if (account.type === 'internal') {
       logger.info(`✅ Superadmin account (${accountId}) allowed - type='internal'`);
       return next();

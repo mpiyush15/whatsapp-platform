@@ -10,11 +10,12 @@ import logger from '../utils/logger.js';
  * Get domain type from request
  * admin.domain → 'admin'
  * app.domain → 'app'
+ * support.domain → 'support'
  */
 export const getDomainFromRequest = (req) => {
   // Check X-App-Domain header (sent by frontend)
   const headerDomain = req.headers['x-app-domain'];
-  if (headerDomain && ['admin', 'app'].includes(headerDomain)) {
+  if (headerDomain && ['admin', 'app', 'support', 'healthcare'].includes(headerDomain)) {
     return headerDomain;
   }
 
@@ -22,11 +23,15 @@ export const getDomainFromRequest = (req) => {
   const origin = req.headers.origin || req.headers.referer || '';
   if (origin.includes('admin.')) return 'admin';
   if (origin.includes('app.')) return 'app';
+  if (origin.includes('support.')) return 'support';
+  if (origin.includes('healthcare.')) return 'healthcare';
 
   // Check Host header
   const host = req.hostname || '';
   if (host.startsWith('admin.')) return 'admin';
   if (host.startsWith('app.')) return 'app';
+  if (host.startsWith('support.')) return 'support';
+  if (host.startsWith('healthcare.')) return 'healthcare';
 
   // Default to 'app' for development (localhost)
   return 'app';
@@ -39,7 +44,7 @@ export const getDomainFromRequest = (req) => {
  * - app.domain can access client endpoints only
  * - Project isolation enforced
  */
-export const validateDomain = (allowedDomains = ['admin', 'app']) => {
+export const validateDomain = (allowedDomains = ['admin', 'app', 'support', 'healthcare']) => {
   return (req, res, next) => {
     const domain = getDomainFromRequest(req);
     
@@ -103,6 +108,26 @@ export const requireAppDomain = (req, res, next) => {
 };
 
 /**
+ * Support-only route middleware
+ * Only allow support.domain
+ */
+export const requireSupportDomain = (req, res, next) => {
+  const domain = getDomainFromRequest(req);
+
+  if (domain !== 'support') {
+    logger.warn(`🚫 Support endpoint accessed from ${domain} domain`);
+    return res.status(403).json({
+      success: false,
+      message: 'This endpoint is only available from support.domain',
+      error: 'SUPPORT_DOMAIN_REQUIRED'
+    });
+  }
+
+  req.domain = domain;
+  next();
+};
+
+/**
  * Enforce project isolation
  * Ensures user can only access their own projectId
  * Works with both admin and app domains
@@ -134,5 +159,6 @@ export default {
   validateDomain,
   requireAdminDomain,
   requireAppDomain,
+  requireSupportDomain,
   enforceProjectIsolation
 };

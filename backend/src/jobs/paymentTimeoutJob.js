@@ -16,6 +16,11 @@ export const checkPaymentTimeouts = async () => {
   try {
     logger.info('⏰ Starting payment timeout check...');
 
+    const internalAccounts = await Account.find({ isInternal: true }).select('accountId').lean();
+    const internalAccountIds = internalAccounts
+      .map(item => String(item.accountId || ''))
+      .filter(Boolean);
+
     // Calculate cutoff time (1 hour ago)
     const cutoffTime = new Date(Date.now() - PAYMENT_TIMEOUT_MINUTES * 60 * 1000);
 
@@ -24,7 +29,8 @@ export const checkPaymentTimeouts = async () => {
     // 2. Created more than 1 hour ago
     const pendingSubscriptions = await Subscription.find({
       status: 'pending_payment',
-      createdAt: { $lt: cutoffTime }
+      createdAt: { $lt: cutoffTime },
+      ...(internalAccountIds.length > 0 ? { accountId: { $nin: internalAccountIds } } : {})
     }).populate('accountId');
 
     logger.info(`📋 Found ${pendingSubscriptions.length} pending payments older than ${PAYMENT_TIMEOUT_MINUTES} minutes`);

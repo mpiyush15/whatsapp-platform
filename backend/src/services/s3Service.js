@@ -152,9 +152,10 @@ export const downloadMediaFromWhatsApp = async (mediaId, accessToken) => {
  * @param {string} mediaType - Type: image/video/audio/document
  * @param {string} mimeType - MIME type
  * @param {string} originalFilename - Original filename (optional)
+ * @param {number} expiresIn - URL expiration in seconds (default: 24 hours)
  * @returns {Promise<{s3Key: string, s3Url: string}>}
  */
-export const uploadToS3 = async (buffer, accountId, mediaType, mimeType, originalFilename = '') => {
+export const uploadToS3 = async (buffer, accountId, mediaType, mimeType, originalFilename = '', expiresIn = 86400) => {
   try {
     const s3Key = generateS3Key(accountId, mediaType, originalFilename);
     
@@ -171,16 +172,20 @@ export const uploadToS3 = async (buffer, accountId, mediaType, mimeType, origina
     
     await s3Client.send(command);
     
-    // Generate signed URL for 24 hours (covers typical message lifetime)
-    // This ensures private buckets work correctly
+    // AWS SigV4 signed URLs must have an expiration of <= 7 days
+    const safeExpiresIn = Math.min(expiresIn, 7 * 24 * 3600);
+    if (safeExpiresIn !== expiresIn) {
+      logger.warn(`⚠️ Requested expiresIn ${expiresIn}s exceeds AWS SigV4 limit; using ${safeExpiresIn}s instead.`);
+    }
+    
     const getCommand = new GetObjectCommand({
       Bucket: BUCKET_NAME,
       Key: s3Key,
     });
     
-    const s3Url = await getSignedUrl(s3Client, getCommand, { expiresIn: 86400 }); // 24 hours
+    const s3Url = await getSignedUrl(s3Client, getCommand, { expiresIn: safeExpiresIn }); // Use clamped expiration
     
-    logger.info(`✅ Uploaded to S3: ${s3Key} (signed URL valid 24h)`);
+    logger.info(`✅ Uploaded to S3: ${s3Key} (signed URL valid ${expiresIn / 3600}h)`);
     
     return {
       s3Key,

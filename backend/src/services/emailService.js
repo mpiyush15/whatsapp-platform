@@ -1088,6 +1088,69 @@ export const emailService = {
     }
   },
 
+  sendHealthcareStaffWelcomeEmail: async ({ to, name, role, temporaryPassword }) => {
+    try {
+      if (!ENABLE_EMAIL) {
+        logger.info('✅ Email service disabled - skipping healthcare staff welcome');
+        return { success: true, skipped: true };
+      }
+
+      const loginUrl = `${getPrimaryFrontendUrl()}/auth/login`;
+      const roleLabels = {
+        doctor: 'Doctor',
+        nurse: 'Nurse',
+        receptionist: 'Reception / front desk',
+        billing: 'Billing',
+        admin: 'Clinic admin',
+      };
+      const roleLabel = roleLabels[role] || role;
+
+      await sendViaZepto(
+        to,
+        'Your clinic login — Replysys',
+        `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #0e7490 0%, #155e75 100%); color: white; padding: 24px; border-radius: 8px; text-align: center; }
+              .content { padding: 24px; background: #f8fafc; border-radius: 8px; margin-top: 16px; }
+              .box { background: white; padding: 14px; border-left: 4px solid #0e7490; margin: 14px 0; font-size: 14px; }
+              .footer { text-align: center; padding: 16px; color: #94a3b8; font-size: 12px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h2 style="margin:0;">Welcome, ${name}</h2>
+                <p style="margin:8px 0 0;">You have been added as <strong>${roleLabel}</strong></p>
+              </div>
+              <div class="content">
+                <p>Use the credentials below to sign in, then open your healthcare project from the dashboard.</p>
+                <div class="box">
+                  <p><strong>Login URL:</strong><br/><a href="${loginUrl}">${loginUrl}</a></p>
+                  <p><strong>Email:</strong> ${to}</p>
+                  <p><strong>Temporary password:</strong> ${temporaryPassword}</p>
+                </div>
+                <p style="font-size:13px;color:#64748b;">Please change your password after first login if your workspace supports it.</p>
+              </div>
+              <div class="footer">
+                <p>© ${new Date().getFullYear()} Replysys</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `
+      );
+      return { success: true };
+    } catch (error) {
+      logger.error('❌ Healthcare staff welcome email failed:', error.message);
+      return { success: false, error: error.message };
+    }
+  },
+
   // Send agent invitation email
   sendAgentInvitationEmail: async (agentEmail, agentName, invitationToken, accountName) => {
     try {

@@ -9,6 +9,7 @@
 
 import Account from '../models/Account.js';
 import ApiKey from '../models/ApiKey.js';
+import Project from '../models/Project.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -69,7 +70,7 @@ export const requireApiKey = async (req, res, next) => {
     }
 
     // Find account by accountId from API key record
-    const account = await Account.findById(apiKeyRecord.accountId);
+    const account = await Account.findOne({ accountId: apiKeyRecord.accountId });
 
     if (!account || account.status !== 'active') {
       logger.info('  → Rejecting: Account not found or inactive');
@@ -78,6 +79,36 @@ export const requireApiKey = async (req, res, next) => {
         code: 'ACCOUNT_INACTIVE',
         message: 'Associated account is inactive'
       });
+    }
+
+    // Resolve optional project scope from request
+    const requestedProjectId = req.headers['x-project-id'] || req.query.projectId || req.body?.projectId || null;
+
+    if (apiKeyRecord.projectId && requestedProjectId && String(apiKeyRecord.projectId) !== String(requestedProjectId)) {
+      return res.status(403).json({
+        success: false,
+        code: 'PROJECT_SCOPE_MISMATCH',
+        message: 'API key is scoped to a different project',
+      });
+    }
+
+    const resolvedProjectId = requestedProjectId || apiKeyRecord.projectId || null;
+    if (resolvedProjectId) {
+      const project = await Project.findOne({ accountId: account.accountId, projectId: String(resolvedProjectId) }).select('projectId name status');
+      if (!project) {
+        return res.status(403).json({
+          success: false,
+          code: 'PROJECT_NOT_ACCESSIBLE',
+          message: 'Project not found for this API key/account',
+        });
+      }
+
+      req.project = {
+        projectId: project.projectId,
+        name: project.name,
+        status: project.status,
+      };
+      req.projectId = project.projectId;
     }
 
     logger.info('  → ✅ API key verified for account:', account.accountId);
@@ -100,8 +131,17 @@ export const requireApiKey = async (req, res, next) => {
       status: account.status,
       _id: account._id
     };
+    req.user = {
+      _id: account._id,
+      id: account._id,
+      accountId: account.accountId,
+      role: account.role || 'admin',
+      type: account.type || 'client',
+      projectId: req.projectId || null,
+    };
     req.authType = 'apiKey';
     req.apiKeyId = apiKeyRecord._id; // Track which API key was used
+    req.apiKeyRecord = apiKeyRecord;
 
     next();
   } catch (error) {
@@ -112,6 +152,27 @@ export const requireApiKey = async (req, res, next) => {
       message: 'API key authentication failed'
     });
   }
+};
+
+export const requireApiScope = (requiredScope) => {
+  return (req, res, next) => {
+    const record = req.apiKeyRecord;
+    if (!record) {
+      return res.status(401).json({ success: false, code: 'NO_API_KEY_CONTEXT', message: 'API key context missing' });
+    }
+
+    const scopes = Array.isArray(record.scopes) ? record.scopes : [];
+    const allowed = scopes.includes('*') || scopes.includes('all') || scopes.includes(requiredScope);
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        code: 'INSUFFICIENT_SCOPE',
+        message: `API key missing required scope: ${requiredScope}`,
+      });
+    }
+
+    return next();
+  };
 };
 
 export default requireApiKey;
