@@ -393,11 +393,11 @@ export class CampaignService {
         openRate: campaign.stats.totalDelivered > 0 
           ? Math.round((campaign.stats.totalOpened / campaign.stats.totalDelivered) * 100) 
           : 0,
-        clickRate: campaign.stats.totalDelivered > 0 
-          ? Math.round((campaign.stats.totalClicked / campaign.stats.totalDelivered) * 100) 
+        clickRate: campaign.stats.totalOpened > 0
+          ? Math.round((campaign.stats.totalReplied / campaign.stats.totalOpened) * 100)
           : 0,
-        conversionRate: campaign.stats.totalClicked > 0 
-          ? Math.round((campaign.stats.totalConverted / campaign.stats.totalClicked) * 100) 
+        conversionRate: campaign.stats.totalSent > 0
+          ? Math.round((campaign.stats.totalConverted / campaign.stats.totalSent) * 100)
           : 0
       };
 

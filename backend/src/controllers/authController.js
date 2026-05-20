@@ -12,6 +12,60 @@ import { sendSuccess, sendValidationError, sendConflict, sendUnauthorized } from
 import { handleControllerError } from '../utils/errorHandler.js';
 import { resolveStaffRoutes } from '../constants/healthcareStaffRoutes.js';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizePhone(raw = '') {
+  const digits = String(raw).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
+  if (digits.length > 10 && digits.startsWith('91')) return `+${digits}`;
+  return digits.startsWith('+') ? digits : `+${digits}`;
+}
+
+export const checkEmailAvailable = async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) {
+      return sendValidationError(res, 'Email is required');
+    }
+    if (!EMAIL_REGEX.test(email)) {
+      return sendValidationError(res, 'Please provide a valid email address');
+    }
+    const existing = await Account.findOne({ email });
+    return sendSuccess(
+      res,
+      { available: !existing, field: 'email' },
+      existing ? 'Email already registered' : 'Email is available',
+    );
+  } catch (error) {
+    return handleControllerError(res, error, 'checkEmailAvailable');
+  }
+};
+
+export const checkPhoneAvailable = async (req, res) => {
+  try {
+    const phone = normalizePhone(req.query.phone);
+    if (!phone) {
+      return sendValidationError(res, 'Phone number is required');
+    }
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      return sendValidationError(res, 'Enter a valid phone number');
+    }
+    const existing = await Account.findOne({
+      $or: [{ phone }, { phone: digits }, { phone: phone.replace(/^\+/, '') }],
+    });
+    return sendSuccess(
+      res,
+      { available: !existing, field: 'phone' },
+      existing ? 'Phone number already registered' : 'Phone number is available',
+    );
+  } catch (error) {
+    return handleControllerError(res, error, 'checkPhoneAvailable');
+  }
+};
+
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -135,7 +189,19 @@ export const logout = async (req, res) => {
 
 export const signup = async (req, res) => {
   try {
-    const { name, email, password, company, phone, selectedPlan, billingCycle } = req.body;
+    const {
+      name,
+      email,
+      password,
+      company,
+      phone: phoneRaw,
+      mobileNumber,
+      companyName,
+      selectedPlan,
+      billingCycle,
+    } = req.body;
+    const phone = normalizePhone(phoneRaw || mobileNumber || '');
+    const companyResolved = (company || companyName || '').trim();
 
     if (!name || !email || !password) {
       return sendValidationError(res, 'Name, email, and password are required');
@@ -160,9 +226,18 @@ export const signup = async (req, res) => {
       return sendValidationError(res, 'Password must be at least 6 characters');
     }
 
-    const existingAccount = await Account.findOne({ email });
+    const existingAccount = await Account.findOne({ email: email.toLowerCase().trim() });
     if (existingAccount) {
       return sendConflict(res, 'Email already registered. Please login instead.');
+    }
+
+    if (phone) {
+      const existingPhone = await Account.findOne({
+        $or: [{ phone }, { phone: phone.replace(/\D/g, '') }],
+      });
+      if (existingPhone) {
+        return sendConflict(res, 'Phone number already registered. Please log in or use another number.');
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -206,8 +281,8 @@ export const signup = async (req, res) => {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       password: hashedPassword,
-      company: company?.trim() || undefined,
-      phone: phone?.trim() || undefined,
+      company: companyResolved || undefined,
+      phone: phone || undefined,
       type: 'client',
       role: 'admin',
       plan: planName,
@@ -217,9 +292,8 @@ export const signup = async (req, res) => {
 
     let subdomain = '';
     try {
-      if (company && company.trim()) {
-        subdomain = company
-          .trim()
+      if (companyResolved) {
+        subdomain = companyResolved
           .toLowerCase()
           .replace(/[^a-z0-9]/g, '-')
           .replace(/-+/g, '-')
@@ -479,5 +553,7 @@ export default {
   logout,
   getCurrentUser,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  checkEmailAvailable,
+  checkPhoneAvailable,
 };

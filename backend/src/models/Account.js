@@ -5,6 +5,8 @@ const accountSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true },
   name: { type: String, required: true },
   company: { type: String, default: '' },
+  phone: { type: String, default: '', trim: true, index: true },
+  subdomain: { type: String, default: '', trim: true, sparse: true, unique: true },
   password: { type: String, default: null, select: false },
   resetPasswordToken: { type: String, default: null, index: true },
   resetPasswordExpires: { type: Date, default: null },

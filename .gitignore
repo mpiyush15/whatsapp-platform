@@ -78,6 +78,18 @@ temp/
 uploads/
 public/uploads/
 
+# Marketing assets — served from S3 (upload via backend/scripts/uploadMarketingAsset.js)
+frontend/public/marketing/
+
+# Local scratch / backups — do not commit
+*.bak
+**/package-lock.json.bak
+sample.txt
+test.txt
+clinic.txt
+backend/test_logo.png
+scripts/marketing-nav-body.txt
+
 # Test files
 *.test.mjs
 *.test.js

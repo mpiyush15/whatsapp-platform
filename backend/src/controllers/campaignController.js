@@ -2,6 +2,10 @@ import { sendSuccess, sendValidationError, sendNotFound } from '../utils/respons
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import Campaign from '../models/Campaign.js';
+import {
+  refreshCampaignStatsFromMessages,
+  buildCampaignRecipientInsights,
+} from '../services/campaignStatsService.js';
 import PhoneNumber from '../models/PhoneNumber.js';
 import Template from '../models/Template.js';
 import Contact from '../models/Contact.js';
@@ -212,6 +216,32 @@ export const estimateAudienceReach = async (req, res) => {
   }
 };
 
+export const getCampaignRecipientReport = async (req, res) => {
+  try {
+    const { campaignId } = req.params;
+    const accountId = req.user?.accountId;
+    const projectId = getProjectId(req);
+
+    const query = { _id: campaignId, accountId };
+    if (projectId) query.projectId = projectId;
+
+    const exists = await Campaign.findOne(query).select('_id');
+    if (!exists) {
+      return sendNotFound(res, 'Campaign');
+    }
+
+    const refreshStats = req.query.refresh !== '0' && req.query.refresh !== 'false';
+    const report = await buildCampaignRecipientInsights(campaignId, accountId, { refreshStats });
+    if (!report) {
+      return sendNotFound(res, 'Campaign');
+    }
+
+    return sendSuccess(res, report, 'Campaign recipients');
+  } catch (error) {
+    return handleControllerError(res, error, 'getCampaignRecipientReport');
+  }
+};
+
 export const getCampaignById = async (req, res) => {
   try {
     const { campaignId } = req.params;
@@ -221,10 +251,13 @@ export const getCampaignById = async (req, res) => {
     const query = { _id: campaignId, accountId };
     if (projectId) query.projectId = projectId;
 
-    const campaign = await Campaign.findOne(query);
+    let campaign = await Campaign.findOne(query);
     if (!campaign) {
       return sendNotFound(res, 'Campaign');
     }
+
+    const refreshed = await refreshCampaignStatsFromMessages(campaignId, accountId).catch(() => null);
+    if (refreshed) campaign = refreshed;
 
     return sendSuccess(res, { campaign }, 'Campaign retrieved');
   } catch (error) {
@@ -450,6 +483,8 @@ export const startCampaign = async (req, res) => {
 
     await campaign.save();
 
+    await refreshCampaignStatsFromMessages(campaign._id, accountId).catch(() => {});
+
     logger.info(`[Campaign:${campaign._id}] Bulk send finished. sent=${sent}, failed=${failed}. Waiting for webhooks for delivered/read statuses.`);
 
     return sendSuccess(res, {
@@ -569,6 +604,7 @@ export default {
   getAvailableSegments,
   getCampaigns,
   estimateAudienceReach,
+  getCampaignRecipientReport,
   getCampaignById,
   updateCampaign,
   deleteCampaign,

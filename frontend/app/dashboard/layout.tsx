@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutDashboard, Send, Users, BarChart3, Settings, 
   Bell, Search, ChevronDown, Menu, X, Megaphone, Bot, Calendar,
   FileText, LogOut, User, ChevronLeft, ChevronRight, Building2, 
-  Activity, DollarSign, Sliders, CreditCard, Receipt, BookOpen, ShieldAlert
+  Activity, DollarSign, Sliders, CreditCard, Receipt, BookOpen, ShieldAlert, Clock
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ErrorToast } from "@/components/ErrorToast"
@@ -271,6 +271,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         items: [
           { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard/superadmin", roles: [UserRole.SUPERADMIN] },
           { name: "Organizations", icon: Building2, href: "/dashboard/superadmin/organizations", roles: [UserRole.SUPERADMIN] },
+          { name: "Pending Payments", icon: Clock, href: "/dashboard/superadmin/admin/pending-payments", roles: [UserRole.SUPERADMIN] },
         ],
       },
       {
@@ -294,7 +295,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       {
         title: 'Analytics',
         items: [
+          { name: "Platform Analytics", icon: BarChart3, href: "/dashboard/superadmin/analytics/platform", roles: [UserRole.SUPERADMIN] },
           { name: "Revenue Projections", icon: BarChart3, href: "/dashboard/superadmin/analytics/revenue-projections", roles: [UserRole.SUPERADMIN] },
+          { name: "Sales Leads", icon: Users, href: "/dashboard/superadmin/leads", roles: [UserRole.SUPERADMIN] },
         ],
       },
       {
@@ -322,7 +325,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         title: 'Health',
         items: [
           { name: "System Health", icon: Activity, href: "/dashboard/superadmin/system-health", roles: [UserRole.SUPERADMIN] },
-          { name: "Test Data", icon: Activity, href: "/dashboard/superadmin/test-data", roles: [UserRole.SUPERADMIN] },
+          ...(process.env.NODE_ENV === 'development'
+            ? [{ name: 'Test Data', icon: Activity, href: '/dashboard/superadmin/test-data', roles: [UserRole.SUPERADMIN] }]
+            : []),
         ],
       },
     ]
@@ -397,7 +402,11 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
             
             {/* Scrollable Navigation */}
-            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+            <nav
+              className={`flex-1 p-4 space-y-1 overflow-y-auto ${
+                isSuperAdminTier ? 'scrollbar-hide' : ''
+              }`}
+            >
               {filteredNavigationSections.map((section) => (
                 <div key={section.title || 'default'} className="mb-4 space-y-1">
                   {section.title ? <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{section.title}</p> : null}
@@ -478,7 +487,11 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
               )}
             </button>
           </div>
-          <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          <nav
+            className={`flex-1 p-4 space-y-1 overflow-y-auto ${
+              isSuperAdminTier ? 'scrollbar-hide' : ''
+            }`}
+          >
             {filteredNavigationSections.map((section) => (
               <div key={section.title || 'default'} className="mb-4 space-y-1">
                 {!sidebarCollapsed && section.title ? (

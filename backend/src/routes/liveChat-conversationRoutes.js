@@ -436,7 +436,7 @@ router.patch('/:conversationId', async (req, res) => {
 router.post('/:conversationId/assign', async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const { agentId } = req.body;
+    const agentId = req.body?.agentId || req.user?._id;
     const accountId = req.account.accountId;
 
     if (!agentId) {
@@ -1115,6 +1115,110 @@ router.post('/sync-all-contacts', async (req, res) => {
 });
 
 /**
+ * GET /api/conversations/:conversationId/session
+ * WhatsApp 24h customer care session status
+ */
+router.get('/:conversationId/session', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const accountId = req.account.accountId;
+    const SESSION_MS = 24 * 60 * 60 * 1000;
+
+    const lastInbound = await Message.findOne({
+      accountId,
+      conversationId,
+      direction: 'inbound',
+    })
+      .sort({ sentAt: -1 })
+      .select('sentAt campaign')
+      .lean();
+
+    const lastAt = lastInbound?.sentAt ? new Date(lastInbound.sentAt) : null;
+    const expiresAt = lastAt ? new Date(lastAt.getTime() + SESSION_MS) : null;
+    const withinSession = lastAt ? Date.now() < expiresAt.getTime() : false;
+
+    let campaignName = null;
+    if (lastInbound?.campaign) {
+      const Campaign = (await import('../models/Campaign.js')).default;
+      const camp = await Campaign.findById(lastInbound.campaign).select('name').lean();
+      campaignName = camp?.name || null;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        withinSession,
+        lastCustomerMessageAt: lastAt,
+        expiresAt,
+        attributedCampaignId: lastInbound?.campaign || null,
+        attributedCampaignName: campaignName,
+      },
+    });
+  } catch (error) {
+    logger.error('❌ Error getting session status:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get session status',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/conversations/:conversationId/send-template
+ * Send approved WhatsApp template (outside 24h window)
+ */
+router.post('/:conversationId/send-template', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { templateName, templateId, variables = [] } = req.body;
+    const accountId = req.account.accountId;
+
+    if (!templateName && !templateId) {
+      return res.status(400).json({
+        success: false,
+        message: 'templateName or templateId is required',
+      });
+    }
+
+    const conversation = await Conversation.findOne({ conversationId, accountId });
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+
+    const Template = (await import('../models/Template.js')).default;
+    const template = templateId
+      ? await Template.findOne({ _id: templateId, accountId })
+      : await Template.findOne({ accountId, name: templateName });
+
+    if (!template?.name) {
+      return res.status(404).json({ success: false, message: 'Template not found' });
+    }
+
+    await whatsappService.sendTemplateMessage(
+      accountId,
+      conversation.phoneNumberId,
+      conversation.userPhone,
+      template.name,
+      Array.isArray(variables) ? variables : [],
+      { conversationId: conversation.conversationId }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Template sent',
+      data: { templateName: template.name },
+    });
+  } catch (error) {
+    logger.error('❌ Error sending template from live chat:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to send template',
+    });
+  }
+});
+
+/**
  * POST /api/conversations/:conversationId/send-message
  * Send text message to conversation
  */
@@ -1179,7 +1283,7 @@ router.post('/:conversationId/send-message', async (req, res) => {
     }
 
     // Emit real-time event to conversation room
-    emitToConversation(accountId, conversation.conversationId, 'new_message', {
+    const realtimePayload = {
       _id: message._id,
       conversationId: conversation.conversationId,
       senderRole: 'agent',
@@ -1191,7 +1295,9 @@ router.post('/:conversationId/send-message', async (req, res) => {
       replyTo: replyToMessageId,
       status: 'sent',
       createdAt: message.sentAt
-    });
+    };
+    emitToConversation(accountId, conversation.conversationId, 'new_message', realtimePayload);
+    emitToAccount(accountId, 'new_message', realtimePayload);
 
     return res.status(201).json({
       success: true,
@@ -1339,18 +1445,19 @@ router.post('/:conversationId/send-media', upload.single('file'), async (req, re
         });
     }
 
-    // Emit real-time event to conversation room with dataURL for immediate display
-    emitToConversation(accountId, conversation.conversationId, 'new_message', {
+    const realtimePayload = {
       _id: message._id,
       conversationId: conversation.conversationId,
       senderRole: 'agent',
       senderName: agentName,
       text: normalizedCaption,
-      mediaUrl: dataUrl, // Base64 dataURL for immediate display
+      mediaUrl: dataUrl,
       mediaType: mediaType,
       status: 'sent',
       createdAt: message.sentAt
-    });
+    };
+    emitToConversation(accountId, conversation.conversationId, 'new_message', realtimePayload);
+    emitToAccount(accountId, 'new_message', realtimePayload);
 
     return res.status(201).json({
       success: true,

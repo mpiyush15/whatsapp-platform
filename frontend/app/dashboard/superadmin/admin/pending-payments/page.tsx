@@ -16,7 +16,8 @@ interface PendingUser {
   email: string
   plan: string
   billingCycle: string
-  createdAt: string
+  createdAt?: string
+  registeredAt?: string
   amountDue?: number
 }
 
@@ -58,7 +59,13 @@ export default function PendingPaymentsPage() {
       }
 
       const data = await response.json()
-      setPendingUsers(data.data || [])
+      const payload = data.data
+      const users = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : []
+      setPendingUsers(users)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pending users')
       console.error('Error fetching pending users:', err)
@@ -211,7 +218,15 @@ export default function PendingPaymentsPage() {
                 <div>
                   <p className="text-sm text-gray-600">Total Amount Due</p>
                   <p className="text-3xl font-bold text-black mt-1">
-                    ₹{pendingUsers.reduce((sum, user) => sum + calculateAmountDue(user.plan, user.billingCycle), 0).toLocaleString()}
+                    ₹{pendingUsers
+                      .reduce(
+                        (sum, user) =>
+                          sum +
+                          (user.amountDue ??
+                            calculateAmountDue(user.plan, user.billingCycle)),
+                        0
+                      )
+                      .toLocaleString()}
                   </p>
                 </div>
                 <DollarSign className="h-10 w-10 text-gray-400" />
@@ -278,11 +293,11 @@ export default function PendingPaymentsPage() {
                       </td>
                       <td className="px-6 py-4">
                         <p className="font-semibold text-black">
-                          ₹{calculateAmountDue(user.plan, user.billingCycle).toLocaleString()}
+                          ₹{(user.amountDue ?? calculateAmountDue(user.plan, user.billingCycle)).toLocaleString()}
                         </p>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {formatDate(user.createdAt)}
+                        {formatDate(user.registeredAt || user.createdAt || '')}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex gap-2">

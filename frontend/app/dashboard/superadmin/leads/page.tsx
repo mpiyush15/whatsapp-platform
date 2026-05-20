@@ -1,18 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { RefreshCw, ArrowLeft, Download } from 'lucide-react';
 import { ErrorToast } from '@/components/ErrorToast';
 import { LeadStatus } from '@/lib/enums';
-import Link from 'next/link';
+import { downloadExportCsv, fetchPlatformLeads, patchPlatformLead } from '@/lib/superadminApi';
 
 interface Lead {
   _id: string;
   name: string;
-  email: string;
+  email?: string;
+  phone?: string;
   intent: string;
   score: number;
-  messageCount: number;
+  messageCount?: number;
   status: LeadStatus;
+  accountId?: string;
 }
 
 interface Stats {
@@ -26,7 +30,7 @@ interface Stats {
   averageScore: number;
 }
 
-export default function LeadsPage() {
+export default function SuperadminLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,63 +38,33 @@ export default function LeadsPage() {
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    fetchLeads();
-  }, [filter, searchTerm]);
-
-  const fetchLeads = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-
-      let url = '/api/leads?';
-      if (filter !== 'all') {
-        url += `status=${filter}&`;
-      }
-      if (searchTerm) {
-        url += `search=${encodeURIComponent(searchTerm)}&`;
-      }
-
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.message || 'Failed to fetch leads');
-      }
-
-      setLeads(data.leads);
-      setStats(data.stats);
+      const result = await fetchPlatformLeads({
+        status: filter === 'all' ? undefined : filter,
+        search: searchTerm || undefined,
+        limit: 200,
+      });
+      setLeads(result.leads as Lead[]);
+      setStats(result.stats as unknown as Stats);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch leads');
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter, searchTerm]);
+
+  useEffect(() => {
+    const t = setTimeout(load, 300);
+    return () => clearTimeout(t);
+  }, [load]);
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     try {
-      const response = await fetch(`/api/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.message);
-      }
-
-      // Update local state
-      const oldLead = leads.find(l => l._id === leadId);
-      setLeads(leads.map(l => l._id === leadId ? { ...l, status: newStatus as Lead['status'] } : l));
-      
-      if (stats && oldLead) {
-        setStats({
-          ...stats,
-          [newStatus]: (stats[newStatus as keyof Stats] as number || 0) + 1,
-          [oldLead.status]: Math.max(0, ((stats[oldLead.status as keyof Stats] as number) || 0) - 1)
-        });
-      }
+      await patchPlatformLead(leadId, newStatus);
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update lead');
     }
@@ -98,183 +72,129 @@ export default function LeadsPage() {
 
   const handleExport = async () => {
     try {
-      let url = '/api/leads/bulk/export?';
-      if (filter !== 'all') {
-        url += `status=${filter}&`;
-      }
-
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = 'leads.csv';
-      link.click();
+      await downloadExportCsv('leads', `platform-leads-${Date.now()}.csv`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export leads');
+      setError(err instanceof Error ? err.message : 'Export failed');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin">
-            <div className="h-12 w-12 border-4 border-slate-300 border-t-blue-600 rounded-full"></div>
-          </div>
-          <p className="mt-4 text-slate-600">Loading leads...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
-      {error && <ErrorToast message={error} onDismiss={() => setError('')} />}
-
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">📊 Leads</h1>
-          <p className="text-slate-600">Manage and track leads from chatbot conversations</p>
-        </div>
-
-        {/* Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
-              <p className="text-sm text-slate-600 mb-2">Total Leads</p>
-              <p className="text-3xl font-bold text-slate-900">{stats.total}</p>
-            </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
-              <p className="text-sm text-slate-600 mb-2">New</p>
-              <p className="text-3xl font-bold text-blue-600">{stats.new}</p>
-            </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
-              <p className="text-sm text-slate-600 mb-2">Converted</p>
-              <p className="text-3xl font-bold text-green-600">{stats.converted}</p>
-            </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
-              <p className="text-sm text-slate-600 mb-2">Avg Score</p>
-              <p className="text-3xl font-bold text-purple-600">{stats.averageScore}</p>
-            </div>
+    <div className="min-h-full bg-slate-50/80 p-6 lg:p-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <Link
+              href="/dashboard/superadmin"
+              className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Dashboard
+            </Link>
+            <h1 className="text-3xl font-bold text-slate-900">Platform leads</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Conversation leads captured across all organizations
+            </p>
           </div>
-        )}
-
-        {/* Filters and Search */}
-        <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200 mb-8">
-          <div className="flex flex-col md:flex-row gap-4">
-            <input
-              type="text"
-              placeholder="Search by name, email, phone..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Status</option>
-              <option value={LeadStatus.NEW}>New</option>
-              <option value={LeadStatus.CONTACTED}>Contacted</option>
-              <option value={LeadStatus.QUALIFIED}>Qualified</option>
-              <option value={LeadStatus.CONVERTED}>Converted</option>
-              <option value={LeadStatus.LOST}>Lost</option>
-              <option value={LeadStatus.STALE}>Stale</option>
-            </select>
-
+          <div className="flex gap-2">
             <button
+              type="button"
               onClick={handleExport}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm"
             >
-              📥 Export CSV
+              <Download className="h-4 w-4" />
+              Export CSV
+            </button>
+            <button
+              type="button"
+              onClick={load}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
 
-        {/* Leads Table */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-          {leads.length === 0 ? (
-            <div className="p-8 text-center text-slate-600">
-              <p>No leads found. Chatbot replies will automatically create leads here.</p>
+        {error ? <ErrorToast message={error} onDismiss={() => setError('')} /> : null}
+
+        {stats ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+            {(['total', 'new', 'contacted', 'qualified', 'converted', 'lost', 'stale'] as const).map(
+              (key) => (
+                <div key={key} className="rounded-xl border bg-white p-3 text-center shadow-sm">
+                  <p className="text-xs uppercase text-slate-500">{key}</p>
+                  <p className="text-xl font-bold">{stats[key]}</p>
+                </div>
+              )
+            )}
+            <div className="rounded-xl border bg-white p-3 text-center shadow-sm">
+              <p className="text-xs uppercase text-slate-500">avg score</p>
+              <p className="text-xl font-bold">{stats.averageScore}</p>
             </div>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-3">
+          <input
+            type="search"
+            placeholder="Search name, email, phone…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="min-w-[200px] flex-1 rounded-xl border border-slate-200 px-4 py-2 text-sm"
+          />
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm"
+          >
+            <option value="all">All statuses</option>
+            {Object.values(LeadStatus).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {loading ? (
+            <p className="p-8 text-center text-slate-500">Loading leads…</p>
+          ) : leads.length === 0 ? (
+            <p className="p-8 text-center text-slate-500">No leads in this period</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                   <tr>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Name</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Intent</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Score</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Messages</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Status</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Action</th>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Contact</th>
+                    <th className="px-4 py-3">Intent</th>
+                    <th className="px-4 py-3">Score</th>
+                    <th className="px-4 py-3">Account</th>
+                    <th className="px-4 py-3">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody>
                   {leads.map((lead) => (
-                    <tr key={lead._id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="font-medium text-slate-900">{lead.name}</p>
-                          <p className="text-sm text-slate-600">{lead.email}</p>
-                        </div>
+                    <tr key={lead._id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-medium">{lead.name}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {lead.email || lead.phone || '—'}
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium capitalize">
-                          {lead.intent}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-12 h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${
-                                lead.score >= 75
-                                  ? 'bg-green-600'
-                                  : lead.score >= 50
-                                  ? 'bg-yellow-600'
-                                  : 'bg-red-600'
-                              }`}
-                              style={{ width: `${lead.score}%` }}
-                            />
-                          </div>
-                          <span className="text-sm font-semibold text-slate-900">{lead.score}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{lead.messageCount}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-3 capitalize">{lead.intent?.replace(/_/g, ' ')}</td>
+                      <td className="px-4 py-3">{lead.score}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{lead.accountId}</td>
+                      <td className="px-4 py-3">
                         <select
                           value={lead.status}
                           onChange={(e) => handleStatusChange(lead._id, e.target.value)}
-                          className={`px-3 py-1 rounded-lg text-sm font-medium border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
-                            lead.status === LeadStatus.NEW
-                              ? 'bg-blue-100 text-blue-700'
-                              : lead.status === LeadStatus.CONVERTED
-                              ? 'bg-green-100 text-green-700'
-                              : lead.status === LeadStatus.LOST
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
+                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
                         >
-                          <option value={LeadStatus.NEW}>New</option>
-                          <option value={LeadStatus.CONTACTED}>Contacted</option>
-                          <option value={LeadStatus.QUALIFIED}>Qualified</option>
-                          <option value={LeadStatus.CONVERTED}>Converted</option>
-                          <option value={LeadStatus.LOST}>Lost</option>
-                          <option value={LeadStatus.STALE}>Stale</option>
+                          {Object.values(LeadStatus).map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
                         </select>
-                      </td>
-                      <td className="px-6 py-4">
-                        <Link
-                          href={`/dashboard/leads/${lead._id}`}
-                          className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                        >
-                          View →
-                        </Link>
                       </td>
                     </tr>
                   ))}

@@ -3,6 +3,7 @@
 import { X } from "lucide-react"
 import { useState, useEffect } from "react"
 import { API_URL } from "@/lib/config/api"
+import { VerticalBadge, VerticalBadgesFromCounts } from "@/components/platform/VerticalBadges"
 
 interface OrganizationDetailsDrawerProps {
   isOpen: boolean
@@ -240,7 +241,7 @@ export default function OrganizationDetailsDrawer({
     <>
       <div className="fixed inset-0 bg-black/50 z-40 transition-opacity" onClick={onClose} />
 
-      <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 transform transition-transform duration-300 overflow-y-auto">
+      <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-white shadow-xl z-50 transform transition-transform duration-300 overflow-y-auto sm:w-[32rem]">
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900">Organization Details</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition">
@@ -305,6 +306,95 @@ export default function OrganizationDetailsDrawer({
           ) : (
             <div className="text-center py-8 text-gray-500">Loading organization data...</div>
           )}
+
+          {orgData?.operational ? (
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Projects & WhatsApp</h3>
+              {orgData.operational.verticals?.length ? (
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Verticals in use</p>
+                  <VerticalBadgesFromCounts projectsByVertical={orgData.operational.projectsByVertical} />
+                  {orgData.operational.hasMultipleVerticals ? (
+                    <p className="mt-2 text-xs text-sky-700">
+                      This org runs multiple product verticals (e.g. WhatsApp + Healthcare).
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs text-gray-500 uppercase">Projects</p>
+                  <p className="font-semibold text-gray-900">{orgData.operational.projectCount}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs text-gray-500 uppercase">WA connected</p>
+                  <p className="font-semibold text-gray-900">{orgData.operational.connectedProjectCount}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs text-gray-500 uppercase">Phone lines</p>
+                  <p className="font-semibold text-gray-900">{orgData.operational.phoneLineCount}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs text-gray-500 uppercase">Messages (7d)</p>
+                  <p className="font-semibold text-gray-900">{orgData.operational.messagesLast7d}</p>
+                </div>
+              </div>
+              {orgData.operational.projects?.length > 0 ? (
+                <div className="mb-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Projects</p>
+                  <ul className="space-y-2 max-h-40 overflow-y-auto">
+                    {orgData.operational.projects.map((proj: {
+                      projectId: string;
+                      name: string;
+                      isDefault: boolean;
+                      vertical?: string;
+                      whatsappConnected: boolean;
+                      displayNumber: string | null;
+                      status: string;
+                    }) => (
+                      <li
+                        key={proj.projectId}
+                        className="rounded-lg border border-gray-100 px-3 py-2 text-sm"
+                      >
+                        <p className="font-medium text-gray-900 flex flex-wrap items-center gap-1.5">
+                          {proj.name}
+                          <VerticalBadge vertical={proj.vertical || 'whatsapp'} compact />
+                          {proj.isDefault ? (
+                            <span className="text-[10px] text-blue-600">default</span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {proj.whatsappConnected
+                            ? proj.displayNumber || 'WhatsApp connected'
+                            : 'Not connected'}
+                          · {proj.status}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {orgData.operational.phones?.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Phone numbers</p>
+                  <ul className="space-y-2 max-h-32 overflow-y-auto">
+                    {orgData.operational.phones.map((ph: {
+                      displayPhone: string;
+                      isActive: boolean;
+                      qualityRating?: string;
+                    }, i: number) => (
+                      <li key={i} className="text-sm text-gray-700 flex justify-between">
+                        <span>{ph.displayPhone}</span>
+                        <span className="text-xs text-gray-500">
+                          {ph.isActive ? 'active' : 'inactive'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* Transactions Section */}
           <div className="mt-8 pt-6 border-t border-gray-200">

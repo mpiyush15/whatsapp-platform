@@ -280,8 +280,9 @@ class LiveChatConversationService {
       throw err;
     }
 
+    const conversationRepository = (await import('../repositories/conversationRepository.js')).default;
     const conversation = await Conversation.findOneAndUpdate(
-      { _id: conversationId, accountId },
+      conversationRepository.buildConversationIdentityFilter(conversationId, accountId),
       updates,
       { new: true }
     ).populate('assignedAgentId', 'name email');

@@ -1,14 +1,9 @@
 'use client'
 
-import Navbar from '@/components/Navbar'
-import Footer from '@/components/Footer'
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      
-      <div className="pt-32 pb-16 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-white"><div className="pt-32 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
           <p className="text-gray-600 mb-2"><strong>Replysys Platform</strong></p>
@@ -211,9 +206,6 @@ export default function PrivacyPage() {
             </section>
           </div>
         </div>
-      </div>
-
-      <Footer />
-    </div>
+      </div></div>
   )
 }

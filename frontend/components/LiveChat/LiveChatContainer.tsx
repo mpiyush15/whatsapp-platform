@@ -1,51 +1,76 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { io, Socket } from "socket.io-client"
 import { MessageCircle } from "lucide-react"
 import ConversationList from "./ConversationList"
 import ChatArea from "./ChatArea"
 import { authService } from "@/lib/auth"
 import { useLiveChat } from "@/lib/context/LiveChatContext"
+import {
+  fetchConversations as loadConversationsApi,
+  type LiveChatConversation,
+} from "@/lib/liveChatApi"
+import {
+  normalizeLiveChatMessage,
+  messageIdsEqual,
+  type LiveChatMessage,
+} from "@/lib/liveChatMessageUtils"
 
-interface Conversation {
-  _id: string
-  conversationId: string
-  userPhone: string
-  userName: string
-  lastMessagePreview: string
-  lastMessageAt: Date
-  unreadCount: number
-  status: 'open' | 'closed'
-  assignedAgentId?: string
-  isOnline?: boolean
+const CONV_API = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050/api"}/integrations/whatsapp/conversations`
+
+const normalizePhoneDigits = (phone: string) => String(phone || '').replace(/\D/g, '')
+
+interface LiveChatContainerProps {
+  initialPhone?: string | null
+  projectId?: string
 }
 
-interface Message {
-  _id: string
-  conversationId: string
-  senderRole: 'customer' | 'agent'
-  senderName: string
-  text: string
-  mediaUrl?: string
-  mediaType?: string
-  status: 'sent' | 'delivered' | 'read' | 'failed'
-  createdAt: Date
-  reactions?: { emoji: string; count: number }[]
-  isRead?: boolean
-}
-
-export default function LiveChatContainer() {
-  const { search, filter } = useLiveChat()
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
+export default function LiveChatContainer({ initialPhone = null, projectId }: LiveChatContainerProps) {
+  const { search, filter, setSearch } = useLiveChat()
+  const [conversations, setConversations] = useState<LiveChatConversation[]>([])
+  const [selectedConversation, setSelectedConversation] = useState<LiveChatConversation | null>(null)
+  const [toast, setToast] = useState<{ type: 'error' | 'success'; text: string } | null>(null)
+  const [messages, setMessages] = useState<LiveChatMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [socket, setSocket] = useState<Socket | null>(null)
   const socketRef = useRef<Socket | null>(null)
   const messageOffsetRef = useRef(0)
+  const initialPhoneHandledRef = useRef(false)
+  const selectedConversationIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversation?.conversationId ?? null
+  }, [selectedConversation?.conversationId])
+
+  const appendMessage = useCallback((raw: unknown, fallbackConversationId?: string) => {
+    const msg = normalizeLiveChatMessage(
+      (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>,
+      fallbackConversationId
+    )
+    if (!msg) return
+    const activeId = selectedConversationIdRef.current
+    if (!activeId || !messageIdsEqual(msg.conversationId, activeId)) return
+
+    setMessages((prev) => {
+      if (prev.some((m) => messageIdsEqual(m._id, msg._id))) return prev
+      return [...prev, msg]
+    })
+
+    setConversations((prev) =>
+      prev.map((conv) =>
+        messageIdsEqual(conv.conversationId, msg.conversationId)
+          ? {
+              ...conv,
+              lastMessagePreview: msg.text || (msg.mediaType ? `📎 ${msg.mediaType}` : conv.lastMessagePreview),
+              lastMessageAt: msg.createdAt,
+            }
+          : conv
+      )
+    )
+  }, [])
 
   // Initialize Socket.io connection
   useEffect(() => {
@@ -60,18 +85,10 @@ export default function LiveChatContainer() {
       newSocket.emit('subscribe_conversations')
     })
 
-    // 🔥 NOTE: new_message listener moved to selectedConversation useEffect
-    // This ensures it captures the correct selectedConversation value
-
-    // Listen for conversation preview updates (from any conversation)
-    const handleConversationUpdate = (data: Message) => {
-      setConversations(prev => prev.map(conv => 
-        conv.conversationId === data.conversationId 
-          ? { ...conv, lastMessagePreview: data.text || `📎 ${data.mediaType}`, lastMessageAt: new Date(data.createdAt) }
-          : conv
-      ))
+    const handleNewMessage = (data: unknown) => {
+      appendMessage(data)
     }
-    newSocket.on('new_message', handleConversationUpdate)
+    newSocket.on('new_message', handleNewMessage)
 
     // Listen for typing indicator
     newSocket.on('customer_typing', (data) => {
@@ -157,10 +174,10 @@ export default function LiveChatContainer() {
     setSocket(newSocket)
 
     return () => {
-      newSocket.off('new_message', handleConversationUpdate)
+      newSocket.off('new_message', handleNewMessage)
       newSocket.disconnect()
     }
-  }, [])
+  }, [appendMessage])
 
   // ✅ Join/Leave conversation rooms when selection changes + update listeners
   useEffect(() => {
@@ -171,20 +188,8 @@ export default function LiveChatContainer() {
     })
     console.log(`Joined room: ${selectedConversation.conversationId}`)
 
-    // 🔥 UPDATE: Add message listener HERE so it captures current selectedConversation
-    const handleNewMessage = (data: Message) => {
-      console.log('📨 New message:', data)
-      console.log('🎬 Message details - Type:', data.mediaType, 'URL:', data.mediaUrl?.substring(0, 80))
-      if (data.conversationId === selectedConversation.conversationId) {
-        setMessages(prev => [...prev, data])
-      }
-    }
-
-    socketRef.current.on('new_message', handleNewMessage)
-
     return () => {
       if (socketRef.current) {
-        socketRef.current.off('new_message', handleNewMessage)
         socketRef.current.emit('leave_conversation', {
           conversationId: selectedConversation.conversationId
         })
@@ -193,24 +198,21 @@ export default function LiveChatContainer() {
     }
   }, [selectedConversation])
 
-  // Fetch conversations on mount
-  useEffect(() => {
-    fetchConversations()
-  }, [])
+  const showToast = (type: 'error' | 'success', text: string) => {
+    setToast({ type, text })
+    setTimeout(() => setToast(null), 4000)
+  }
 
-  const fetchConversations = async () => {
+  const reloadConversations = async () => {
     try {
       setLoading(true)
-      const token = authService.getToken()
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/integrations/whatsapp/conversations`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const rows = await loadConversationsApi({
+        search: search.trim() || undefined,
+        status: filter === 'open' || filter === 'closed' ? filter : null,
+        assignedToMe: filter === 'mine',
+        limit: 100,
       })
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('📡 Fetched conversations:', result.data)
-        setConversations(result.data || [])
-      }
+      setConversations(rows)
     } catch (err) {
       console.error('Error fetching conversations:', err)
     } finally {
@@ -218,11 +220,32 @@ export default function LiveChatContainer() {
     }
   }
 
+  useEffect(() => {
+    reloadConversations()
+  }, [search, filter])
+
+  useEffect(() => {
+    if (initialPhone) {
+      setSearch(normalizePhoneDigits(initialPhone))
+    }
+  }, [initialPhone, setSearch])
+
+  const handleConversationUpdated = (updates: Partial<LiveChatConversation>) => {
+    if (!selectedConversation) return
+    const merged = { ...selectedConversation, ...updates }
+    setSelectedConversation(merged)
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.conversationId === merged.conversationId ? { ...c, ...updates } : c
+      )
+    )
+  }
+
   const fetchMessages = async (conversationId: string, limit = 50, offset = 0) => {
     try {
       const token = authService.getToken()
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${conversationId}/messages?limit=${limit}&offset=${offset}`,
+        `${CONV_API}/${conversationId}/messages?limit=${limit}&offset=${offset}`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
 
@@ -260,13 +283,13 @@ export default function LiveChatContainer() {
     }
   }
 
-  const handleSelectConversation = async (conversation: Conversation) => {
+  const handleSelectConversation = async (conversation: LiveChatConversation) => {
     setSelectedConversation(conversation)
     messageOffsetRef.current = 0
     setHasMore(false)
     setMessages([]) // Clear messages before loading new ones
     // Load only 20 messages initially for faster loading, user can scroll up for more
-    await fetchMessages(conversation.conversationId, 20, 0)
+    await fetchMessages(conversation.conversationId, 50, 0)
     
     // Mark all messages as read and clear unread count
     if (socket && conversation.unreadCount > 0) {
@@ -299,13 +322,33 @@ export default function LiveChatContainer() {
     ))
   }
 
-  const handleSendMessage = async (text: string, mediaUrl?: string, mediaType?: string) => {
-    if (!selectedConversation) return
+  useEffect(() => {
+    if (!initialPhone || initialPhoneHandledRef.current || loading || conversations.length === 0) {
+      return
+    }
+    const target = normalizePhoneDigits(initialPhone)
+    if (!target) return
+
+    const match =
+      conversations.find((c) => normalizePhoneDigits(c.userPhone) === target) ||
+      conversations.find((c) => c.conversationId?.endsWith(target))
+
+    if (match) {
+      initialPhoneHandledRef.current = true
+      handleSelectConversation(match)
+    }
+  }, [initialPhone, loading, conversations])
+
+  const handleSendMessage = async (
+    text: string,
+    mediaUrl?: string,
+    mediaType?: string
+  ): Promise<boolean> => {
+    if (!selectedConversation) return false
 
     try {
       const token = authService.getToken()
 
-      // If there's media (file was selected)
       if (mediaUrl && mediaType) {
         console.log(`📤 Preparing to send ${mediaType}...`);
         
@@ -314,8 +357,8 @@ export default function LiveChatContainer() {
         const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
         
         if (!arr[1]) {
-          console.error('❌ Invalid data URL - no base64 data');
-          return;
+          showToast('error', 'Invalid media file')
+          return false
         }
         
         const bstr = atob(arr[1]);
@@ -329,8 +372,8 @@ export default function LiveChatContainer() {
         console.log(`✅ Blob created: ${(blob.size / 1024).toFixed(2)}KB, MIME: ${mime}`);
         
         if (blob.size === 0) {
-          console.error('❌ Blob is empty!');
-          return;
+          showToast('error', 'Media file is empty')
+          return false
         }
         
         // Determine filename from mediaType
@@ -351,7 +394,7 @@ export default function LiveChatContainer() {
         console.log(`📤 Sending to /send-media endpoint...`);
 
         const uploadResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${selectedConversation.conversationId}/send-media`,
+          `${CONV_API}/${selectedConversation.conversationId}/send-media`,
           {
             method: 'POST',
             headers: {
@@ -367,15 +410,22 @@ export default function LiveChatContainer() {
         console.log(`📥 Response: ${responseText}`);
 
         if (uploadResponse.ok) {
-          console.log('✅ Media message sent successfully');
-          // Message will come via socket listener 'new_message' event
-        } else {
-          console.error('❌ Failed to send media message:', responseText);
+          try {
+            const result = JSON.parse(responseText)
+            if (result?.data) {
+              appendMessage(result.data, selectedConversation.conversationId)
+            }
+          } catch {
+            /* response may not be JSON */
+          }
+          return true
         }
+        showToast('error', responseText || 'Failed to send media')
+        return false
       } else {
         // Send text-only message
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/live-chat/conversations/${selectedConversation.conversationId}/send-message`,
+          `${CONV_API}/${selectedConversation.conversationId}/send-message`,
           {
             method: 'POST',
             headers: {
@@ -387,14 +437,22 @@ export default function LiveChatContainer() {
         );
 
         if (response.ok) {
-          const result = await response.json();
-          console.log('✅ Message sent successfully');
-          // Message will come via socket listener 'new_message' event
+          const result = await response.json().catch(() => ({}))
+          if (result?.data) {
+            appendMessage(result.data, selectedConversation.conversationId)
+          }
+          return true
         }
+        const errBody = await response.json().catch(() => ({}))
+        showToast('error', errBody?.message || 'Failed to send message')
+        return false
       }
     } catch (err) {
-      console.error('❌ Error sending message:', err);
+      console.error('❌ Error sending message:', err)
+      showToast('error', 'Network error while sending')
+      return false
     }
+    return false
   }
 
   if (loading) {
@@ -406,40 +464,46 @@ export default function LiveChatContainer() {
   }
 
   return (
-    <div className="flex h-full w-full bg-white overflow-hidden">
-      {/* Sidebar - Conversations (Hidden on mobile, visible on desktop) */}
+    <div className="flex h-full w-full bg-white overflow-hidden relative">
+      {toast && (
+        <div
+          className={`absolute top-2 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg ${
+            toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+          }`}
+        >
+          {toast.text}
+        </div>
+      )}
       <div className="hidden md:flex md:w-80 border-r border-gray-200 flex-col flex-shrink-0">
-        <ConversationList 
+        <ConversationList
           conversations={conversations}
           selectedConversation={selectedConversation}
           onSelectConversation={handleSelectConversation}
           loading={loading}
-          search={search}
-          filter={filter}
         />
       </div>
 
       {/* Mobile Conversation List - Visible when no conversation selected */}
       {!selectedConversation && (
         <div className="md:hidden w-full h-full overflow-hidden">
-          <ConversationList 
+          <ConversationList
             conversations={conversations}
             selectedConversation={selectedConversation}
             onSelectConversation={handleSelectConversation}
             loading={loading}
-            search={search}
-            filter={filter}
           />
         </div>
       )}
 
       {/* Main Chat Area (Full width on mobile) */}
       {selectedConversation ? (
-        <ChatArea 
+        <ChatArea
           conversation={selectedConversation}
           messages={messages}
           onSendMessage={handleSendMessage}
+          onConversationUpdated={handleConversationUpdated}
           socket={socket}
+          projectId={projectId}
           onBack={() => setSelectedConversation(null)}
           onLoadMore={() => fetchMoreMessages(selectedConversation.conversationId)}
           loadingMore={loadingMore}

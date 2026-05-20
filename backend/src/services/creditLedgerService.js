@@ -38,11 +38,15 @@ class CreditLedgerService {
     const signedAmount = this.normalizeSignedAmount(entryType, amount);
 
     let claimedLedger = null;
+    let resumeProcessing = false;
+
     if (idempotencyKey) {
-      const claim = await AccountCreditLedger.findOneAndUpdate(
-        { idempotencyKey },
-        {
-          $setOnInsert: {
+      let existingDoc = await AccountCreditLedger.findOne({ idempotencyKey });
+      let wasInserted = false;
+
+      if (!existingDoc) {
+        try {
+          existingDoc = await AccountCreditLedger.create({
             accountId,
             entryType,
             source,
@@ -53,22 +57,15 @@ class CreditLedgerService {
             note,
             metadata,
             status: 'processing',
-          },
-          $set: {
-            updatedAt: new Date(),
-          }
-        },
-        {
-          upsert: true,
-          new: true,
-          rawResult: true,
+          });
+          wasInserted = true;
+        } catch (error) {
+          if (error?.code !== 11000) throw error;
+          existingDoc = await AccountCreditLedger.findOne({ idempotencyKey });
         }
-      );
+      }
 
-      const existed = Boolean(claim?.lastErrorObject?.updatedExisting);
-      const existingDoc = claim?.value;
-
-      if (existed && existingDoc?.status === 'posted') {
+      if (existingDoc?.status === 'posted') {
         return {
           posted: true,
           isDuplicate: true,
@@ -77,24 +74,17 @@ class CreditLedgerService {
         };
       }
 
-      if (existed && existingDoc?.status === 'processing') {
-        return {
-          posted: false,
-          isDuplicate: true,
-          inProgress: true,
-          ledger: existingDoc,
-          message: 'Credit entry is already being processed',
-        };
-      }
-
       claimedLedger = existingDoc;
+      resumeProcessing = !wasInserted && existingDoc?.status === 'processing';
     }
 
-    const account = await Account.findOneAndUpdate(
-      { accountId },
-      { $inc: { creditBalance: signedAmount } },
-      { new: true }
-    );
+    const account = resumeProcessing
+      ? await Account.findOne({ accountId })
+      : await Account.findOneAndUpdate(
+          { accountId },
+          { $inc: { creditBalance: signedAmount } },
+          { new: true }
+        );
 
     if (!account) {
       if (claimedLedger?._id) {

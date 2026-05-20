@@ -1,4 +1,3 @@
-import Message from '../models/Message.js';
 import Contact from '../models/Contact.js';
 import whatsappService from './whatsappService.js';
 import logger from '../utils/logger.js';
@@ -205,7 +204,10 @@ export class BroadcastExecutionService {
           phoneNumberId,
           recipientPhone,
           broadcast.content.text,
-          { broadcastId: broadcast._id.toString() }
+          {
+            broadcastId: broadcast._id.toString(),
+            projectId: broadcast.projectId || null,
+          }
         );
         messageId = result.messageId;
 
@@ -216,7 +218,10 @@ export class BroadcastExecutionService {
           recipientPhone,
           broadcast.content.templateName,
           broadcast.content.templateParams,
-          { broadcastId: broadcast._id.toString() }
+          {
+            broadcastId: broadcast._id.toString(),
+            projectId: broadcast.projectId || null,
+          }
         );
         messageId = result.messageId;
 
@@ -227,133 +232,16 @@ export class BroadcastExecutionService {
           recipientPhone,
           broadcast.content.mediaType,
           broadcast.content.mediaUrl,
-          { broadcastId: broadcast._id.toString() }
+          {
+            broadcastId: broadcast._id.toString(),
+            projectId: broadcast.projectId || null,
+          }
         );
         messageId = result.messageId;
       }
 
-      // ✅ FIX: Find or create conversation FIRST (required for message.conversationId)
-      const Conversation = (await import('../models/Conversation.js')).default;
-      const workspaceId = broadcast.workspaceId || accountId; // Use broadcast workspace or account
-      
-      const conversationDocId = `${accountId}_${phoneNumberId}_${recipientPhone}`;
-      
-      // ✅ CRITICAL FIX FOR CONCURRENT BROADCASTS:
-      // Retry upsert with exponential backoff to handle E11000 duplicate key errors
-      // This happens when multiple broadcast messages try to create the same conversation
-      let conversation;
-      let retries = 3;
-      let lastError;
-      
-      for (let attempt = 0; attempt < retries; attempt++) {
-        try {
-          conversation = await Conversation.findOneAndUpdate(
-            {
-              accountId,
-              phoneNumberId,
-              userPhone: recipientPhone
-            },
-            {
-              $setOnInsert: {
-                accountId,
-                workspaceId,
-                phoneNumberId,
-                userPhone: recipientPhone,
-                conversationId: conversationDocId,
-                startedAt: new Date()
-              },
-              $set: {
-                lastMessageAt: new Date(),
-                status: 'open'
-              }
-            },
-            { 
-              upsert: true, 
-              new: true,
-              runValidators: false
-            }
-          );
-          break; // Success
-        } catch (error) {
-          lastError = error;
-          if (error.code === 11000 && attempt < retries - 1) {
-            // Duplicate key error - wait and retry
-            await this.sleep(Math.pow(2, attempt) * 100); // Exponential backoff: 100ms, 200ms, 400ms
-            continue;
-          }
-          
-          // If it's the last attempt or not a duplicate key error, fallback to findOne
-          if (error.code === 11000) {
-            console.warn(`⚠️  Duplicate key on conversation upsert, attempting to find existing conversation for ${recipientPhone}`);
-            conversation = await Conversation.findOne({
-              accountId,
-              phoneNumberId,
-              userPhone: recipientPhone
-            });
-            
-            if (conversation) {
-              // Update lastMessageAt
-              conversation.lastMessageAt = new Date();
-              conversation.status = 'open';
-              await conversation.save().catch(() => {}); // Silent fail, we have the object
-              break;
-            }
-          }
-          
-          throw error;
-        }
-      }
-      
-      // Final check - if conversation is still null, throw the last error
-      if (!conversation) {
-        throw lastError || new Error('Failed to create/find conversation');
-      }
-
-      // ✅ CRITICAL FIX: Normalize messageType to frontend-compatible types
-      // Frontend only accepts: text, image, video, audio, document, location
-      let normalizedMessageType = broadcast.messageType;
-      
-      if (broadcast.messageType === 'template') {
-        // Templates are text-based messages
-        normalizedMessageType = 'text';
-      } else if (broadcast.messageType === 'media') {
-        // Detect media type from content
-        if (broadcast.content?.mediaType === 'image') {
-          normalizedMessageType = 'image';
-        } else if (broadcast.content?.mediaType === 'video') {
-          normalizedMessageType = 'video';
-        } else if (broadcast.content?.mediaType === 'audio') {
-          normalizedMessageType = 'audio';
-        } else if (broadcast.content?.mediaType === 'document') {
-          normalizedMessageType = 'document';
-        } else {
-          // Fallback: treat as text if type unclear
-          normalizedMessageType = 'text';
-        }
-      }
-      
-      // Validate it's one of the 6 supported types
-      const supportedTypes = ['text', 'image', 'video', 'audio', 'document', 'location'];
-      if (!supportedTypes.includes(normalizedMessageType)) {
-        normalizedMessageType = 'text'; // Safe fallback
-      }
-
-      // Log message to database WITH conversationId
-      const message = new Message({
-        accountId,
-        phoneNumberId,
-        conversationId: conversation._id,  // ✅ CRITICAL: Link to conversation
-        waMessageId: messageId,
-        recipientPhone,
-        messageType: normalizedMessageType,  // ✅ NOW GUARANTEED TO BE FRONTEND-COMPATIBLE
-        status: 'sent',
-        direction: 'outbound',
-        campaign: broadcast._id.toString(),
-        content: broadcast.content
-      });
-
-      await message.save();
-
+      // Message record, conversation link, Meta billing category, and credit debit
+      // are handled inside whatsappService — avoid duplicate DB rows.
       return { success: true, messageId };
 
     } catch (error) {

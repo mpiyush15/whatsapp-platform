@@ -1,7 +1,5 @@
 'use client'
 
-import Navbar from '@/components/Navbar'
-import Footer from '@/components/Footer'
 import { Mail, Phone, MapPin, Clock, MessageSquare, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useState } from 'react'
@@ -48,10 +46,7 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      
-      <div className="pt-32 pb-16">
+    <div className="min-h-screen bg-white"><div className="pt-32 pb-16">
         {/* Hero Section */}
         <div className="bg-gradient-to-br from-green-50 to-white px-4 sm:px-6 lg:px-8 py-16 mb-16">
           <div className="max-w-4xl mx-auto text-center">
@@ -263,9 +258,6 @@ export default function ContactPage() {
             ))}
           </div>
         </div>
-      </div>
-
-      <Footer />
-    </div>
+      </div></div>
   )
 }

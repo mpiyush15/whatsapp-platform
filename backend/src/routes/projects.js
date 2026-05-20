@@ -41,4 +41,7 @@ router.post('/:projectId/set-default', verifyProjectAccess, projectController.se
 // GET /api/projects/:projectId/stats - Get project statistics
 router.get('/:projectId/stats', verifyProjectAccess, projectController.getProjectStats);
 
+// GET /api/projects/:projectId/analytics - Full project performance analytics
+router.get('/:projectId/analytics', verifyProjectAccess, projectController.getProjectAnalytics);
+
 export default router;

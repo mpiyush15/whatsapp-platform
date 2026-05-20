@@ -175,6 +175,8 @@ const campaignSchema = new mongoose.Schema(
       totalDelivered: { type: Number, default: 0 },
       totalFailed: { type: Number, default: 0 },
       totalOpened: { type: Number, default: 0 },
+      totalReplied: { type: Number, default: 0 },
+      totalReplyMessages: { type: Number, default: 0 },
       totalClicked: { type: Number, default: 0 },
       totalConverted: { type: Number, default: 0 },
       

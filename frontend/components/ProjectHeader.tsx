@@ -3,6 +3,7 @@
 import { useProject } from '@/lib/context/ProjectContext'
 import { useLiveChat } from '@/lib/context/LiveChatContext'
 import { useSettings } from '@/lib/context/SettingsContext'
+import { useFlowBuilderOptional } from '@/lib/context/FlowBuilderContext'
 import { useRouter, usePathname } from 'next/navigation'
 import { ChevronDown, LogOut, Settings, Search, RefreshCw, Plus, Menu } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -81,12 +82,15 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
 
   // Check if on campaigns page
   const isCampaignsPage = pathname.includes('/campaigns')
+
+  const isFlowPage = pathname.includes('/flow')
+  const flowBuilder = useFlowBuilderOptional()
   
   // Use context for live chat search/filter
   let search = ''
-  let filter: 'all' | 'unread' | 'open' | 'closed' = 'all'
+  let filter: 'all' | 'unread' | 'open' | 'closed' | 'mine' = 'all'
   let setSearch: (s: string) => void = () => {}
-  let setFilter: (f: 'all' | 'unread' | 'open' | 'closed') => void = () => {}
+  let setFilter: (f: 'all' | 'unread' | 'open' | 'closed' | 'mine') => void = () => {}
   
   if (isLiveChatPage) {
     const liveChat = useLiveChat()
@@ -437,8 +441,9 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
   // Show blank topbar for non-dashboard, non-livechat pages
   if (!isDashboardPage) {
     const routeHeader = getRouteHeader()
+    const flowStatus = isFlowPage ? flowBuilder?.status : null
     return (
-      <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6">
+      <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between gap-4 px-6">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onMenuClick}
@@ -452,6 +457,16 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
             <p className="text-xs text-gray-500 truncate">{routeHeader.subtitle}</p>
           </div>
         </div>
+        {flowStatus ? (
+          <p
+            className={`max-w-md truncate text-sm font-medium ${
+              flowStatus.type === 'error' ? 'text-red-600' : 'text-green-700'
+            }`}
+            title={flowStatus.message}
+          >
+            {flowStatus.message}
+          </p>
+        ) : null}
       </header>
     )
   }

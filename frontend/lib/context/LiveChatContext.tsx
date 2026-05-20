@@ -5,15 +5,15 @@ import { createContext, useContext, useState, ReactNode } from 'react'
 interface LiveChatContextType {
   search: string
   setSearch: (search: string) => void
-  filter: 'all' | 'unread' | 'open' | 'closed'
-  setFilter: (filter: 'all' | 'unread' | 'open' | 'closed') => void
+  filter: 'all' | 'unread' | 'open' | 'closed' | 'mine'
+  setFilter: (filter: 'all' | 'unread' | 'open' | 'closed' | 'mine') => void
 }
 
 const LiveChatContext = createContext<LiveChatContextType | undefined>(undefined)
 
 export function LiveChatProvider({ children }: { children: ReactNode }) {
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'all' | 'unread' | 'open' | 'closed'>('all')
+  const [filter, setFilter] = useState<'all' | 'unread' | 'open' | 'closed' | 'mine'>('all')
 
   return (
     <LiveChatContext.Provider value={{ search, setSearch, filter, setFilter }}>

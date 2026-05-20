@@ -9,50 +9,14 @@ import Account from '../models/Account.js';
 import PhoneNumber from '../models/PhoneNumber.js';
 import Message from '../models/Message.js';
 import Conversation from '../models/Conversation.js';
-import Campaign from '../models/Campaign.js';
 import { dispatchWebhookEvent } from '../services/webhookDispatcherService.js';
-
-const refreshCampaignStatsFromMessages = async (campaignId, accountId) => {
-  const [sentCount, failedCount, deliveredOrReadCount, readCount] = await Promise.all([
-    Message.countDocuments({ campaign: String(campaignId), accountId, status: { $in: ['sent', 'delivered', 'read'] } }),
-    Message.countDocuments({ campaign: String(campaignId), accountId, status: 'failed' }),
-    Message.countDocuments({ campaign: String(campaignId), accountId, status: { $in: ['delivered', 'read'] } }),
-    Message.countDocuments({ campaign: String(campaignId), accountId, status: 'read' })
-  ]);
-
-  const campaign = await Campaign.findOne({ _id: campaignId, accountId });
-  if (!campaign) return null;
-
-  const attempted = Number(campaign.recipients?.total || 0);
-  const terminalCount = deliveredOrReadCount + failedCount;
-  const updatedStatus = attempted > 0 && terminalCount >= attempted ? 'completed' : campaign.status;
-
-  campaign.stats = {
-    ...(campaign.stats?.toObject?.() || campaign.stats || {}),
-    totalSent: sentCount,
-    totalFailed: failedCount,
-    totalDelivered: deliveredOrReadCount,
-    totalOpened: readCount,
-    deliveryRate: sentCount > 0 ? Number(((deliveredOrReadCount / sentCount) * 100).toFixed(2)) : 0,
-    openRate: deliveredOrReadCount > 0 ? Number(((readCount / deliveredOrReadCount) * 100).toFixed(2)) : 0
-  };
-
-  campaign.recipients = {
-    ...(campaign.recipients?.toObject?.() || campaign.recipients || {}),
-    sent: sentCount,
-    failed: failedCount,
-    pending: Math.max(attempted - terminalCount, 0),
-    inProgress: Math.max(attempted - terminalCount, 0)
-  };
-
-  campaign.status = updatedStatus;
-  if (updatedStatus === 'completed' && !campaign.completedAt) {
-    campaign.completedAt = new Date();
-  }
-
-  await campaign.save();
-  return campaign;
-};
+import {
+  attributeInboundReplyToCampaign,
+  refreshCampaignStatsFromMessages,
+} from '../services/campaignStatsService.js';
+import whatsappService from '../services/whatsappService.js';
+import { resolveProjectIdForPhone } from '../services/chatbotContextService.js';
+import { resolveProjectIdForAccountPhone } from '../services/projectScopeResolver.js';
 export const registerWebhook = async (req, res) => {
   try {
     const { url, events } = req.body;
@@ -289,10 +253,21 @@ export const handleWebhook = async (req, res) => {
                   // Store temporary URL - will download to S3 below
                   mediaUrl = video.url || video.link;
                 } else if (type === 'button' && button) {
-                  content = button.text;
+                  content = button.text || button.payload || '';
                 } else if (type === 'interactive' && interactive) {
-                  content = interactive.button_reply?.title || interactive.list_reply?.title || 'Interactive message';
+                  content =
+                    interactive.button_reply?.title ||
+                    interactive.list_reply?.title ||
+                    'Interactive message';
                 }
+
+                const chatbotPayload = {
+                  buttonId:
+                    interactive?.button_reply?.id ||
+                    button?.payload ||
+                    null,
+                  listItemId: interactive?.list_reply?.id || null,
+                };
                 
                 logger.info(`📝 Content: ${content.substring(0, 50)}`);
                 
@@ -378,23 +353,40 @@ export const handleWebhook = async (req, res) => {
                 const conversationId = `${accountId}-${phoneNumberId}-${customerPhone}`;
                 
                 logger.info(`💾 Saving message: ConversationID=${conversationId}, Account=${accountId}`);
-                
+
+                const cleanCustomerPhone = String(customerPhone || '').replace(/[\s+()-]/g, '');
+                const attributedCampaignId = await attributeInboundReplyToCampaign(
+                  accountId,
+                  phoneNumberId,
+                  cleanCustomerPhone
+                );
+                const inboundProjectId = await resolveProjectIdForAccountPhone(
+                  accountId,
+                  phoneNumberId
+                );
+
                 // Save message to Message collection
                 const savedMessage = await Message.create({
                   accountId,
+                  projectId: inboundProjectId,
                   phoneNumberId,
                   conversationId,
                   waMessageId: messageId,
-                  recipientPhone: customerPhone,
+                  recipientPhone: cleanCustomerPhone,
                   recipientName: customerName,
                   messageType: type,
                   direction: 'inbound',
                   content: { text: content, mediaUrl: mediaUrl, mediaType },
                   status: 'delivered',
-                  sentAt: new Date(timestamp * 1000)
+                  sentAt: new Date(timestamp * 1000),
+                  ...(attributedCampaignId ? { campaign: attributedCampaignId } : {}),
                 });
-                
+
                 logger.info(`✅ Message saved to DB: ${savedMessage._id}`);
+                if (attributedCampaignId) {
+                  logger.info(`📊 Inbound reply attributed to campaign ${attributedCampaignId}`);
+                  await refreshCampaignStatsFromMessages(attributedCampaignId, accountId);
+                }
                 
                 // Update or create Conversation
                 const updatedConversation = await Conversation.findOneAndUpdate(
@@ -410,7 +402,8 @@ export const handleWebhook = async (req, res) => {
                     lastMessageType: type,
                     unreadCount: (await Conversation.findOne({ conversationId }))?.unreadCount + 1 || 1,
                     status: 'open',
-                    messageCount: (await Conversation.findOne({ conversationId }))?.messageCount + 1 || 1
+                    messageCount: (await Conversation.findOne({ conversationId }))?.messageCount + 1 || 1,
+                    ...(inboundProjectId ? { projectId: inboundProjectId } : {}),
                   },
                   { upsert: true, new: true }
                 );
@@ -471,6 +464,39 @@ export const handleWebhook = async (req, res) => {
                 }
                 
                 logger.info(`📡 Real-time events emitted for account ${accountId}`);
+
+                const chatbotText = String(content || '').trim();
+                const canRunChatbot =
+                  chatbotText &&
+                  ['text', 'button', 'interactive'].includes(type);
+
+                if (canRunChatbot) {
+                  const phoneId = metadata.phone_number_id;
+                  const customerPhone = from;
+                  setImmediate(async () => {
+                    try {
+                      const projectId = await resolveProjectIdForPhone(
+                        accountId,
+                        phoneId
+                      );
+                      await whatsappService.processIncomingMessage(
+                        accountId,
+                        phoneId,
+                        customerPhone,
+                        chatbotText,
+                        {
+                          buttonId:
+                            chatbotPayload.buttonId ||
+                            chatbotPayload.listItemId ||
+                            undefined,
+                          projectId,
+                        }
+                      );
+                    } catch (chatbotErr) {
+                      logger.error('❌ Chatbot processing failed:', chatbotErr.message);
+                    }
+                  });
+                }
                 
               } catch (messageError) {
                 logger.error(`❌ Error saving message:`, messageError.message);
@@ -527,7 +553,9 @@ export const handleWebhook = async (req, res) => {
                 }
 
                 if (messageDoc.campaign && messageDoc.campaign !== 'manual') {
-                  await refreshCampaignStatsFromMessages(messageDoc.campaign, messageDoc.accountId);
+                  await refreshCampaignStatsFromMessages(messageDoc.campaign, messageDoc.accountId).catch(
+                    (err) => logger.error('Campaign stats refresh failed:', err.message)
+                  );
                 }
               }
             }

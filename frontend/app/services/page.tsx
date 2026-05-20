@@ -2,8 +2,6 @@
 
 import { ShoppingBag, Stethoscope, Home, BookOpen, ArrowRight, Check, Users, BarChart3, Clock } from 'lucide-react'
 import Link from 'next/link'
-import Navbar from '@/components/Navbar'
-import Footer from '@/components/Footer'
 import { Button } from '@/components/ui/button'
 
 export default function ServicesPage() {
@@ -154,10 +152,7 @@ export default function ServicesPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      
-      {/* Hero Section */}
+    <div className="min-h-screen bg-white">{/* Hero Section */}
       <section className="pt-32 pb-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-green-50 to-white">
         <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
@@ -311,9 +306,6 @@ export default function ServicesPage() {
             </Link>
           </div>
         </div>
-      </section>
-
-      <Footer />
-    </div>
+      </section></div>
   )
 }

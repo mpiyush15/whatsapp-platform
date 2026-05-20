@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Check, CheckCheck, AlertCircle, MessageCircle, Smile } from "lucide-react"
 import { Socket } from "socket.io-client"
 
@@ -27,23 +27,123 @@ interface Props {
   onLoadMore?: () => void
   loadingMore?: boolean
   hasMore?: boolean
+  /** Changes when outer layout shifts (e.g. session banner) — re-pin to latest message */
+  layoutKey?: string
 }
 
-export default function MessageList({ messages, socket, isTyping, conversationId, onLoadMore, loadingMore, hasMore }: Props) {
+export default function MessageList({ messages, socket, isTyping, conversationId, onLoadMore, loadingMore, hasMore, layoutKey }: Props) {
   const endRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [openReactionPickerId, setOpenReactionPickerId] = useState<string | null>(null)
   const reactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '😡']
 
-  // Auto-scroll to bottom on new messages
+  const prevMessageCountRef = useRef(0)
+  const prevFirstIdRef = useRef<string | null>(null)
+  const stickToBottomRef = useRef(true)
+  const pendingInitialScrollRef = useRef(false)
+  const scrollHeightBeforePrependRef = useRef(0)
+  const isPinningRef = useRef(false)
+  const initialScrollDoneRef = useRef(false)
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    isPinningRef.current = true
+    el.scrollTop = el.scrollHeight
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+      isPinningRef.current = false
+    })
+  }, [])
+
+  const shouldKeepPinned = useCallback(() => {
+    return pendingInitialScrollRef.current || stickToBottomRef.current
+  }, [])
+
+  const isNearBottom = () => {
+    const el = scrollContainerRef.current
+    if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
+
+  const handleMediaLoad = () => {
+    if (shouldKeepPinned()) scrollToBottom()
+  }
+
+  // New conversation → open at latest messages (single scroll, no repeated pins)
   useEffect(() => {
-    // Small delay to ensure DOM is updated before scrolling
-    const timer = setTimeout(() => {
-      endRef.current?.scrollIntoView({ behavior: 'auto' }) // Instant scroll, no animation
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [messages, isTyping])
+    pendingInitialScrollRef.current = true
+    stickToBottomRef.current = true
+    initialScrollDoneRef.current = false
+    prevMessageCountRef.current = 0
+    prevFirstIdRef.current = null
+  }, [conversationId])
+
+  useLayoutEffect(() => {
+    if (!pendingInitialScrollRef.current || messages.length === 0 || initialScrollDoneRef.current) {
+      return
+    }
+    scrollToBottom()
+    initialScrollDoneRef.current = true
+    pendingInitialScrollRef.current = false
+  }, [messages.length, conversationId, scrollToBottom])
+
+  // After session banner resizes pane — one quiet re-pin if user is at bottom
+  useLayoutEffect(() => {
+    if (!layoutKey || messages.length === 0 || pendingInitialScrollRef.current) return
+    if (!stickToBottomRef.current) return
+    scrollToBottom()
+  }, [layoutKey, messages.length, scrollToBottom])
+
+  // Scroll on new messages at end / restore scroll when prepending older
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el || messages.length === 0) {
+      prevMessageCountRef.current = messages.length
+      return
+    }
+
+    const firstId = messages[0]?._id ?? null
+    const prependedOlder =
+      messages.length > prevMessageCountRef.current &&
+      prevFirstIdRef.current !== null &&
+      firstId !== prevFirstIdRef.current
+
+    if (prependedOlder && !pendingInitialScrollRef.current) {
+      if (scrollHeightBeforePrependRef.current > 0) {
+        const prevTop = el.scrollTop
+        const prevHeight = scrollHeightBeforePrependRef.current
+        requestAnimationFrame(() => {
+          el.scrollTop = prevTop + (el.scrollHeight - prevHeight)
+        })
+      }
+      prevMessageCountRef.current = messages.length
+      prevFirstIdRef.current = firstId
+      return
+    }
+
+    const grewAtEnd =
+      messages.length > prevMessageCountRef.current && !prependedOlder
+
+    if (grewAtEnd && shouldKeepPinned()) {
+      scrollToBottom()
+    }
+
+    prevMessageCountRef.current = messages.length
+    prevFirstIdRef.current = firstId
+  }, [messages, scrollToBottom, shouldKeepPinned])
+
+  // Typing indicator — stay pinned if user was at bottom
+  useEffect(() => {
+    if (stickToBottomRef.current) scrollToBottom()
+  }, [isTyping, scrollToBottom])
+
+  useEffect(() => {
+    if (loadingMore && scrollContainerRef.current) {
+      scrollHeightBeforePrependRef.current = scrollContainerRef.current.scrollHeight
+    }
+  }, [loadingMore])
 
   // Load more messages when user scrolls near top
   useEffect(() => {
@@ -51,8 +151,9 @@ export default function MessageList({ messages, socket, isTyping, conversationId
     if (!container) return
 
     const handleScroll = () => {
-      // If scrolled within 500px from top and there are more messages, load them
-      if (container.scrollTop < 500 && hasMore && !loadingMore) {
+      if (isPinningRef.current) return
+      stickToBottomRef.current = isNearBottom()
+      if (container.scrollTop < 80 && hasMore && !loadingMore) {
         onLoadMore?.()
       }
     }
@@ -100,7 +201,10 @@ export default function MessageList({ messages, socket, isTyping, conversationId
   }
 
   return (
-    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 md:space-y-3 scroll-smooth bg-gray-50">
+    <div
+      ref={scrollContainerRef}
+      className="flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] p-2 md:p-4 space-y-1.5 md:space-y-3 bg-gray-50 overscroll-contain"
+    >
       {/* Loading indicator when fetching older messages */}
       {loadingMore && (
         <div className="flex justify-center py-2">
@@ -141,6 +245,7 @@ export default function MessageList({ messages, socket, isTyping, conversationId
                         src={getProxiedMediaUrl(message.mediaUrl)} 
                         alt="Message" 
                         className="max-w-full max-h-48 md:max-h-80 rounded-lg object-cover"
+                        onLoad={handleMediaLoad}
                         onError={(e) => {
                           console.error('Failed to load image:', message.mediaUrl);
                           (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"%3E%3Crect fill="%23f0f0f0" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="14" fill="%23999"%3EImage not available%3C/text%3E%3C/svg%3E';
@@ -152,6 +257,7 @@ export default function MessageList({ messages, socket, isTyping, conversationId
                         src={getProxiedMediaUrl(message.mediaUrl)} 
                         controls 
                         className="max-w-full max-h-48 md:max-h-80 rounded-lg bg-black"
+                        onLoadedData={handleMediaLoad}
                         onError={(e) => {
                           console.error('Failed to load video:', message.mediaUrl);
                         }}
@@ -176,6 +282,7 @@ export default function MessageList({ messages, socket, isTyping, conversationId
                               src={getProxiedMediaUrl(message.mediaUrl)}
                               className="w-full h-40 md:h-64 rounded-lg"
                               title="PDF Preview"
+                              onLoad={handleMediaLoad}
                               onError={(e) => {
                                 console.error('Failed to load PDF:', message.mediaUrl);
                               }}
@@ -301,7 +408,7 @@ export default function MessageList({ messages, socket, isTyping, conversationId
         </div>
       )}
 
-      <div ref={endRef} />
+      <div ref={endRef} className="h-px w-full shrink-0" aria-hidden />
     </div>
   )
 }

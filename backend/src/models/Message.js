@@ -106,6 +106,12 @@ const messageSchema = new mongoose.Schema({
     type: String,
     default: 'manual'
   },
+  /** Keyword / chatbot rule that triggered this outbound message */
+  automationRuleId: {
+    type: String,
+    default: null,
+    index: true
+  },
   
   // Timestamps
   sentAt: Date,

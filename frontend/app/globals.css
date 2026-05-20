@@ -151,6 +151,27 @@
   .card {
     @apply bg-white border border-gray-200 rounded-lg p-4 shadow-sm;
   }
+
+  /* Landing page: don't force dark body typography on dark hero/sections */
+  .landing-root {
+    @apply text-zinc-100;
+  }
+
+  .landing-root :where(h1, h2, h3, h4, h5, h6, p, li, div, span, blockquote, footer) {
+    color: inherit;
+  }
+
+  .landing-root :where(a) {
+    color: inherit;
+  }
+
+  .landing-light {
+    @apply text-[#060807];
+  }
+
+  .landing-light :where(h1, h2, h3, h4, h5, h6, p, li, div, span, blockquote, footer) {
+    color: inherit;
+  }
 }
 
 html {

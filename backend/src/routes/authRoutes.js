@@ -14,6 +14,8 @@ const router = express.Router();
 
 // Public routes - Email/Password
 router.post('/login', authController.login);
+router.get('/check-email', authController.checkEmailAvailable);
+router.get('/check-phone', authController.checkPhoneAvailable);
 router.post('/signup', authController.signup);
 router.post('/logout', authController.logout);
 router.post('/forgot-password', authController.forgotPassword);

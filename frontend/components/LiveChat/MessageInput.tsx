@@ -1,18 +1,28 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { Send, Plus, Smile, X, Loader, ImageIcon, FileIcon, Video, Music } from "lucide-react"
+import { useState, useRef, useEffect } from "react"
+import { Send, Plus, Smile, X, Loader, ImageIcon, FileIcon, Video, Music, Zap } from "lucide-react"
+import { fetchQuickReplies, type QuickReply } from "@/lib/liveChatApi"
 
 interface Props {
-  onSendMessage: (text: string, mediaUrl?: string, mediaType?: string) => void
+  onSendMessage: (text: string, mediaUrl?: string, mediaType?: string) => void | Promise<boolean>
   onTyping?: (isTyping: boolean) => void
+  disabled?: boolean
+  disabledHint?: string
 }
 
-export default function MessageInput({ onSendMessage, onTyping }: Props) {
+export default function MessageInput({
+  onSendMessage,
+  onTyping,
+  disabled = false,
+  disabledHint,
+}: Props) {
   const [text, setText] = useState("")
   const [loading, setLoading] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [showMediaMenu, setShowMediaMenu] = useState(false)
+  const [showQuickReplies, setShowQuickReplies] = useState(false)
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -103,8 +113,17 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
     setText(prev => prev + emoji)
   }
 
+  useEffect(() => {
+    fetchQuickReplies().then(setQuickReplies).catch(() => setQuickReplies([]))
+  }, [])
+
   return (
     <div className="bg-gray-50 px-3 py-2 space-y-1 sticky bottom-0 z-10 flex-shrink-0">
+      {disabled && disabledHint && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          {disabledHint}
+        </p>
+      )}
       {filePreview && selectedFile && (
         <div className="relative inline-block">
           {selectedFile.type.startsWith('image/') && (
@@ -130,12 +149,42 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
         </div>
       )}
 
+      {showQuickReplies && quickReplies.length > 0 && (
+        <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pb-1">
+          {quickReplies.map((qr) => (
+            <button
+              key={qr._id}
+              type="button"
+              disabled={disabled || loading}
+              onClick={() => {
+                setText(qr.content)
+                setShowQuickReplies(false)
+              }}
+              className="px-2 py-1 bg-white border border-gray-200 rounded-full text-xs text-gray-700 hover:border-green-400 hover:bg-green-50 disabled:opacity-50"
+              title={qr.content}
+            >
+              {qr.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-end gap-1.5">
+        <button
+          type="button"
+          onClick={() => setShowQuickReplies(!showQuickReplies)}
+          className="flex-shrink-0 p-1.5 hover:bg-gray-200 rounded-full text-gray-600"
+          title="Quick replies"
+          disabled={loading}
+        >
+          <Zap size={18} />
+        </button>
         <div className="relative flex-shrink-0">
           <button 
+            type="button"
             onClick={() => setShowMediaMenu(!showMediaMenu)}
             className="flex-shrink-0 p-1.5 hover:bg-gray-300 rounded-full text-gray-600 transition active:bg-gray-400"
-            disabled={loading}
+            disabled={loading || disabled}
           >
             <Plus size={20} />
           </button>
@@ -216,7 +265,7 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
           placeholder="Type a message..."
           rows={1}
           className="flex-1 px-3 py-2 bg-white rounded-xl resize-none focus:outline-none focus:ring-1 focus:ring-gray-300 max-h-24 text-sm transition"
-          disabled={loading}
+          disabled={loading || disabled}
         />
 
         <div className="relative flex-shrink-0">
@@ -248,7 +297,7 @@ export default function MessageInput({ onSendMessage, onTyping }: Props) {
 
         <button
           onClick={handleSend}
-          disabled={(!text.trim() && !selectedFile) || loading}
+          disabled={(!text.trim() && !selectedFile) || loading || disabled}
           className="flex-shrink-0 p-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 rounded-full text-white transition-colors duration-200"
         >
           {loading ? <Loader size={18} className="animate-spin" /> : <Send size={18} />}

@@ -13,7 +13,26 @@ import Appointment from '../models/Appointment.js';
 import ConsentRecord from '../models/ConsentRecord.js';
 import { broadcastMessageStatus } from './socketService.js';
 import { getSignedUrlForS3Object } from './s3Service.js';
+import {
+  resolveProjectIdForPhone,
+  buildKeywordRuleQuery,
+  buildActiveSessionQuery,
+} from './chatbotContextService.js';
+import { resolveProjectIdForAccountPhone } from './projectScopeResolver.js';
+import { debitCreditsForOutboundMessage } from './messageBillingService.js';
 import logger from '../utils/logger.js';
+
+function resolveMessageCampaign(metadata = {}) {
+  if (metadata.campaign) return metadata.campaign;
+  if (metadata.broadcastId) return String(metadata.broadcastId);
+  return 'manual';
+}
+
+function recordOutboundBilling(accountId, message) {
+  debitCreditsForOutboundMessage({ accountId, message }).catch((err) => {
+    logger.error('Credit debit failed:', err.message);
+  });
+}
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
@@ -473,6 +492,7 @@ class WhatsAppService {
   async getOrCreateConversation(accountId, phoneNumberId, recipientPhone, workspaceId = null) {
     try {
       const conversationId = `${accountId}_${phoneNumberId}_${recipientPhone}`;
+      const projectId = await resolveProjectIdForAccountPhone(accountId, phoneNumberId);
       
       // ✅ ATOMIC UPSERT WITH RETRY: Prevents duplicate key errors in concurrent operations
       let conversation;
@@ -495,8 +515,10 @@ class WhatsAppService {
                 userPhone: recipientPhone,
                 conversationId,
                 lastMessageAt: new Date(),
-                status: 'open'
-              }
+                status: 'open',
+                ...(projectId ? { projectId } : {}),
+              },
+              ...(projectId ? { $set: { projectId } } : {}),
             },
             { 
               upsert: true, 
@@ -565,6 +587,10 @@ class WhatsAppService {
       }
 
       const config = await this.getPhoneConfig(accountId, phoneNumberId);
+      const messageProjectId =
+        metadata.projectId ||
+        config.projectId ||
+        (await resolveProjectIdForAccountPhone(accountId, phoneNumberId));
       
       // ✅ CRITICAL FIX: Validate phone is ACTIVE (not just exists)
       if (!config.isActive) {
@@ -601,13 +627,15 @@ class WhatsAppService {
       // Create message record (queued state) - NOW WITH CONVERSATION ID
       message = new Message({
         accountId,
+        projectId: messageProjectId || conversation.projectId || null,
         phoneNumberId,
-        conversationId: conversation._id, // ✅ ADD CONVERSATION ID
+        conversationId: conversation.conversationId || conversation._id,
         recipientPhone: cleanPhone,
         messageType: 'text',
         content: { text: messageText },
         status: 'queued',
-        campaign: metadata.campaign || 'manual',
+        campaign: resolveMessageCampaign(metadata),
+        automationRuleId: metadata.ruleId ? String(metadata.ruleId) : null,
         direction: 'outbound'
       });
       
@@ -644,6 +672,7 @@ class WhatsAppService {
         timestamp: new Date()
       });
       await message.save();
+      recordOutboundBilling(accountId, message);
 
       // ✅ FIX 1: Create/update conversation with proper fields
       // Conversation already created in the fix above, just update last message
@@ -801,11 +830,17 @@ class WhatsAppService {
       
       logger.info('✅ Conversation ready for template:', conversation._id);
 
+      const messageProjectId =
+        metadata.projectId ||
+        config.projectId ||
+        (await resolveProjectIdForAccountPhone(accountId, phoneNumberId));
+
       // Create message record WITH conversationId
       message = new Message({
         accountId,
+        projectId: messageProjectId || conversation.projectId || null,
         phoneNumberId,
-        conversationId: conversation._id, // ✅ CRITICAL: Link to conversation
+        conversationId: conversation.conversationId || conversation._id,
         recipientPhone: cleanPhone,
         messageType: 'template',
         content: {
@@ -813,7 +848,7 @@ class WhatsAppService {
           templateParams: params
         },
         status: 'queued',
-        campaign: metadata.campaign || 'manual',
+        campaign: resolveMessageCampaign(metadata),
         direction: 'outbound'
       });
       
@@ -928,6 +963,7 @@ class WhatsAppService {
         timestamp: new Date()
       });
       await message.save();
+      recordOutboundBilling(accountId, message);
 
       // ✅ FIX 1: Create/update conversation with proper fields
       // Conversation model requires: accountId, phoneNumberId, userPhone, conversationId, lastMessageAt
@@ -1116,128 +1152,111 @@ class WhatsAppService {
     }
   }
 
+  normalizePhone(phone) {
+    return String(phone || '').replace(/[\s+()-]/g, '');
+  }
+
+  async recordRuleOutcome(ruleId, completedSuccessfully) {
+    if (!ruleId) return;
+    try {
+      const rule = await KeywordRule.findById(ruleId).select('triggerCount successRate').lean();
+      if (!rule) return;
+
+      const triggers = Math.max(1, Number(rule.triggerCount || 0));
+      const priorSuccesses = Math.round((Number(rule.successRate || 0) / 100) * triggers);
+      const newSuccesses = completedSuccessfully ? priorSuccesses + 1 : priorSuccesses;
+      const successRate = Math.min(100, Math.round((newSuccesses / triggers) * 100));
+
+      await KeywordRule.updateOne({ _id: ruleId }, { $set: { successRate } });
+    } catch (err) {
+      logger.error('recordRuleOutcome failed:', err.message);
+    }
+  }
+
   /**
    * Process incoming message and check keyword rules
-   * @param {string} accountId 
-   * @param {string} phoneNumberId 
-   * @param {string} senderPhone 
-   * @param {string} messageText 
-   * @param {object} metadata - Optional metadata (e.g., buttonId for button clicks)
    */
   async processIncomingMessage(accountId, phoneNumberId, senderPhone, messageText, metadata = {}) {
     try {
-      logger.info('📥 Processing incoming message from:', senderPhone);
-      logger.info('📝 Message text:', messageText);
-      logger.info('🏢 Account ID:', accountId);
-      logger.info('📞 Phone Number ID:', phoneNumberId);
-      if (metadata.buttonId) {
-        logger.info('🔘 Button ID:', metadata.buttonId);
-      }
-      
-      // FIRST: Check if user has an active workflow session
-      const activeSession = await WorkflowSession.findOne({
-        accountId,
-        contactPhone: senderPhone,
-        status: 'active'
-      });
+      const cleanPhone = this.normalizePhone(senderPhone);
+      const text = String(messageText || '').trim();
+      if (!text) return;
+
+      const projectId =
+        metadata.projectId || (await resolveProjectIdForPhone(accountId, phoneNumberId));
+
+      logger.info('📥 Chatbot inbound', { accountId, phoneNumberId, projectId, from: cleanPhone });
+
+      const activeSession = await WorkflowSession.findOne(
+        buildActiveSessionQuery(accountId, cleanPhone, phoneNumberId, projectId)
+      ).sort({ lastActivityAt: -1 });
 
       if (activeSession) {
-        logger.info('🔄 User has active workflow session, processing response...');
-        await this.handleWorkflowResponse(activeSession, messageText, metadata);
-        return; // Don't check keyword rules when in a workflow
+        if (
+          activeSession.responseDeadlineAt &&
+          activeSession.responseDeadlineAt <= new Date() &&
+          activeSession.awaitingResponseSince
+        ) {
+          await this.checkWorkflowTimeout(String(activeSession._id));
+          const refreshed = await WorkflowSession.findById(activeSession._id);
+          if (refreshed?.status === 'active') {
+            await this.handleWorkflowResponse(refreshed, text, metadata);
+          }
+        } else {
+          await this.handleWorkflowResponse(activeSession, text, metadata);
+        }
+        return;
       }
-      
-      // Check for matching keyword rules
-      const rules = await KeywordRule.find({ 
-        accountId,
-        $or: [
-          { phoneNumberId: phoneNumberId },
-          { phoneNumberId: null } // Rules for all phone numbers
-        ],
-        isActive: true 
-      });
 
-      logger.info(`🔍 Found ${rules.length} active rules to check`);
+      const rules = await KeywordRule.find(
+        buildKeywordRuleQuery(accountId, phoneNumberId, projectId)
+      ).sort({ projectId: -1, updatedAt: -1 });
 
       for (const rule of rules) {
-        logger.info(`🔎 Checking rule: ${rule.name} (Keywords: ${rule.keywords.join(', ')})`);
-        
-        if (rule.matches(messageText)) {
-          logger.info('✅ Matched keyword rule:', rule.name);
-          
-          // Check if we already triggered this rule for this contact recently (cooldown)
-          const cooldownMinutes = 60; // Don't trigger same rule within 60 minutes
-          const recentMessage = await Message.findOne({
+        if (!rule.matches(text)) continue;
+
+        const cooldownMinutes = 60;
+        const recentMessage = await Message.findOne({
+          accountId,
+          recipientPhone: cleanPhone,
+          direction: 'outbound',
+          automationRuleId: String(rule._id),
+          createdAt: { $gte: new Date(Date.now() - cooldownMinutes * 60 * 1000) },
+        }).lean();
+
+        if (recentMessage) continue;
+
+        await KeywordRule.updateOne(
+          { _id: rule._id },
+          { $inc: { triggerCount: 1 }, $set: { lastTriggeredAt: new Date() } }
+        );
+
+        const ruleMeta = { campaign: 'keyword_auto_reply', ruleId: String(rule._id) };
+
+        if (rule.replyType === 'text' && rule.replyContent?.text) {
+          await this.sendTextMessage(accountId, phoneNumberId, cleanPhone, rule.replyContent.text, ruleMeta);
+        } else if (rule.replyType === 'template' && rule.replyContent?.templateName) {
+          await this.sendTemplateMessage(
             accountId,
-            to: senderPhone,
-            direction: 'outbound',
-            'metadata.campaign': 'keyword_auto_reply',
-            'metadata.ruleId': rule._id.toString(),
-            createdAt: { 
-              $gte: new Date(Date.now() - cooldownMinutes * 60 * 1000) 
-            }
-          });
-
-          if (recentMessage) {
-            const minutesAgo = Math.floor((Date.now() - recentMessage.createdAt.getTime()) / 60000);
-            logger.info(`⏱️ Cooldown active - already triggered ${minutesAgo} minutes ago. Skipping.`);
-            continue; // Skip this rule, check next one
-          }
-
-          logger.info('🎯 Reply type:', rule.replyType);
-          
-          // Update rule stats
-          await KeywordRule.updateOne(
-            { _id: rule._id },
-            { 
-              $inc: { triggerCount: 1 },
-              $set: { lastTriggeredAt: new Date() }
-            }
+            phoneNumberId,
+            cleanPhone,
+            rule.replyContent.templateName,
+            rule.replyContent.templateParams || [],
+            ruleMeta
           );
-
-          // Send auto-reply
-          if (rule.replyType === 'text' && rule.replyContent.text) {
-            logger.info('💬 Sending text reply:', rule.replyContent.text);
-            await this.sendTextMessage(
-              accountId,
-              phoneNumberId,
-              senderPhone,
-              rule.replyContent.text,
-              { campaign: 'keyword_auto_reply', ruleId: rule._id.toString() }
-            );
-          } else if (rule.replyType === 'template' && rule.replyContent.templateName) {
-            logger.info('📋 Sending template reply:', rule.replyContent.templateName);
-            await this.sendTemplateMessage(
-              accountId,
-              phoneNumberId,
-              senderPhone,
-              rule.replyContent.templateName,
-              rule.replyContent.templateParams || [],
-              { campaign: 'keyword_auto_reply', ruleId: rule._id.toString() }
-            );
-          } else if (rule.replyType === 'workflow' && rule.replyContent.workflow) {
-            logger.info('🔄 Starting conversational workflow with', rule.replyContent.workflow.length, 'steps');
-            // Start a new workflow session
-            await this.startWorkflowSession(
-              accountId,
-              phoneNumberId,
-              senderPhone,
-              rule._id,
-              rule.projectId || null,
-              rule.replyContent.workflow,
-              rule.timeoutMinutes || 1
-            );
-          }
-          
-          // Only trigger first matching rule
-          break;
-        } else {
-          logger.info('❌ Rule did not match');
+        } else if (rule.replyType === 'workflow' && rule.replyContent?.workflow?.length) {
+          await this.startWorkflowSession(
+            accountId,
+            phoneNumberId,
+            cleanPhone,
+            rule._id,
+            rule.projectId || projectId || null,
+            rule.replyContent.workflow,
+            rule.timeoutMinutes || 1
+          );
         }
-      }
-      
-      if (rules.length === 0) {
-        logger.info('⚠️ No active rules found for this account');
+
+        break;
       }
     } catch (error) {
       logger.error('❌ Error in processIncomingMessage:', error);
@@ -1378,7 +1397,7 @@ class WhatsAppService {
           caption: caption 
         },
         status: 'queued',
-        campaign: metadata.campaign || 'manual',
+        campaign: resolveMessageCampaign(metadata),
         direction: 'outbound'
       });
       
@@ -1438,6 +1457,7 @@ class WhatsAppService {
         timestamp: new Date()
       });
       await message.save();
+      recordOutboundBilling(accountId, message);
 
       // ✅ FIX 1: Create/update conversation with proper fields
       // Conversation model requires: accountId, phoneNumberId, userPhone, conversationId, lastMessageAt
@@ -1643,7 +1663,7 @@ class WhatsAppService {
       const message = new Message({
         accountId,
         phoneNumberId,
-        conversationId: conversation._id, // ✅ CRITICAL: Link to conversation
+        conversationId: conversation.conversationId || conversation._id,
         recipientPhone: recipientPhone,
         direction: 'outbound',
         messageType: 'interactive',
@@ -1651,12 +1671,10 @@ class WhatsAppService {
         waMessageId: response.data.messages[0].id,
         status: 'sent',
         sentAt: new Date(),
-        metadata: {
-          campaign: 'workflow_button',
-          buttons: formattedButtons
-        }
+        campaign: 'workflow_button',
       });
       await message.save();
+      recordOutboundBilling(accountId, message);
 
       return response.data;
     } catch (error) {
@@ -1724,7 +1742,7 @@ class WhatsAppService {
       const message = new Message({
         accountId,
         phoneNumberId,
-        conversationId: conversation._id, // ✅ CRITICAL: Link to conversation
+        conversationId: conversation.conversationId || conversation._id,
         direction: 'outbound',
         recipientPhone: recipientPhone,
         messageType: 'interactive',
@@ -1732,12 +1750,10 @@ class WhatsAppService {
         waMessageId: response.data.messages[0].id,
         status: 'sent',
         sentAt: new Date(),
-        metadata: {
-          campaign: 'workflow_list',
-          listItems: formattedRows
-        }
+        campaign: 'workflow_list',
       });
       await message.save();
+      recordOutboundBilling(accountId, message);
 
       return response.data;
     } catch (error) {
@@ -1758,12 +1774,13 @@ class WhatsAppService {
    */
   async startWorkflowSession(accountId, phoneNumberId, contactPhone, ruleId, projectId, workflowSteps, timeoutMinutes = 1) {
     try {
-      logger.info('🆕 Starting new workflow session for:', contactPhone);
+      const cleanPhone = this.normalizePhone(contactPhone);
+      logger.info('🆕 Starting new workflow session for:', cleanPhone);
       logger.info('⏰ Timeout set to:', timeoutMinutes, 'minutes');
       
       // Cancel any existing active sessions for this contact
       await WorkflowSession.updateMany(
-        { accountId, contactPhone, status: 'active' },
+        { accountId, contactPhone: cleanPhone, status: 'active' },
         { status: 'cancelled', completedAt: new Date() }
       );
 
@@ -1772,7 +1789,7 @@ class WhatsAppService {
         accountId,
         projectId: projectId || null,
         phoneNumberId,
-        contactPhone,
+        contactPhone: cleanPhone,
         ruleId,
         workflowSteps,
         currentStepIndex: 0,
@@ -1803,9 +1820,10 @@ class WhatsAppService {
         logger.info('✅ Workflow completed');
         session.status = 'completed';
         session.completedAt = new Date();
+        session.responseDeadlineAt = null;
+        session.awaitingResponseSince = null;
         await session.save();
-        
-        // Send completion message with collected data
+        await this.recordRuleOutcome(session.ruleId, true);
         await this.sendWorkflowCompletionMessage(session);
         return;
       }
@@ -1845,6 +1863,9 @@ class WhatsAppService {
         );
       } else if (step.type === 'vertical_action') {
         await this.executeVerticalActionStep(session, step);
+      } else if (step.type === 'condition') {
+        await this.advanceConditionStep(session, step);
+        return;
       }
 
       // Button and List steps ALWAYS wait for response
@@ -1853,6 +1874,8 @@ class WhatsAppService {
       // If this step doesn't wait for response, automatically advance
       if (!shouldWaitForResponse) {
         const hasMore = session.advanceStep();
+        session.responseDeadlineAt = null;
+        session.awaitingResponseSince = null;
         await session.save();
         
         if (hasMore) {
@@ -1863,18 +1886,16 @@ class WhatsAppService {
           session.status = 'completed';
           session.completedAt = new Date();
           await session.save();
+          await this.recordRuleOutcome(session.ruleId, true);
           await this.sendWorkflowCompletionMessage(session);
         }
       } else {
-        // Wait for user response - set timeout timer
         session.awaitingResponseSince = new Date();
+        session.responseDeadlineAt = new Date(
+          Date.now() + (session.timeoutMinutes || 1) * 60 * 1000
+        );
         await session.save();
-        logger.info('⏳ Waiting for user response...');
-        
-        // Schedule timeout check after specified minutes
-        setTimeout(async () => {
-          await this.checkWorkflowTimeout(session._id);
-        }, session.timeoutMinutes * 60 * 1000);
+        logger.info('⏳ Waiting for user response until', session.responseDeadlineAt);
       }
       
     } catch (error) {
@@ -2016,12 +2037,13 @@ class WhatsAppService {
         // Send next step
         await this.sendWorkflowStep(session);
       } else {
-        // Workflow complete
         logger.info('🎉 Workflow completed! All responses collected.');
         session.status = 'completed';
         session.completedAt = new Date();
+        session.responseDeadlineAt = null;
+        session.awaitingResponseSince = null;
         await session.save();
-        
+        await this.recordRuleOutcome(session.ruleId, true);
         await this.sendWorkflowCompletionMessage(session);
       }
       
@@ -2032,40 +2054,80 @@ class WhatsAppService {
   }
 
   /**
+   * Auto-advance on condition step (branch on saved variable, no user input).
+   */
+  async advanceConditionStep(session, step) {
+    const variable = step.condition?.variable;
+    const value = variable ? session.responses.get(variable) : null;
+    let nextStepIndex = null;
+
+    const branch = step.condition?.branches?.find((b) => String(b.value) === String(value));
+    if (branch?.nextStepId) {
+      nextStepIndex = session.workflowSteps.findIndex((s) => s.id === branch.nextStepId);
+    } else if (step.condition?.defaultNextStepId) {
+      nextStepIndex = session.workflowSteps.findIndex(
+        (s) => s.id === step.condition.defaultNextStepId
+      );
+    }
+
+    if (nextStepIndex !== null && nextStepIndex >= 0) {
+      session.currentStepIndex = nextStepIndex;
+    } else {
+      session.advanceStep();
+    }
+
+    session.responseDeadlineAt = null;
+    session.awaitingResponseSince = null;
+    await session.save();
+
+    if (session.currentStepIndex < session.workflowSteps.length) {
+      await this.sendWorkflowStep(session);
+    } else {
+      session.status = 'completed';
+      session.completedAt = new Date();
+      await session.save();
+      await this.recordRuleOutcome(session.ruleId, true);
+      await this.sendWorkflowCompletionMessage(session);
+    }
+  }
+
+  /**
    * Check if workflow session has timed out (user not responding)
-   * @param {string} sessionId - WorkflowSession ID
    */
   async checkWorkflowTimeout(sessionId) {
     try {
-      const session = await WorkflowSession.findById(sessionId);
-      
-      if (!session || session.status !== 'active') {
-        logger.info('⚠️ Session not found or not active, skipping timeout check');
-        return;
-      }
+      const session = await WorkflowSession.findOneAndUpdate(
+        {
+          _id: sessionId,
+          status: 'active',
+          awaitingResponseSince: { $ne: null },
+          $or: [
+            { responseDeadlineAt: { $lte: new Date() } },
+            {
+              responseDeadlineAt: null,
+              awaitingResponseSince: {
+                $lte: new Date(Date.now() - 60 * 1000),
+              },
+            },
+          ],
+        },
+        {
+          $set: {
+            hasTimedOut: true,
+            status: 'expired',
+            completedAt: new Date(),
+            responseDeadlineAt: null,
+            awaitingResponseSince: null,
+          },
+        },
+        { new: true }
+      );
 
-      // Check if user has responded (awaitingResponseSince should be null if they replied)
-      if (!session.awaitingResponseSince) {
-        logger.info('✅ User responded in time, no timeout needed');
-        return;
-      }
+      if (!session) return;
 
-      // Check if timeout has occurred
-      if (session.checkTimeout()) {
-        logger.info('⏰ User did not respond within timeout period, ending workflow');
-        
-        session.hasTimedOut = true;
-        session.status = 'expired';
-        session.completedAt = new Date();
-        await session.save();
-
-        // Send timeout message
-        await this.sendTimeoutMessage(session);
-        
-        // Save partial lead data (whatever was collected so far)
-        logger.info('💾 Saved partial lead data:', Object.fromEntries(session.responses));
-      }
-      
+      logger.info('⏰ Workflow session expired:', sessionId);
+      await this.sendTimeoutMessage(session);
+      logger.info('💾 Partial lead data:', Object.fromEntries(session.responses || []));
     } catch (error) {
       logger.error('❌ Error checking workflow timeout:', error);
     }

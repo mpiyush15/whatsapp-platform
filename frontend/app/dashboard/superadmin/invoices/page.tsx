@@ -5,15 +5,15 @@ import { FileText, Download, Eye, Search, Filter, Calendar, DollarSign, CheckCir
 import { Button } from "@/components/ui/button"
 import { ErrorToast } from "@/components/ErrorToast"
 import InvoiceTemplate from "@/components/InvoiceTemplate"
-import { API_URL } from "@/lib/config/api"
 import { authService, UserRole } from "@/lib/auth"
 import { AccountType } from "@/lib/enums"
+import { backfillAdminInvoices, fetchAdminInvoices } from "@/lib/superadminApi"
 
 interface Invoice {
   _id: string
   invoiceNumber: string
   invoiceDate: string
-  dueDate: string
+  dueDate?: string
   totalAmount?: number
   paidAmount?: number
   status: 'draft' | 'sent' | 'paid' | 'partial' | 'overdue' | 'cancelled'
@@ -36,6 +36,9 @@ export default function InvoicesPage() {
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date')
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [totalRevenue, setTotalRevenue] = useState(0)
+  const [missingCount, setMissingCount] = useState(0)
+  const [backfilling, setBackfilling] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
     const user = authService.getCurrentUser()
@@ -50,77 +53,51 @@ export default function InvoicesPage() {
   const fetchInvoices = async () => {
     try {
       setIsLoading(true)
-      const token = localStorage.getItem("token")
-      
-      // Check if user is superadmin
+      setFetchError(null)
       const user = authService.getCurrentUser()
-      const endpoint = (user?.type === AccountType.INTERNAL || user?.role === UserRole.SUPERADMIN)
-        ? `${API_URL}/billing/admin/invoices` // All invoices for superadmin
-        : `${API_URL}/billing/invoices` // User's invoices only
-      
-      const response = await fetch(endpoint, {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        }
-      })
+      const isAdmin =
+        user?.type === AccountType.INTERNAL || user?.role === UserRole.SUPERADMIN
 
-      if (response.ok) {
-        const data = await response.json()
-        let invoiceList = data.data || data.invoices || []
-        
-        // Map API response to match expected format
-        // API returns 'amount' as totalAmount
-        invoiceList = invoiceList.map((inv: any) => ({
-          ...inv,
-          totalAmount: inv.amount || inv.totalAmount || 0,
-          invoiceDate: inv.date || inv.invoiceDate,
-          paidAmount: inv.paidAmount || 0
-        }))
-        
-        setInvoices(invoiceList)
-        
-        // ✅ CLIENT ONBOARDING: Fetch revenue from proper endpoint (NEW)
-        if (user?.type === AccountType.INTERNAL || user?.role === UserRole.SUPERADMIN) {
-          try {
-            const revenueResponse = await fetch(`${API_URL}/billing/admin/revenue/summary`, {
-              headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json"
-              }
-            })
-            
-            if (revenueResponse.ok) {
-              const revenueData = await revenueResponse.json()
-              setTotalRevenue(revenueData.data?.totalRevenue || 0)
-              console.log('✅ CLIENT ONBOARDING: Revenue updated from endpoint:', revenueData.data?.totalRevenue)
-            }
-          } catch (revErr) {
-            console.error('⚠️ Failed to fetch revenue summary:', revErr)
-            // Fallback to calculating from invoices
-            const revenue = invoiceList
-              .filter((inv: Invoice) => inv.status === 'paid')
-              .reduce((sum: number, inv: Invoice) => sum + (inv.paidAmount ?? 0), 0)
-            setTotalRevenue(revenue)
-          }
-        }
-      } else if (response.status === 404) {
-        // Fallback to user invoices if admin endpoint doesn't exist
-        const fallbackResponse = await fetch(`${API_URL}/billing/invoices`, {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-          }
-        })
-        if (fallbackResponse.ok) {
-          const data = await fallbackResponse.json()
-          setInvoices(data.data || [])
-        }
+      if (!isAdmin) {
+        setFetchError('Superadmin access required')
+        setInvoices([])
+        return
       }
+
+      const result = await fetchAdminInvoices(200)
+      const invoiceList: Invoice[] = (result.invoices || []).map((inv) => ({
+        ...inv,
+        totalAmount: inv.totalAmount ?? 0,
+        invoiceDate: inv.invoiceDate,
+        paidAmount: inv.paidAmount ?? (inv.status === 'paid' ? inv.totalAmount : 0),
+        status: inv.status as Invoice['status'],
+      }))
+      setInvoices(invoiceList)
+      setTotalRevenue(result.totalRevenue ?? 0)
+      setMissingCount(result.missingCount ?? 0)
     } catch (error) {
       console.error("Error fetching invoices:", error)
+      setFetchError(error instanceof Error ? error.message : 'Failed to load invoices')
+      setInvoices([])
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleBackfill = async () => {
+    try {
+      setBackfilling(true)
+      setFetchError(null)
+      const result = await backfillAdminInvoices(100)
+      await fetchInvoices()
+      setFetchError(null)
+      alert(
+        `Backfill done: ${result.created} created, ${result.skipped} already had invoices, ${result.failed} failed.`
+      )
+    } catch (error) {
+      setFetchError(error instanceof Error ? error.message : 'Backfill failed')
+    } finally {
+      setBackfilling(false)
     }
   }
 
@@ -201,8 +178,25 @@ export default function InvoicesPage() {
           <div className="bg-blue-100 text-blue-800 text-sm font-semibold px-4 py-2 rounded-lg">
             Total Invoices: {invoices.length}
           </div>
+          {isSuperAdmin && missingCount > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={backfilling}
+              onClick={handleBackfill}
+              className="border-amber-300 text-amber-900"
+            >
+              {backfilling ? 'Generating…' : `Generate ${missingCount} missing invoice(s)`}
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {fetchError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          {fetchError}
+        </div>
+      ) : null}
 
       {/* Filters and Search */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
@@ -260,9 +254,11 @@ export default function InvoicesPage() {
             <FileText className="h-12 w-12 mx-auto text-gray-300 mb-3" />
             <p className="text-gray-600 mb-2">No invoices found</p>
             <p className="text-sm text-gray-500">
-              {searchQuery || filterStatus !== 'all' 
+              {searchQuery || filterStatus !== 'all'
                 ? 'Try adjusting your filters or search terms'
-                : 'Invoices are automatically generated when you complete a payment. Complete a payment to see your first invoice.'}
+                : missingCount > 0
+                  ? `${missingCount} completed payment(s) have no invoice yet. Use "Generate missing invoice(s)" above.`
+                  : 'Invoices are created when payment lifecycle completes. Completed payments without invoices can be backfilled.'}
             </p>
           </div>
         ) : (

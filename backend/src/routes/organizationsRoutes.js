@@ -11,6 +11,7 @@ import {
   getAllOrganizations,
   createOrganization,
   getOrganizationById,
+  getOrganizationOperational,
   updateOrganization,
   deleteOrganization,
   migrateBillingDates,
@@ -57,6 +58,12 @@ router.post('/:id/generate-payment-link', generatePaymentLink);
  * @access  Admin only (requires JWT auth)
  */
 router.post('/:id/create-invoice', createInvoice);
+
+/**
+ * @route   GET /api/admin/organizations/:id/operational
+ * @desc    Projects, phones, usage for organization
+ */
+router.get('/:id/operational', getOrganizationOperational);
 
 /**
  * @route   GET /api/admin/organizations/:id

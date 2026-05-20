@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react"
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import {
   addEdge,
   Background,
@@ -22,6 +22,7 @@ import {
   type NodeChange,
 } from "reactflow"
 import "reactflow/dist/style.css"
+import Link from "next/link"
 import {
   AlertCircle,
   Bot,
@@ -30,15 +31,23 @@ import {
   MessageSquare,
   Plus,
   Save,
+  Settings2,
   TimerReset,
   Trash2,
+  Users,
 } from "lucide-react"
 import { authService } from "@/lib/auth"
+import { useFlowBuilder } from "@/lib/context/FlowBuilderContext"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050/api"
 
 type MatchType = "exact" | "contains" | "starts_with"
-type FlowNodeType = "start" | "message" | "question" | "buttons" | "list" | "end" | "vertical_action"
+type FlowNodeType = "start" | "message" | "question" | "buttons" | "list" | "condition" | "end" | "vertical_action"
+
+type ConditionBranch = {
+  id: string
+  value: string
+}
 
 type ButtonOption = {
   id: string
@@ -63,6 +72,8 @@ type FlowNodeData = {
   vertical?: string
   action?: string
   actionConfig?: Record<string, string>
+  variable?: string
+  branches?: ConditionBranch[]
 }
 
 // ── Vertical Action Registry ───────────────────────────────────────────────
@@ -155,6 +166,7 @@ type FlowBot = {
   isActive: boolean
   timeoutMinutes?: number
   triggerCount?: number
+  successRate?: number
   replyContent?: {
     workflow?: unknown[]
     flowGraph?: {
@@ -178,12 +190,22 @@ type MetaFormState = {
 const makeId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`
 
 const baseNodeStyle: CSSProperties = {
-  borderRadius: 14,
+  borderRadius: 16,
   border: "1px solid #d1d5db",
   background: "#ffffff",
-  minWidth: 220,
-  boxShadow: "0 10px 28px rgba(15, 23, 42, 0.08)",
+  minWidth: 260,
+  boxShadow: "0 12px 32px rgba(15, 23, 42, 0.1)",
 }
+
+type FlowLead = {
+  _id: string
+  customerPhone: string
+  status: string
+  responses?: Record<string, string>
+  createdAt: string
+}
+
+type LeftPanelTab = "flows" | "settings" | "leads"
 
 const handleStyle = {
   width: 10,
@@ -293,6 +315,37 @@ function ListNode({ data }: NodeProps<FlowNodeData>) {
   )
 }
 
+function ConditionNode({ data }: NodeProps<FlowNodeData>) {
+  const branches = data.branches || []
+  return (
+    <div style={baseNodeStyle} className="border-indigo-200 bg-indigo-50 p-4">
+      <Handle type="target" position={Position.Top} id="in" style={handleStyle} />
+      <div className="mb-2">{sectionTitle("Condition", "bg-indigo-100 text-indigo-700")}</div>
+      <div className="text-sm font-medium text-slate-900">If {data.variable || "variable"}</div>
+      <div className="mt-3 space-y-1">
+        {branches.length === 0 ? (
+          <div className="text-[11px] text-slate-500">Add branches in the panel →</div>
+        ) : null}
+        {branches.map((branch, index) => {
+          const topOffset = `${26 + index * 24}px`
+          return (
+            <div key={branch.id} className="relative rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-xs text-slate-700">
+              = {branch.value || `branch ${index + 1}`}
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={`branch:${branch.id}`}
+                style={{ ...handleStyle, top: topOffset, right: -6, background: "#6366f1" }}
+              />
+            </div>
+          )
+        })}
+      </div>
+      <Handle type="source" position={Position.Bottom} id="next" style={handleStyle} />
+    </div>
+  )
+}
+
 function EndNode({ data }: NodeProps<FlowNodeData>) {
   return (
     <div style={baseNodeStyle} className="border-rose-200 bg-rose-50 p-4">
@@ -310,6 +363,7 @@ const nodeTypes = {
   question: QuestionNode,
   buttons: ButtonsNode,
   list: ListNode,
+  condition: ConditionNode,
   end: EndNode,
   vertical_action: VerticalActionNode,
 }
@@ -462,6 +516,7 @@ const workflowToFlowGraph = (workflow: any[] = []) => {
 }
 
 function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectId: string; vertical?: string }) {
+  const { setStatus } = useFlowBuilder()
   const [flows, setFlows] = useState<FlowBot[]>([])
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null)
   const [meta, setMeta] = useState<MetaFormState>({
@@ -479,6 +534,9 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [leftTab, setLeftTab] = useState<LeftPanelTab>("flows")
+  const [leads, setLeads] = useState<FlowLead[]>([])
+  const [leadsLoading, setLeadsLoading] = useState(false)
 
   const selectedNode = useMemo(() => nodes.find((node) => node.id === selectedNodeId) || null, [nodes, selectedNodeId])
 
@@ -529,6 +587,50 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
+  const loadLeads = async (chatbotId: string) => {
+    try {
+      setLeadsLoading(true)
+      const response = await fetch(`${API_URL}/chatbots/${chatbotId}/leads?projectId=${projectId}`, {
+        headers: authHeaders(),
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload?.success) {
+        setLeads([])
+        return
+      }
+      setLeads(payload?.data?.leads || payload?.leads || [])
+    } catch {
+      setLeads([])
+    } finally {
+      setLeadsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (selectedFlowId) {
+      loadLeads(selectedFlowId)
+    } else {
+      setLeads([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFlowId, projectId])
+
+  useEffect(() => {
+    if (error) {
+      setStatus({ type: "error", message: error })
+      return
+    }
+    if (notice) {
+      setStatus({ type: "success", message: notice })
+      const timer = window.setTimeout(() => {
+        setNotice(null)
+        setStatus(null)
+      }, 4000)
+      return () => window.clearTimeout(timer)
+    }
+    setStatus(null)
+  }, [error, notice, setStatus])
+
   const hydrateEditor = (flow: FlowBot) => {
     setSelectedFlowId(flow._id || null)
     setMeta({
@@ -550,7 +652,8 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
     setNodes(graph.nodes.length > 0 ? graph.nodes : buildStarterGraph().nodes)
     setEdges(graph.edges.length > 0 ? graph.edges : buildStarterGraph().edges)
     setSelectedNodeId(null)
-    setNotice(`Loaded flow: ${flow.name}`)
+    setNotice(null)
+    setError(null)
   }
 
   const createBlankFlow = () => {
@@ -567,7 +670,8 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
     setNodes(starter.nodes)
     setEdges(starter.edges)
     setSelectedNodeId(null)
-    setNotice("Started a new blank flow")
+    setNotice(null)
+    setError(null)
   }
 
   const onNodesChange = (changes: NodeChange[]) => setNodes((current) => applyNodeChanges(changes, current))
@@ -594,6 +698,12 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
           ? { label: "Buttons", text: "Choose an option", buttons: [{ id: makeId("button"), title: "Option 1", url: "" }] }
           : type === "list"
           ? { label: "List", text: "Pick from the list", items: [{ id: makeId("item"), title: "Item 1", description: "" }] }
+          : type === "condition"
+          ? {
+              label: "Condition",
+              variable: "response",
+              branches: [{ id: makeId("branch"), value: "yes" }, { id: makeId("branch"), value: "no" }],
+            }
           : type === "vertical_action"
           ? { label: "Vertical Action", vertical, action: '', actionConfig: {} }
           : { label: "End", text: "Thanks, we will get back to you." },
@@ -678,8 +788,14 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
         throw new Error(result?.error || result?.message || "Failed to save flow")
       }
 
-      const savedFlowId = result?.data?._id || selectedFlowId || null
-      setNotice(selectedFlowId ? "Flow updated successfully" : "Flow created successfully")
+      const savedFlowId = result?.data?._id || result?.data?.bot?._id || selectedFlowId || null
+      setSelectedFlowId(savedFlowId)
+      setLeftTab("flows")
+      setNotice(
+        savedFlowId
+          ? "Flow saved — it appears in “My flows” and runs when customers send your keywords on WhatsApp."
+          : "Flow saved successfully"
+      )
       await loadFlows(savedFlowId || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save flow")
@@ -712,114 +828,166 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
     }
   }
 
+  const leftTabBtn = (tab: LeftPanelTab, label: string, icon: ReactNode) => (
+    <button
+      type="button"
+      onClick={() => setLeftTab(tab)}
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+        leftTab === tab ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  )
+
   return (
-    <div className="flex h-[calc(100vh-96px)] flex-col gap-4 p-4 lg:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Visual Flow Builder</h1>
-          <p className="text-sm text-slate-600">Canvas-based chatbot flow editor built on top of the existing workflow runtime.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={createBlankFlow}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-          >
-            <Plus className="h-4 w-4" />
-            New Flow
-          </button>
-          <button
-            onClick={saveFlow}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-          >
-            <Save className="h-4 w-4" />
-            {saving ? "Saving..." : "Save Flow"}
-          </button>
-        </div>
-      </div>
-
-      {(error || notice) && (
-        <div className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-          {error || notice}
-        </div>
-      )}
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
-        <div className="flex min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-4 py-3">
-            <h2 className="text-sm font-semibold text-slate-900">Flows</h2>
+    <div className="flex h-[calc(100vh-56px)] min-h-0 flex-col p-3 lg:p-4">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 xl:grid-cols-[300px_minmax(0,1fr)_380px]">
+        <div className="flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:min-h-0">
+          <div className="flex gap-1 border-b border-slate-100 bg-slate-50 p-2">
+            {leftTabBtn("flows", "My flows", <Bot className="h-4 w-4" />)}
+            {leftTabBtn("settings", "Settings", <Settings2 className="h-4 w-4" />)}
+            {leftTabBtn("leads", "Leads", <Users className="h-4 w-4" />)}
           </div>
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
-            {loading ? <div className="text-sm text-slate-500">Loading flows...</div> : null}
-            {!loading && flows.length === 0 ? <div className="text-sm text-slate-500">No saved flows yet. Start with a blank flow.</div> : null}
-            {flows.map((flow) => (
-              <button
-                key={flow._id}
-                onClick={() => hydrateEditor(flow)}
-                className={`w-full rounded-xl border px-3 py-3 text-left transition ${selectedFlowId === flow._id ? "border-green-300 bg-green-50" : "border-slate-200 bg-white hover:bg-slate-50"}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-semibold text-slate-900">{flow.name}</div>
-                    <div className="mt-1 text-xs text-slate-500">{flow.keywords?.join(", ") || "No keywords"}</div>
+          <div className="flex gap-2 border-b border-slate-100 px-3 py-2">
+            <button
+              type="button"
+              onClick={createBlankFlow}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New
+            </button>
+            <button
+              type="button"
+              onClick={saveFlow}
+              disabled={saving}
+              className="inline-flex flex-[1.4] items-center justify-center gap-1.5 rounded-lg bg-green-600 px-2 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {saving ? "…" : "Save"}
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {leftTab === "flows" ? (
+              <div className="space-y-3">
+                {loading ? <p className="text-sm text-slate-500">Loading flows…</p> : null}
+                {!loading && flows.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-relaxed text-slate-600">
+                    <p className="font-medium text-slate-800">No saved flows yet</p>
+                    <p className="mt-2">Use Settings for name/keywords, build on the canvas, then Save flow.</p>
                   </div>
-                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${flow.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-                    {flow.isActive ? "Active" : "Draft"}
-                  </span>
-                </div>
-                <div className="mt-2 text-[11px] text-slate-500">Interactions: {flow.triggerCount || 0}</div>
-              </button>
-            ))}
-          </div>
+                ) : null}
+                {flows.map((flow) => (
+                  <button
+                    key={flow._id}
+                    type="button"
+                    onClick={() => {
+                      hydrateEditor(flow)
+                      setLeftTab("flows")
+                    }}
+                    className={`w-full rounded-xl border px-4 py-4 text-left transition ${
+                      selectedFlowId === flow._id ? "border-green-400 bg-green-50 ring-1 ring-green-200" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-slate-900">{flow.name}</div>
+                        <div className="mt-1 truncate text-xs text-slate-500">{flow.keywords?.join(", ") || "No keywords"}</div>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${flow.isActive ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+                        {flow.isActive ? "Live" : "Off"}
+                      </span>
+                    </div>
+                    <div className="mt-3 text-xs text-slate-500">{flow.triggerCount || 0} triggers</div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
-          <div className="border-t border-slate-100 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-900">Flow Meta</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
-                <input value={meta.name} onChange={(e) => setMeta((prev) => ({ ...prev, name: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Lead qualification flow" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Description</label>
-                <textarea value={meta.description} onChange={(e) => setMeta((prev) => ({ ...prev, description: e.target.value }))} className="h-20 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Optional description" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Keywords</label>
-                <input value={meta.keywords} onChange={(e) => setMeta((prev) => ({ ...prev, keywords: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="hi, help, pricing" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
+            {leftTab === "settings" ? (
+              <div className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Match</label>
-                  <select value={meta.matchType} onChange={(e) => setMeta((prev) => ({ ...prev, matchType: e.target.value as MatchType }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                    <option value="contains">Contains</option>
-                    <option value="exact">Exact</option>
-                    <option value="starts_with">Starts With</option>
-                  </select>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Flow name</label>
+                  <input value={meta.name} onChange={(e) => setMeta((prev) => ({ ...prev, name: e.target.value }))} className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm" placeholder="Lead qualification flow" />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-600">Timeout</label>
-                  <select value={meta.timeoutMinutes} onChange={(e) => setMeta((prev) => ({ ...prev, timeoutMinutes: Number(e.target.value) }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                    <option value={1}>1 min</option>
-                    <option value={2}>2 min</option>
-                    <option value={5}>5 min</option>
-                    <option value={10}>10 min</option>
-                  </select>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Description</label>
+                  <textarea value={meta.description} onChange={(e) => setMeta((prev) => ({ ...prev, description: e.target.value }))} className="h-24 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm" placeholder="Optional" />
                 </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Trigger keywords</label>
+                  <input value={meta.keywords} onChange={(e) => setMeta((prev) => ({ ...prev, keywords: e.target.value }))} className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm" placeholder="hi, help, pricing" />
+                  <p className="mt-1.5 text-xs text-slate-500">Comma-separated. Customer sends one on WhatsApp to start this flow.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Match</label>
+                    <select value={meta.matchType} onChange={(e) => setMeta((prev) => ({ ...prev, matchType: e.target.value as MatchType }))} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                      <option value="contains">Contains</option>
+                      <option value="exact">Exact</option>
+                      <option value="starts_with">Starts with</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700">Reply timeout</label>
+                    <select value={meta.timeoutMinutes} onChange={(e) => setMeta((prev) => ({ ...prev, timeoutMinutes: Number(e.target.value) }))} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                      <option value={1}>1 min</option>
+                      <option value={2}>2 min</option>
+                      <option value={5}>5 min</option>
+                      <option value={10}>10 min</option>
+                    </select>
+                  </div>
+                </div>
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <input type="checkbox" checked={meta.isActive} onChange={(e) => setMeta((prev) => ({ ...prev, isActive: e.target.checked }))} className="h-4 w-4" />
+                  Flow is active on WhatsApp
+                </label>
+                {selectedFlowId ? (
+                  <button type="button" onClick={() => deleteFlow(selectedFlowId)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-100">
+                    <Trash2 className="h-4 w-4" /> Delete this flow
+                  </button>
+                ) : (
+                  <p className="text-xs text-slate-500">Save once to enable delete.</p>
+                )}
               </div>
-              <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <input type="checkbox" checked={meta.isActive} onChange={(e) => setMeta((prev) => ({ ...prev, isActive: e.target.checked }))} />
-                Flow active
-              </label>
-              {selectedFlowId ? (
-                <button onClick={() => deleteFlow(selectedFlowId)} className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100">
-                  <Trash2 className="h-4 w-4" /> Delete Flow
-                </button>
-              ) : null}
-            </div>
+            ) : null}
+
+            {leftTab === "leads" ? (
+              <div className="space-y-3">
+                {!selectedFlowId ? (
+                  <p className="text-sm leading-relaxed text-slate-600">Save and select a flow to see people who completed it.</p>
+                ) : leadsLoading ? (
+                  <p className="text-sm text-slate-500">Loading leads…</p>
+                ) : leads.length === 0 ? (
+                  <p className="text-sm leading-relaxed text-slate-600">No leads yet. Created when someone finishes your flow (question steps collect answers).</p>
+                ) : (
+                  leads.slice(0, 20).map((lead) => (
+                    <div key={lead._id} className="rounded-xl border border-slate-200 p-3">
+                      <div className="font-medium text-slate-900">{lead.customerPhone}</div>
+                      <div className="mt-1 text-xs capitalize text-slate-500">{lead.status}</div>
+                      {lead.responses && Object.keys(lead.responses).length > 0 ? (
+                        <div className="mt-2 space-y-0.5 text-xs text-slate-600">
+                          {Object.entries(lead.responses).slice(0, 3).map(([k, v]) => (
+                            <div key={k}>
+                              <span className="font-medium">{k}:</span> {String(v)}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+                <Link href={`/projects/${projectId}/leads`} className="inline-block text-sm font-medium text-green-700 hover:text-green-800">
+                  View all project leads →
+                </Link>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="min-h-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="min-h-[520px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:min-h-0">
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -841,6 +1009,7 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
                 <button onClick={() => addNode("question")} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"><Bot className="h-3.5 w-3.5" /> Question</button>
                 <button onClick={() => addNode("buttons")} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"><GitBranch className="h-3.5 w-3.5" /> Buttons</button>
                 <button onClick={() => addNode("list")} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"><List className="h-3.5 w-3.5" /> List</button>
+                <button onClick={() => addNode("condition")} className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"><GitBranch className="h-3.5 w-3.5" /> Condition</button>
                 <button onClick={() => addNode("end")} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"><TimerReset className="h-3.5 w-3.5" /> End</button>
                 {vertical && VERTICAL_ACTION_REGISTRY[vertical] && (
                   <button onClick={() => addNode("vertical_action")} className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-100">
@@ -852,14 +1021,15 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
           </ReactFlow>
         </div>
 
-        <div className="flex min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-4 py-3">
-            <h2 className="text-sm font-semibold text-slate-900">Node Inspector</h2>
+        <div className="flex min-h-[420px] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm xl:min-h-0">
+          <div className="border-b border-slate-100 px-5 py-4">
+            <h2 className="text-base font-semibold text-slate-900">Node inspector</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Click any node on the canvas to edit it</p>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-5">
             {!selectedNode ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
-                Select a node on the canvas to edit its content and branching options.
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm leading-relaxed text-slate-500">
+                Select a node on the canvas to edit message text, buttons, list items, or condition branches.
               </div>
             ) : (
               <div className="space-y-4">
@@ -909,6 +1079,42 @@ function FlowBuilderStudioInner({ projectId, vertical = 'whatsapp' }: { projectI
                     ))}
                     <button onClick={() => updateSelectedNode({ buttons: [...(selectedNode.data.buttons || []), { id: makeId("button"), title: `Option ${(selectedNode.data.buttons || []).length + 1}`, url: "" }] })} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
                       <Plus className="h-4 w-4" /> Add Button
+                    </button>
+                  </div>
+                ) : null}
+
+                {selectedNode.type === "condition" ? (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-medium text-slate-600">Variable to check</label>
+                    <input
+                      value={selectedNode.data.variable || ""}
+                      onChange={(e) => updateSelectedNode({ variable: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    {(selectedNode.data.branches || []).map((branch) => (
+                      <input
+                        key={branch.id}
+                        value={branch.value}
+                        onChange={(e) =>
+                          updateSelectedNode({
+                            branches: (selectedNode.data.branches || []).map((b) =>
+                              b.id === branch.id ? { ...b, value: e.target.value } : b
+                            ),
+                          })
+                        }
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      />
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateSelectedNode({
+                          branches: [...(selectedNode.data.branches || []), { id: makeId("branch"), value: "new" }],
+                        })
+                      }
+                      className="text-sm text-indigo-600"
+                    >
+                      + Add branch
                     </button>
                   </div>
                 ) : null}

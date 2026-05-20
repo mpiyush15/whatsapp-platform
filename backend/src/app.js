@@ -42,6 +42,7 @@ import dashboardRoutes from './routes/dashboardRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import { startPaymentStatusPoller } from './jobs/paymentStatusPoller.js';
 import { startPaymentTimeoutScheduler } from './schedulers/paymentTimeoutScheduler.js';
+import { startWorkflowTimeoutScheduler } from './schedulers/workflowTimeoutScheduler.js';
 import jobRoutes from './routes/jobRoutes.js';
 import demoRoutes from './routes/demoRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
@@ -499,6 +500,7 @@ export const setupSocketIO = (io) => {
 
   // Start payment timeout scheduler (runs every 15 minutes)
   startPaymentTimeoutScheduler();
+  startWorkflowTimeoutScheduler();
 };
 
 export default app;

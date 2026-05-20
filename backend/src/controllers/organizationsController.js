@@ -2,6 +2,8 @@ import { sendSuccess, sendValidationError, sendNotFound, sendForbidden, sendErro
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import mongoose from 'mongoose';
+import Account from '../models/Account.js';
+import platformAdminService from '../services/platformAdminService.js';
 
 export const createOrganization = async (req, res) => {
   try {
@@ -40,38 +42,79 @@ export const listOrganizations = async (req, res) => {
 
 export const getAllOrganizations = async (req, res) => {
   try {
-    const user = req.user;
-    
-    console.log('🔍 [getAllOrganizations] req.user:', user);
-    console.log('🔍 [getAllOrganizations] user.role:', user?.role);
-    console.log('🔍 [getAllOrganizations] role check (superadmin?):', user?.role === 'superadmin');
-    
-    // Only superadmin can view all organizations
-    if (user.role !== 'superadmin') {
-      console.log('❌ [getAllOrganizations] User role is NOT superadmin, returning empty array');
-      return sendSuccess(res, { data: [] }, 'Organizations retrieved');
+    const isSuperadmin =
+      req.account?.type === 'internal' || req.user?.role === 'superadmin';
+    if (!isSuperadmin) {
+      return sendForbidden(res, 'Only superadmins can view organizations');
     }
-    
-    console.log('✅ [getAllOrganizations] User is superadmin, fetching organizations...');
-    
-    // Query accounts collection - this contains all organizations
-    const Account = mongoose.model('Account');
-    const organizations = await Account.find({})
-      .select('accountId name email company type role status isInternal createdAt')
-      .sort({ createdAt: -1 })
-      .lean(); // Convert to plain JavaScript objects, not Mongoose documents
-    
-    console.log('🔍 [getAllOrganizations] Found organizations:', organizations.length);
-    console.log('🔍 [getAllOrganizations] Organizations:', organizations);
-    console.log('🔍 [getAllOrganizations] Is array?:', Array.isArray(organizations));
-    
-    // Ensure it's a plain array
-    const plainArray = Array.isArray(organizations) ? organizations : [];
-    console.log('🔍 [getAllOrganizations] Plain array length:', plainArray.length);
-    
-    return sendSuccess(res, { data: plainArray }, 'All organizations retrieved');
+
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 500));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const status = req.query.status || 'all';
+
+  // Clients, agencies, and internal (billing-exempt) accounts
+    const filter = {
+      $or: [
+        { type: { $in: ['client', 'agency', 'internal'] } },
+        { isInternal: true },
+      ],
+    };
+    if (status !== 'all') {
+      filter.status = status;
+    }
+
+    const [organizations, total] = await Promise.all([
+      Account.find(filter)
+        .select(
+          'accountId name email company phone plan billingCycle type role status isInternal createdAt subscriptionId'
+        )
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip(offset)
+        .lean(),
+      Account.countDocuments(filter),
+    ]);
+
+    const statsMap = await platformAdminService.getOrgStatsMap(
+      organizations.map((o) => o.accountId)
+    );
+
+    const enriched = organizations.map((org) => {
+      const stats = statsMap.get(org.accountId) || {};
+      return {
+        _id: org._id,
+        accountId: org.accountId,
+        name: org.name,
+        email: org.email,
+        company: org.company,
+        phone: org.phone,
+        plan: org.plan,
+        billingCycle: org.billingCycle,
+        status: org.status,
+        role: org.role,
+        type: org.type,
+        isInternal: Boolean(org.isInternal),
+        createdAt: org.createdAt,
+        projectCount: stats.projectCount ?? 0,
+        phoneCount: stats.phoneCount ?? 0,
+        connectedProjects: stats.connectedProjects ?? 0,
+        hasMultipleProjects: Boolean(stats.hasMultipleProjects),
+        messages7d: stats.messages7d ?? 0,
+        projectsByVertical: stats.projectsByVertical ?? {},
+        verticals: stats.verticals ?? [],
+        hasMultipleVerticals: Boolean(stats.hasMultipleVerticals),
+      };
+    });
+
+    return sendSuccess(
+      res,
+      {
+        organizations: enriched,
+        pagination: { total, limit, offset, status },
+      },
+      'Organizations retrieved'
+    );
   } catch (error) {
-    console.error('❌ [getAllOrganizations] Error:', error);
     return handleControllerError(res, error, 'getAllOrganizations');
   }
 };
@@ -95,10 +138,30 @@ export const getOrganizationById = async (req, res) => {
     if (!organization) {
       return sendError(res, 'Organization not found', 404);
     }
+
+    let operational = null;
+    try {
+      operational = await platformAdminService.getOrganizationOperationalDetail(id);
+    } catch (opsErr) {
+      logger.warn('Operational detail partial failure:', opsErr.message);
+    }
     
-    return sendSuccess(res, organization, 'Organization retrieved');
+    return sendSuccess(res, { ...organization, operational }, 'Organization retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getOrganizationById');
+  }
+};
+
+export const getOrganizationOperational = async (req, res) => {
+  try {
+    if (req.account?.type !== 'internal') {
+      return sendForbidden(res, 'Only superadmins can view organization operational data');
+    }
+    const { id } = req.params;
+    const data = await platformAdminService.getOrganizationOperationalDetail(id);
+    return sendSuccess(res, data, 'Organization operational detail');
+  } catch (error) {
+    return handleControllerError(res, error, 'getOrganizationOperational');
   }
 };
 

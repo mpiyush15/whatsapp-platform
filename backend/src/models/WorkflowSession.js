@@ -110,6 +110,12 @@ const workflowSessionSchema = new mongoose.Schema({
   awaitingResponseSince: {
     type: Date
   },
+  /** When set, cron job expires session if user has not replied (multi-instance safe) */
+  responseDeadlineAt: {
+    type: Date,
+    default: null,
+    index: true
+  },
   timeoutMinutes: {
     type: Number,
     default: 1 // 1 minute timeout for user response
@@ -131,6 +137,7 @@ workflowSessionSchema.index({
 
 // Index for cleanup of expired sessions
 workflowSessionSchema.index({ expiresAt: 1 });
+workflowSessionSchema.index({ status: 1, responseDeadlineAt: 1 });
 
 // Method to get current step
 workflowSessionSchema.methods.getCurrentStep = function() {

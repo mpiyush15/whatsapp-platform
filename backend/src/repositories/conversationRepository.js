@@ -50,10 +50,12 @@ class ConversationRepository {
     }
 
     if (search && search.trim()) {
+      const term = search.trim();
       query.$or = [
-        { userName: { $regex: search.trim(), $options: 'i' } },
-        { userPhone: { $regex: search.trim(), $options: 'i' } },
-        { lastMessagePreview: { $regex: search.trim(), $options: 'i' } }
+        { userName: { $regex: term, $options: 'i' } },
+        { userPhone: { $regex: term, $options: 'i' } },
+        { lastMessagePreview: { $regex: term, $options: 'i' } },
+        { tags: { $regex: term, $options: 'i' } },
       ];
     }
 
@@ -82,7 +84,7 @@ class ConversationRepository {
 
   async assignToAgent(conversationId, accountId, agentId, reason = 'manual') {
     return Conversation.findOneAndUpdate(
-      { _id: conversationId, accountId },
+      this.buildConversationIdentityFilter(conversationId, accountId),
       {
         assignedAgentId: agentId,
         $push: {
@@ -99,7 +101,7 @@ class ConversationRepository {
 
   async updateStatus(conversationId, accountId, status, extraUpdates = {}) {
     return Conversation.findOneAndUpdate(
-      { _id: conversationId, accountId },
+      this.buildConversationIdentityFilter(conversationId, accountId),
       {
         status,
         ...extraUpdates
@@ -110,7 +112,7 @@ class ConversationRepository {
 
   async addTag(conversationId, accountId, tagName) {
     return Conversation.findOneAndUpdate(
-      { _id: conversationId, accountId },
+      this.buildConversationIdentityFilter(conversationId, accountId),
       { $addToSet: { tags: tagName } },
       { new: true }
     );
@@ -118,7 +120,7 @@ class ConversationRepository {
 
   async removeTag(conversationId, accountId, tagName) {
     return Conversation.findOneAndUpdate(
-      { _id: conversationId, accountId },
+      this.buildConversationIdentityFilter(conversationId, accountId),
       { $pull: { tags: tagName } },
       { new: true }
     );

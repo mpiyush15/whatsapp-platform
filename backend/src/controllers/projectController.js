@@ -347,6 +347,37 @@ export async function setDefaultProject(req, res) {
  * GET /api/projects/:projectId/stats
  * Get project statistics (messages, contacts, etc.)
  */
+export async function getProjectAnalytics(req, res) {
+  try {
+    const { projectId } = req.params;
+    const { accountId } = req.user;
+
+    const project = await Project.findOne({ projectId, accountId });
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'Project not found',
+      });
+    }
+
+    const { getProjectAnalytics: loadAnalytics } = await import(
+      '../services/projectAnalyticsService.js'
+    );
+    const analytics = await loadAnalytics(accountId, projectId, req.query);
+
+    return res.json({
+      success: true,
+      data: analytics,
+    });
+  } catch (error) {
+    console.error('Error fetching project analytics:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch project analytics',
+    });
+  }
+}
+
 export async function getProjectStats(req, res) {
   try {
     const { projectId } = req.params;

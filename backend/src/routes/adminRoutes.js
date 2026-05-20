@@ -22,6 +22,19 @@ import {
   getCreditMismatchReport,
   recomputeCreditBalance,
 } from '../controllers/billingAdminController.js';
+import {
+  getMetrics,
+  getRecentCustomers,
+  getPlatformAnalytics,
+  getPlatformCampaigns,
+  getPlatformLeads,
+  patchPlatformLead,
+  downloadExportCsv,
+  getAdminInvoices,
+  backfillAdminInvoices,
+  getDashboard,
+} from '../controllers/platformAdminController.js';
+import { getObservability } from '../controllers/systemHealthController.js';
 
 const router = express.Router();
 
@@ -34,6 +47,65 @@ const getMaintenanceAudienceFilter = (segment = 'all') => {
 
   return { type: { $in: ['client', 'agency'] } };
 };
+
+/**
+ * GET /api/admin/metrics
+ * Platform dashboard KPIs (superadmin only)
+ */
+router.get('/metrics', getMetrics);
+
+/**
+ * GET /api/admin/dashboard
+ * Superadmin home: KPIs, charts, orgs with project/phone stats
+ */
+router.get('/dashboard', getDashboard);
+
+/**
+ * GET /api/admin/customers
+ * Recent organizations for dashboard (superadmin only)
+ */
+router.get('/customers', getRecentCustomers);
+
+/**
+ * GET /api/admin/platform-analytics
+ * Cross-tenant messaging, credits, Meta estimates (superadmin only)
+ */
+router.get('/platform-analytics', getPlatformAnalytics);
+
+/**
+ * GET /api/admin/platform-campaigns
+ * All WhatsApp campaigns across tenants (superadmin only)
+ */
+router.get('/platform-campaigns', getPlatformCampaigns);
+
+/**
+ * GET /api/admin/platform-leads
+ * All conversation leads across tenants (superadmin only)
+ */
+router.get('/platform-leads', getPlatformLeads);
+
+/**
+ * PATCH /api/admin/platform-leads/:leadId
+ */
+router.patch('/platform-leads/:leadId', patchPlatformLead);
+
+/**
+ * GET /api/admin/exports/download/:dataset
+ * CSV download for export datasets (superadmin only)
+ */
+router.get('/exports/download/:dataset', downloadExportCsv);
+
+/**
+ * GET /api/admin/invoices
+ * All platform invoices (superadmin only)
+ */
+router.get('/invoices', getAdminInvoices);
+
+/**
+ * POST /api/admin/invoices/backfill
+ * Create invoices for completed payments missing invoice records
+ */
+router.post('/invoices/backfill', backfillAdminInvoices);
 
 /**
  * GET /api/admin/organizations
@@ -463,7 +535,7 @@ router.post('/exports', async (req, res) => {
     const now = new Date();
     const actor = req.user?.email || req.user?.name || 'superadmin';
 
-    const allowedDatasets = ['billing', 'usage', 'offers', 'health', 'audit'];
+    const allowedDatasets = ['billing', 'usage', 'offers', 'health', 'audit', 'organizations'];
     if (!allowedDatasets.includes(String(dataset))) {
       return res.status(400).json({ success: false, message: 'Invalid dataset' });
     }
@@ -545,93 +617,9 @@ router.post('/exports', async (req, res) => {
 
 /**
  * GET /api/admin/system-health/observability
- * Step 9 observability foundation snapshot
+ * Infrastructure + pipeline health (not message volume analytics)
  */
-router.get('/system-health/observability', async (req, res) => {
-  try {
-    const db = mongoose.connection.db;
-    const now = new Date();
-    const dayAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
-
-    const [
-      messages24h,
-      failedMessages24h,
-      queuedNow,
-      supportOpen,
-      supportOverdue,
-      pendingPayments,
-      processingPayments,
-      recentAudit,
-    ] = await Promise.all([
-      db.collection('messages').countDocuments({ createdAt: { $gte: dayAgo } }),
-      db.collection('messages').countDocuments({ createdAt: { $gte: dayAgo }, status: 'failed' }),
-      db.collection('messages').countDocuments({ status: 'queued' }),
-      db.collection('supporttickets').countDocuments({ status: { $in: ['open', 'in-progress'] } }),
-      db.collection('supporttickets').countDocuments({ status: { $in: ['open', 'in-progress'] }, slaDueAt: { $lt: now } }),
-      db.collection('payments').countDocuments({ status: 'pending' }),
-      db.collection('payments').countDocuments({ status: 'processing' }),
-      db.collection('admin_audit_logs').find({}).sort({ createdAt: -1 }).limit(5).toArray(),
-    ]);
-
-    const activeAlerts = failedMessages24h + supportOverdue + processingPayments;
-    const healthScore = Math.max(60, 100 - Math.min(activeAlerts * 3, 35));
-
-    return res.json({
-      success: true,
-      data: {
-        generatedAt: now,
-        summary: {
-          systemStatus: activeAlerts > 0 ? 'degraded' : 'operational',
-          healthScore,
-          activeAlerts,
-          messages24h,
-          failedMessages24h,
-        },
-        services: [
-          {
-            name: 'API Server',
-            status: 'healthy',
-            metricLabel: 'Messages (24h)',
-            metricValue: messages24h,
-          },
-          {
-            name: 'Message Queue',
-            status: queuedNow > 500 ? 'warning' : 'healthy',
-            metricLabel: 'Queued now',
-            metricValue: queuedNow,
-          },
-          {
-            name: 'Support Queue',
-            status: supportOverdue > 0 ? 'warning' : 'healthy',
-            metricLabel: 'Open tickets',
-            metricValue: supportOpen,
-          },
-          {
-            name: 'Payments Pipeline',
-            status: processingPayments > 30 ? 'warning' : 'healthy',
-            metricLabel: 'Pending + Processing',
-            metricValue: pendingPayments + processingPayments,
-          },
-        ],
-        incidents: [
-          ...(failedMessages24h > 0
-            ? [{ severity: 'warning', service: 'Messaging', detail: `${failedMessages24h} failed messages in last 24h` }]
-            : []),
-          ...(supportOverdue > 0
-            ? [{ severity: 'warning', service: 'Support', detail: `${supportOverdue} overdue support tickets` }]
-            : []),
-          ...(processingPayments > 0
-            ? [{ severity: 'warning', service: 'Billing', detail: `${processingPayments} payments stuck in processing` }]
-            : []),
-        ],
-        auditTrail: recentAudit,
-      },
-    });
-  } catch (error) {
-    logger.error('observability snapshot error', error);
-    return res.status(500).json({ success: false, message: 'Failed to build observability snapshot' });
-  }
-});
+router.get('/system-health/observability', getObservability);
 
 /**
  * GET /api/admin/analytics/revenue-projections

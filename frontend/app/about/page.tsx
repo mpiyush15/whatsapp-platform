@@ -3,8 +3,6 @@
 import { motion } from 'framer-motion'
 import { Users, Target, Lightbulb, Zap } from 'lucide-react'
 import { useState } from 'react'
-import Navbar from '@/components/Navbar'
-import Footer from '@/components/Footer'
 import { BookDemoModal } from '@/components/BookDemoModal'
 
 export default function AboutPage() {
@@ -65,10 +63,7 @@ export default function AboutPage() {
   }
 
   return (
-    <div className='min-h-screen bg-white'>
-      <Navbar />
-
-      {/* HERO */}
+    <div className='min-h-screen bg-white'>{/* HERO */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -308,7 +303,6 @@ export default function AboutPage() {
         </div>
       </motion.section>
 
-      <BookDemoModal isOpen={showDemoModal} onClose={() => setShowDemoModal(false)} />      <Footer />
-    </div>
+      <BookDemoModal isOpen={showDemoModal} onClose={() => setShowDemoModal(false)} /></div>
   )
 }

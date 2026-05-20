@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense, lazy } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Phone, CheckCircle, AlertCircle, Settings as SettingsIcon, CreditCard, BarChart3, Headset, Loader, KeyRound, Webhook, Building2 } from "lucide-react"
+import { Phone, CheckCircle, AlertCircle, Settings as SettingsIcon, CreditCard, BarChart3, Headset, Loader, KeyRound, Webhook, Building2, Zap } from "lucide-react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useSettings } from "@/lib/context/SettingsContext"
 
@@ -11,6 +11,7 @@ import { useSettings } from "@/lib/context/SettingsContext"
 const BillingTab = lazy(() => import("@/components/BillingTab"))
 const AnalyticsTab = lazy(() => import("@/components/AnalyticsTab"))
 const AgentsTab = lazy(() => import("@/components/AgentsTab"))
+const QuickRepliesTab = lazy(() => import("@/components/QuickRepliesTab"))
 
 // Loading fallback component for lazy-loaded tabs
 function TabLoadingFallback() {
@@ -62,6 +63,7 @@ interface Project {
 const getSettingsTabs = (businessCategory?: string) => {
   const baseTabs = [
     { id: 'connect-number', label: 'Connect Number', icon: Phone },
+    { id: 'quick-replies', label: 'Quick Replies', icon: Zap },
     { id: 'billing', label: 'Billing', icon: CreditCard },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'agents', label: 'Agents', icon: Headset }
@@ -1050,6 +1052,11 @@ function SettingsPageContent() {
           <div className="flex-1 overflow-y-auto">
             <div className="p-8 max-w-6xl">
               {activeTab === 'connect-number' && <ConnectNumberTab projectId={projectId} />}
+              {activeTab === 'quick-replies' && (
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <QuickRepliesTab />
+                </Suspense>
+              )}
               {activeTab === 'clinic-setup' && project?.businessCategory === 'health' && <ClinicSetupTab projectId={projectId} />}
               {activeTab === 'billing' && (
                 <Suspense fallback={<TabLoadingFallback />}>

@@ -11,6 +11,7 @@ import { sendSuccess, sendValidationError, sendNotFound, sendForbidden } from '.
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import crypto from 'crypto';
+import platformAdminService from '../services/platformAdminService.js';
 
 export const getOrganizations = async (req, res) => {
   try {
@@ -32,6 +33,9 @@ export const getOrganizations = async (req, res) => {
       .limit(parseInt(limit))
       .skip(parseInt(offset));
 
+    const accountIds = organizations.map((o) => o.accountId);
+    const statsMap = await platformAdminService.getOrgStatsMap(accountIds);
+
     // Enrich with subscription and invoice data
     const enrichedOrgs = await Promise.all(organizations.map(async (org) => {
       let subscription = null;
@@ -43,6 +47,8 @@ export const getOrganizations = async (req, res) => {
           invoice = await Invoice.findOne({ subscriptionId: org.subscriptionId }).select('invoiceId invoiceNumber amount status');
         }
       }
+
+      const stats = statsMap.get(org.accountId) || {};
 
       return {
         _id: org._id,
@@ -56,6 +62,14 @@ export const getOrganizations = async (req, res) => {
         status: org.status,
         role: org.role,
         createdAt: org.createdAt,
+        projectCount: stats.projectCount ?? 0,
+        phoneCount: stats.phoneCount ?? 0,
+        connectedProjects: stats.connectedProjects ?? 0,
+        hasMultipleProjects: Boolean(stats.hasMultipleProjects),
+        messages7d: stats.messages7d ?? 0,
+        projectsByVertical: stats.projectsByVertical ?? {},
+        verticals: stats.verticals ?? [],
+        hasMultipleVerticals: Boolean(stats.hasMultipleVerticals),
         hasSubscription: !!org.subscriptionId,
         subscription: subscription ? {
           subscriptionId: subscription.subscriptionId,

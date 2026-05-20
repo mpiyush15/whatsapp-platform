@@ -162,6 +162,34 @@ const compileNodeToStep = (node, outgoingEdges = [], nodeMap) => {
     };
   }
 
+  if (nodeType === 'condition') {
+    const branchEdges = getOptionEdgeMap(outgoingEdges, 'branch:');
+    const branches = normalizeArray(data.branches).map((branch, index) => {
+      const branchKey = normalizeString(branch?.id || branch?.value || `branch-${index + 1}`);
+      const targetEdge = branchEdges.get(branchKey);
+      return {
+        value: normalizeString(branch?.value ?? branchKey),
+        nextStepId: targetEdge?.target || undefined,
+      };
+    });
+
+    return {
+      step: {
+        id: nodeId,
+        type: 'condition',
+        text: normalizeString(data.text || data.label || 'Condition'),
+        delay: Number(data.delay || 0),
+        waitForResponse: false,
+        condition: {
+          variable: normalizeString(data.variable || data.saveAs),
+          branches,
+          defaultNextStepId: defaultNextTarget || undefined,
+        },
+      },
+      nextTargets: [defaultNextTarget, ...branches.map((b) => b.nextStepId)].filter(Boolean),
+    };
+  }
+
   // Unknown nodes are ignored but traversal continues through default edge.
   return {
     step: null,

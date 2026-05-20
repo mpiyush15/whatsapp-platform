@@ -44,6 +44,14 @@ router.post('/estimate-reach',
 );
 
 /**
+ * GET /api/campaigns/:campaignId/recipients
+ * Per-recipient delivery and reply breakdown
+ */
+router.get('/:campaignId/recipients',
+  campaignController.getCampaignRecipientReport
+);
+
+/**
  * GET /api/campaigns/:campaignId
  * Get campaign by ID
  */

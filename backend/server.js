@@ -6,6 +6,7 @@ import { fixUsersAccountIdIndex } from './src/utils/fixUsersAccountIdIndex.js';
 import initializeSocket, { broadcastToProject, broadcastToAccount, sendNotificationToUser } from './src/socket/socketHandler.js';
 import { setupSocketIOHandlers } from './src/services/liveChat-socketHandler.js';
 import { initializeSocketIO } from './src/services/liveChat-socketService.js';
+import { startWorkflowTimeoutScheduler } from './src/schedulers/workflowTimeoutScheduler.js';
 
 // Load environment variables
 dotenv.config();
@@ -36,6 +37,7 @@ mongoose.connect(MONGO_URI)
   .then(async () => {
     console.log('✅ MongoDB connected successfully');
     await fixUsersAccountIdIndex();
+    startWorkflowTimeoutScheduler();
   })
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err.message);

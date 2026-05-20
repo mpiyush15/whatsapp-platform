@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { authService } from '@/lib/auth';
+
+const normPhone = (p: string) => String(p || '').replace(/\D/g, '');
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -27,7 +29,13 @@ type Step = 1 | 2 | 3;
 export default function CreateProjectCampaignPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const projectId = params.projectId as string;
+
+  const fromCampaignId = searchParams.get('fromCampaign');
+  const followUpAudience = searchParams.get('audience') as 'repliers' | 'opened' | null;
+  const parentCampaignName = searchParams.get('parentName') || 'Campaign';
+  const isFollowUp = Boolean(fromCampaignId && followUpAudience);
 
   const [step, setStep] = useState<Step>(1);
 
@@ -39,7 +47,11 @@ export default function CreateProjectCampaignPage() {
   const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [extraPhones, setExtraPhones] = useState<string[]>([]);
   const [contactSearch, setContactSearch] = useState('');
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+  const [followUpNote, setFollowUpNote] = useState('');
+  const followUpAppliedRef = useRef(false);
 
   // Step 3
   const [sendMode, setSendMode] = useState<'now' | 'schedule'>('now');
@@ -109,6 +121,74 @@ export default function CreateProjectCampaignPage() {
     loadData();
   }, [projectId, token]);
 
+  useEffect(() => {
+    if (!isFollowUp || !fromCampaignId || followUpAppliedRef.current || loadingData) return;
+
+    const applyFollowUpAudience = async () => {
+      try {
+        setFollowUpLoading(true);
+        const label =
+          followUpAudience === 'repliers' ? 'repliers' : 'opened';
+        setCampaignName(`Follow-up (${label}): ${decodeURIComponent(parentCampaignName)}`);
+
+        const res = await fetch(
+          `${API_URL}/campaigns/${fromCampaignId}/recipients?projectId=${projectId}&refresh=0`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!res.ok) {
+          setFollowUpNote('Could not load audience from parent campaign.');
+          return;
+        }
+
+        const payload = await res.json();
+        const rows: Array<{ phone: string; outboundStatus: string; replied: boolean }> =
+          payload?.recipients || payload?.data?.recipients || [];
+
+        const targetPhones = new Set<string>();
+        for (const row of rows) {
+          const ph = normPhone(row.phone);
+          if (!ph) continue;
+          if (followUpAudience === 'repliers' && row.replied) targetPhones.add(ph);
+          if (followUpAudience === 'opened' && row.outboundStatus === 'read') targetPhones.add(ph);
+        }
+
+        if (targetPhones.size === 0) {
+          setFollowUpNote(`No ${label} found on the parent campaign yet.`);
+          return;
+        }
+
+        const matchedIds: string[] = [];
+        const unmatched: string[] = [];
+
+        for (const c of contacts) {
+          const ph = normPhone(c.phone || c.userPhone || '');
+          const id = c._id || c.id || c.phone || c.userPhone;
+          if (ph && id && targetPhones.has(ph)) {
+            matchedIds.push(String(id));
+            targetPhones.delete(ph);
+          }
+        }
+
+        targetPhones.forEach((ph) => unmatched.push(ph));
+
+        setSelectedContacts(matchedIds);
+        setExtraPhones(unmatched);
+        followUpAppliedRef.current = true;
+        setFollowUpNote(
+          `Pre-selected ${matchedIds.length + unmatched.length} contacts from parent campaign (${label}).`
+        );
+        setStep(2);
+      } catch {
+        setFollowUpNote('Failed to load follow-up audience.');
+      } finally {
+        setFollowUpLoading(false);
+      }
+    };
+
+    applyFollowUpAudience();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when data load finishes
+  }, [isFollowUp, fromCampaignId, followUpAudience, parentCampaignName, loadingData, projectId, token]);
+
   const filteredContacts = useMemo(() => {
     const q = contactSearch.trim().toLowerCase();
     if (!q) return contacts;
@@ -137,7 +217,7 @@ export default function CreateProjectCampaignPage() {
         setError('Please select a template');
         return false;
       }
-      if (selectedContacts.length === 0) {
+      if (selectedContacts.length === 0 && extraPhones.length === 0) {
         setError('Please select at least one contact for audience');
         return false;
       }
@@ -173,8 +253,14 @@ export default function CreateProjectCampaignPage() {
 
       const selectedContactObjects = contacts.filter((c) => {
         const id = c._id || c.id || c.phone || c.userPhone;
-        return id ? selectedContacts.includes(id) : false;
+        return id ? selectedContacts.includes(String(id)) : false;
       });
+
+      const phonesFromContacts = selectedContactObjects
+        .map((c) => c.phone || c.userPhone)
+        .filter(Boolean) as string[];
+
+      const allPhones = [...new Set([...phonesFromContacts, ...extraPhones])];
 
       const payload = {
         name: campaignName.trim(),
@@ -183,9 +269,10 @@ export default function CreateProjectCampaignPage() {
         recipientFilters: {
           type: 'contacts',
           selectedContactIds: selectedContacts,
-          selectedPhones: selectedContactObjects
-            .map((c) => c.phone || c.userPhone)
-            .filter(Boolean),
+          selectedPhones: allPhones,
+          ...(isFollowUp && fromCampaignId
+            ? { followUpFromCampaignId: fromCampaignId, followUpAudience }
+            : {}),
         },
         scheduling: {
           sendNow: sendMode === 'now',
@@ -237,9 +324,32 @@ export default function CreateProjectCampaignPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Create Campaign</h1>
-        <p className="text-sm text-gray-600 mt-1">3-step flow: Name → Template + Audience → Schedule/Send</p>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {isFollowUp ? 'Follow-up campaign' : 'Create campaign'}
+        </h1>
+        <p className="text-sm text-gray-600 mt-1">
+          {isFollowUp
+            ? `Retargeting ${followUpAudience === 'repliers' ? 'people who replied' : 'people who opened'} from “${decodeURIComponent(parentCampaignName)}”`
+            : 'Name → template & audience → send'}
+        </p>
       </div>
+
+      {followUpLoading && (
+        <div className="mb-4 p-3 rounded-lg border border-green-200 bg-green-50 text-green-800 text-sm">
+          Loading audience from parent campaign…
+        </div>
+      )}
+
+      {followUpNote && !followUpLoading && (
+        <div className="mb-4 p-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-sm">
+          {followUpNote}
+          {extraPhones.length > 0 && (
+            <span className="block mt-1 text-blue-700">
+              {extraPhones.length} number(s) included by phone (not in contacts list).
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-2 mb-6">
         {[1, 2, 3].map((n) => (
@@ -379,7 +489,7 @@ export default function CreateProjectCampaignPage() {
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
                   <p><span className="font-semibold">Campaign:</span> {campaignName || '—'}</p>
                   <p><span className="font-semibold">Template:</span> {templates.find((t) => t._id === selectedTemplateId)?.name || '—'}</p>
-                  <p><span className="font-semibold">Audience:</span> {selectedContacts.length} contacts</p>
+                  <p><span className="font-semibold">Audience:</span> {selectedContacts.length + extraPhones.length} contacts</p>
                   <p><span className="font-semibold">Mode:</span> {sendMode === 'now' ? 'Send Now' : `Schedule (${scheduledAt || 'not set'})`}</p>
                 </div>
               </div>

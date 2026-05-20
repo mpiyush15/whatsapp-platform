@@ -1,23 +1,87 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { Mail, Lock, User, AlertCircle, CheckCircle, Loader, ArrowRight, MessageSquare } from 'lucide-react'
-import Link from 'next/link'
-import { API_URL } from '@/lib/config/api'
-import { authService } from '@/lib/auth'
-import Navbar from '@/components/Navbar'
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Building2,
+  Check,
+  CheckCircle2,
+  CreditCard,
+  Loader2,
+  Lock,
+  Mail,
+  Phone,
+  User,
+  X,
+} from 'lucide-react';
+import { authService } from '@/lib/auth';
+import {
+  checkEmailAvailable,
+  checkPhoneAvailable,
+  signupAccount,
+} from '@/lib/auth/registrationApi';
+import { fetchPublicPricingPlans, type PublicPricingPlan } from '@/lib/pricing/publicPlans';
+import { WhatsAppIcon } from '@/components/marketing/WhatsAppIcon';
+
+const STEPS = [
+  { id: 1, title: 'Your account', subtitle: 'Name, email & password' },
+  { id: 2, title: 'Contact & company', subtitle: 'Phone verification & business' },
+  { id: 3, title: 'Choose plan', subtitle: 'Pick billing cycle' },
+  { id: 4, title: 'Review', subtitle: 'Confirm & continue' },
+] as const;
+
+const JOURNEY = [
+  { n: '01', t: 'Sign up', d: 'Create your Replysys workspace in minutes.' },
+  { n: '02', t: 'Verify details', d: 'We check email and phone so accounts stay unique.' },
+  { n: '03', t: 'Select plan', d: 'Start with the tier that fits your team today.' },
+  { n: '04', t: 'Go live', d: 'Complete payment and connect WhatsApp Cloud API.' },
+] as const;
+
+type FieldStatus = 'idle' | 'checking' | 'ok' | 'error';
+
+function FieldHint({ status, message }: { status: FieldStatus; message?: string }) {
+  if (status === 'idle' || !message) return null;
+  const ok = status === 'ok';
+  const checking = status === 'checking';
+  return (
+    <p
+      className={`mt-1.5 flex items-center gap-1.5 text-xs font-medium ${
+        checking ? 'text-[#71717a]' : ok ? 'text-emerald-700' : 'text-red-600'
+      }`}
+    >
+      {checking ? <Loader2 className="h-3 w-3 animate-spin" /> : ok ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+      {message}
+    </p>
+  );
+}
+
+const glassInput =
+  'w-full rounded-xl border border-white/80 bg-white/50 py-3 pl-10 pr-4 text-sm text-[#111111] shadow-inner backdrop-blur-md transition placeholder:text-[#a1a1aa] focus:border-[#25d366]/50 focus:bg-white/70 focus:outline-none focus:ring-2 focus:ring-[#25d366]/25';
 
 export default function RegisterPage() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const [plans, setPlans] = useState<any[]>([])
-  const [loadingPlans, setLoadingPlans] = useState(true)
+  const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [plans, setPlans] = useState<PublicPricingPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [agreed, setAgreed] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [emailStatus, setEmailStatus] = useState<FieldStatus>('idle');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [phoneStatus, setPhoneStatus] = useState<FieldStatus>('idle');
+  const [phoneMessage, setPhoneMessage] = useState('');
+
+  const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phoneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [form, setForm] = useState({
     name: '',
     email: '',
     password: '',
@@ -25,445 +89,582 @@ export default function RegisterPage() {
     companyName: '',
     website: '',
     selectedPlan: '',
-    billingCycle: 'monthly' // Add billing cycle with default
-  })
+    billingCycle: 'monthly' as 'monthly' | 'quarterly' | 'annual',
+  });
 
-  // Fetch pricing plans
+  const patch = (key: keyof typeof form, value: string) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setError(null);
+    if (key === 'email') {
+      setEmailStatus('idle');
+      setEmailMessage('');
+    }
+    if (key === 'mobileNumber') {
+      setPhoneStatus('idle');
+      setPhoneMessage('');
+    }
+  };
+
   useEffect(() => {
-    const fetchPlans = async () => {
-      try {
-        setLoadingPlans(true)
-        const response = await fetch(`${API_URL}/pricing/plans/public`)
-        if (response.ok) {
-          const data = await response.json()
-          if (data.data && data.data.length > 0) {
-            setPlans(data.data)
-            // Auto-select first plan
-            if (!formData.selectedPlan) {
-              setFormData(prev => ({
-                ...prev,
-                selectedPlan: data.data[0].planId?.toLowerCase() || 'starter'
-              }))
-            }
-          }
+    const run = async () => {
+      await new Promise((r) => setTimeout(r, 80));
+      if (authService.isAuthenticated() && localStorage.getItem('token')) {
+        router.push('/dashboard');
+        return;
+      }
+      setCheckingAuth(false);
+    };
+    run();
+  }, [router]);
+
+  useEffect(() => {
+    fetchPublicPricingPlans()
+      .then((list) => {
+        setPlans(list);
+        if (list[0]) {
+          const id = (list[0].planId || list[0].name).toLowerCase();
+          setForm((f) => (f.selectedPlan ? f : { ...f, selectedPlan: id }));
         }
-      } catch (err) {
-        console.error('Failed to fetch pricing plans:', err)
-        // Use fallback plans if API fails
-        setPlans([
-          { planId: 'starter', name: 'Starter', monthlyPrice: 2499 },
-          { planId: 'pro', name: 'Pro', monthlyPrice: 4999 }
-        ])
-      } finally {
-        setLoadingPlans(false)
-      }
-    }
-
-    fetchPlans()
-  }, [])
-
-  // 🔐 SESSION GUARD: Check if user is already logged in
-  useEffect(() => {
-    const checkAuthentication = async () => {
-      // Small delay to ensure localStorage is fully loaded
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      // Check if user has valid session
-      const isAuthenticated = authService.isAuthenticated()
-      const token = localStorage.getItem("token")
-      const user = localStorage.getItem("user")
-      
-      console.log('🔍 Auth Check on /auth/register:', {
-        isAuthenticated,
-        hasToken: !!token,
-        hasUser: !!user,
-        tokenLength: token?.length || 0
       })
-      
-      if (isAuthenticated && token) {
-        // User is already logged in - redirect to dashboard
-        console.log("✅ Session found - Redirecting to dashboard")
-        router.push("/dashboard")
-        return
-      } else {
-        // User is not logged in - allow access to register page
-        console.log("❌ No session found - Showing register page")
-        setIsCheckingAuth(false)
+      .catch(() => setPlans([]))
+      .finally(() => setPlansLoading(false));
+  }, []);
+
+  const runEmailCheck = useCallback(async (email: string) => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailStatus('error');
+      setEmailMessage('Enter a valid email');
+      return false;
+    }
+    setEmailStatus('checking');
+    setEmailMessage('Checking availability…');
+    const { available, message } = await checkEmailAvailable(email);
+    setEmailStatus(available ? 'ok' : 'error');
+    setEmailMessage(message);
+    return available;
+  }, []);
+
+  const runPhoneCheck = useCallback(async (phone: string) => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      setPhoneStatus('error');
+      setPhoneMessage('Enter at least 10 digits');
+      return false;
+    }
+    setPhoneStatus('checking');
+    setPhoneMessage('Checking availability…');
+    const { available, message } = await checkPhoneAvailable(phone);
+    setPhoneStatus(available ? 'ok' : 'error');
+    setPhoneMessage(message);
+    return available;
+  }, []);
+
+  useEffect(() => {
+    if (emailTimer.current) clearTimeout(emailTimer.current);
+    if (!form.email.trim()) {
+      setEmailStatus('idle');
+      setEmailMessage('');
+      return;
+    }
+    emailTimer.current = setTimeout(() => {
+      void runEmailCheck(form.email);
+    }, 550);
+    return () => {
+      if (emailTimer.current) clearTimeout(emailTimer.current);
+    };
+  }, [form.email, runEmailCheck]);
+
+  useEffect(() => {
+    if (phoneTimer.current) clearTimeout(phoneTimer.current);
+    if (!form.mobileNumber.trim()) {
+      setPhoneStatus('idle');
+      setPhoneMessage('');
+      return;
+    }
+    phoneTimer.current = setTimeout(() => {
+      void runPhoneCheck(form.mobileNumber);
+    }, 550);
+    return () => {
+      if (phoneTimer.current) clearTimeout(phoneTimer.current);
+    };
+  }, [form.mobileNumber, runPhoneCheck]);
+
+  const validateStep = async (s: number): Promise<boolean> => {
+    if (s === 1) {
+      if (!form.name.trim()) {
+        setError('Full name is required');
+        return false;
       }
+      if (!form.email.trim()) {
+        setError('Email is required');
+        return false;
+      }
+      if (form.password.length < 6) {
+        setError('Password must be at least 6 characters');
+        return false;
+      }
+      const emailOk = emailStatus === 'ok' ? true : await runEmailCheck(form.email);
+      if (!emailOk) {
+        setError('Use an email that is not already registered');
+        return false;
+      }
+      return true;
     }
+    if (s === 2) {
+      if (!form.mobileNumber.trim()) {
+        setError('Mobile number is required');
+        return false;
+      }
+      if (!form.companyName.trim()) {
+        setError('Company name is required');
+        return false;
+      }
+      const phoneOk = phoneStatus === 'ok' ? true : await runPhoneCheck(form.mobileNumber);
+      if (!phoneOk) {
+        setError('Use a phone number that is not already registered');
+        return false;
+      }
+      return true;
+    }
+    if (s === 3) {
+      if (!form.selectedPlan) {
+        setError('Please select a plan');
+        return false;
+      }
+      return true;
+    }
+    if (s === 4) {
+      if (!agreed) {
+        setError('Please accept the terms to continue');
+        return false;
+      }
+      return true;
+    }
+    return true;
+  };
 
-    checkAuthentication()
-  }, [router])
+  const next = async () => {
+    setError(null);
+    const ok = await validateStep(step);
+    if (!ok) return;
+    setStep((s) => Math.min(4, s + 1));
+  };
 
-  // Show loading while checking authentication
-  if (isCheckingAuth) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-            <MessageSquare className="h-6 w-6 text-green-600" />
-          </div>
-          <p className="text-gray-600 font-medium">Checking your session...</p>
-        </div>
-      </div>
-    )
-  }
+  const back = () => {
+    setError(null);
+    setStep((s) => Math.max(1, s - 1));
+  };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
-    setError(null) // Clear error when user types
-  }
+  const submit = async () => {
+    setError(null);
+    if (!(await validateStep(4))) return;
 
-  const validateForm = (): boolean => {
-    if (!formData.name.trim()) {
-      setError('Name is required')
-      return false
-    }
-    if (!formData.email.trim()) {
-      setError('Email is required')
-      return false
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      setError('Invalid email address')
-      return false
-    }
-    if (!formData.password) {
-      setError('Password is required')
-      return false
-    }
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters')
-      return false
-    }
-    if (!formData.mobileNumber.trim()) {
-      setError('Mobile number is required')
-      return false
-    }
-    if (!formData.companyName.trim()) {
-      setError('Company name is required')
-      return false
-    }
-    if (!formData.selectedPlan) {
-      setError('Please select a plan')
-      return false
-    }
-    return true
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!validateForm()) return
-
-    setLoading(true)
-    setError(null)
-
+    setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/auth/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          email: formData.email.trim(),
-          password: formData.password,
-          mobileNumber: formData.mobileNumber.trim(),
-          companyName: formData.companyName.trim(),
-          website: formData.website.trim(),
-          selectedPlan: formData.selectedPlan,
-          billingCycle: formData.billingCycle
-        })
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.message || 'Registration failed. Please try again.')
-        return
+      const result = await signupAccount(form);
+      if (!result.ok) {
+        setError(result.message || 'Registration failed');
+        return;
       }
-
-      // Registration successful
-      setSuccess(true)
-      
-      // Store user data and token
-      if (data.token) {
-        localStorage.setItem('token', data.token)
-        localStorage.setItem('isAuthenticated', 'true')
-        
-        if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user))
-        }
+      setSuccess(true);
+      if (result.token) {
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('isAuthenticated', 'true');
+        if (result.user) localStorage.setItem('user', JSON.stringify(result.user));
       }
-
-      // Redirect to checkout with selected plan and billing cycle
       setTimeout(() => {
-        const redirectUrl = data.redirectTo || `/checkout?plan=${formData.selectedPlan}&billingCycle=${formData.billingCycle}`
-        router.push(redirectUrl)
-      }, 1500)
-    } catch (err) {
-      console.error('Registration error:', err)
-      setError('Something went wrong. Please try again.')
+        const base =
+          result.redirectTo ||
+          `/checkout?plan=${encodeURIComponent(form.selectedPlan)}`;
+        const url = base.includes('cycle=')
+          ? base
+          : `${base}${base.includes('?') ? '&' : '?'}cycle=${form.billingCycle}`;
+        router.push(url);
+      }, 1200);
+    } catch {
+      setError('Something went wrong. Please try again.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
+  };
+
+  if (checkingAuth) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#128c7e]" />
+      </div>
+    );
   }
+
+  const selectedPlanObj = plans.find(
+    (p) => (p.planId || p.name).toLowerCase() === form.selectedPlan.toLowerCase(),
+  );
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Navbar */}
-      <Navbar />
-
-      {/* Main Content - Add padding for navbar */}
-      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8 py-12 mt-16">
-        <div className="w-full max-w-md">
-          {/* Title */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h1>
-            <p className="text-gray-600">Get started with WhatsApp Platform</p>
-          </div>
-
-          {/* Success Message */}
-          {success && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-              <div>
-                <p className="text-green-900 font-medium">Account created!</p>
-                <p className="text-green-800 text-sm">Redirecting to pricing...</p>
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-              <p className="text-red-900 text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Name */}
+    <div className="min-h-[calc(100dvh-5rem)] sm:min-h-[calc(100dvh-6rem)]">
+      <div className="grid min-h-[calc(100dvh-5rem)] lg:min-h-[calc(100dvh-6rem)] lg:grid-cols-2">
+        <aside className="relative hidden overflow-hidden bg-[#0f0f10] lg:flex lg:flex-col">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(ellipse 70% 55% at 30% 15%, rgba(37,211,102,0.2), transparent 50%), radial-gradient(ellipse 60% 45% at 85% 75%, rgba(167,139,250,0.16), transparent 50%), linear-gradient(165deg,#1a1a1e,#09090b)',
+            }}
+          />
+          <div className="relative z-10 flex flex-1 flex-col justify-between p-10 xl:p-12">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name
-              </label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="John Doe"
-                disabled={loading || success}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent disabled:opacity-50 bg-white text-gray-900"
-              />
-            </div>
-
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="you@example.com"
-                disabled={loading || success}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent disabled:opacity-50 bg-white text-gray-900"
-              />
-            </div>
-
-            {/* Password */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="At least 6 characters"
-                disabled={loading || success}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent disabled:opacity-50 bg-white text-gray-900"
-              />
-            </div>
-
-            {/* Mobile Number */}
-            <div>
-              <label htmlFor="mobileNumber" className="block text-sm font-medium text-gray-700 mb-2">
-                Mobile Number
-              </label>
-              <input
-                id="mobileNumber"
-                name="mobileNumber"
-                type="tel"
-                value={formData.mobileNumber}
-                onChange={handleChange}
-                placeholder="+91 98765 43210"
-                disabled={loading || success}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent disabled:opacity-50 bg-white text-gray-900"
-              />
-            </div>
-
-            {/* Company Name */}
-            <div>
-              <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-2">
-                Company Name
-              </label>
-              <input
-                id="companyName"
-                name="companyName"
-                type="text"
-                value={formData.companyName}
-                onChange={handleChange}
-                placeholder="Your Company Name"
-                disabled={loading || success}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent disabled:opacity-50 bg-white text-gray-900"
-              />
-            </div>
-
-            {/* Website (Optional) */}
-            <div>
-              <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-2">
-                Website <span className="text-gray-500 text-xs">(Optional)</span>
-              </label>
-              <input
-                id="website"
-                name="website"
-                type="url"
-                value={formData.website}
-                onChange={handleChange}
-                placeholder="https://example.com"
-                disabled={loading || success}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 focus:border-transparent disabled:opacity-50 bg-white text-gray-900"
-              />
-            </div>
-
-            {/* Plan Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Select Your Plan
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                {loadingPlans ? (
-                  <div className="col-span-2 text-center py-8">
-                    <Loader className="h-5 w-5 animate-spin text-gray-400 mx-auto" />
-                    <p className="text-sm text-gray-500 mt-2">Loading plans...</p>
-                  </div>
-                ) : plans.length > 0 ? (
-                  plans.map((plan: any) => {
-                    const planId = plan.planId?.toLowerCase() || plan.name?.toLowerCase();
-                    return (
-                      <button
-                        key={planId}
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, selectedPlan: planId }))}
-                        disabled={loading || success}
-                        className={`p-4 rounded-lg border-2 transition font-medium text-sm ${
-                          formData.selectedPlan === planId
-                            ? 'border-green-600 bg-green-50 text-green-700'
-                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                        } disabled:opacity-50`}
-                      >
-                        <div className="font-bold text-base">{plan.name}</div>
-                        <div className="text-xs mt-1">₹{plan.monthlyPrice?.toLocaleString()}/month</div>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <div className="col-span-2 text-center py-4">
-                    <p className="text-sm text-gray-500">No plans available</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Billing Cycle Selection */}
-            {formData.selectedPlan && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Billing Cycle
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, billingCycle: 'monthly' }))}
-                    disabled={loading || success}
-                    className={`p-3 rounded-lg border-2 transition font-medium text-sm ${
-                      formData.billingCycle === 'monthly'
-                        ? 'border-green-600 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                    } disabled:opacity-50`}
-                  >
-                    <div className="font-bold">Monthly</div>
-                    <div className="text-xs mt-1">Full Price</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, billingCycle: 'quarterly' }))}
-                    disabled={loading || success}
-                    className={`p-3 rounded-lg border-2 transition font-medium text-sm ${
-                      formData.billingCycle === 'quarterly'
-                        ? 'border-green-600 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                    } disabled:opacity-50`}
-                  >
-                    <div className="font-bold">Quarterly</div>
-                    <div className="text-xs mt-1">5% Off</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, billingCycle: 'annual' }))}
-                    disabled={loading || success}
-                    className={`p-3 rounded-lg border-2 transition font-medium text-sm ${
-                      formData.billingCycle === 'annual'
-                        ? 'border-green-600 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                    } disabled:opacity-50`}
-                  >
-                    <div className="font-bold">Annual</div>
-                    <div className="text-xs mt-1">20% Off</div>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loading || success || !formData.selectedPlan}
-              className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-2.5 rounded-lg transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-6"
-            >
-              {loading && <Loader className="w-4 h-4 animate-spin" />}
-              {loading ? 'Creating Account...' : success ? 'Redirecting...' : 'Continue to Payment'}
-            </button>
-          </form>
-
-          {/* Login Link */}
-          <div className="mt-6 text-center">
-            <p className="text-gray-600 text-sm">
-              Already have an account?{' '}
-              <Link
-                href="/auth/login"
-                className="text-green-600 hover:text-green-700 font-medium transition"
-              >
-                Sign in
+              <Link href="/marketing" className="font-marketing-display text-2xl font-extrabold text-white">
+                replysys
               </Link>
-            </p>
+              <h2 className="mt-10 max-w-md font-marketing-display text-3xl font-bold text-white xl:text-[2rem]">
+                Start your WhatsApp workspace
+              </h2>
+              <p className="mt-3 max-w-sm text-sm text-white/55">
+                Four quick steps — we verify email and phone so every account stays clean.
+              </p>
+            </div>
+            <ol className="space-y-3">
+              {JOURNEY.map((j, i) => (
+                <li
+                  key={j.n}
+                  className={`flex gap-3 rounded-xl border p-3.5 transition ${
+                    step > i
+                      ? 'border-[#25d366]/30 bg-[#25d366]/10'
+                      : step === i + 1
+                        ? 'border-white/20 bg-white/10'
+                        : 'border-white/5 bg-white/[0.03]'
+                  }`}
+                >
+                  <span className="text-xs font-bold text-[#4ade80]">{j.n}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-white">{j.t}</p>
+                    <p className="text-xs text-white/50">{j.d}</p>
+                  </div>
+                  {step > i ? <Check className="ml-auto h-4 w-4 text-[#4ade80]" /> : null}
+                </li>
+              ))}
+            </ol>
+            <div className="flex items-center gap-2 text-xs text-white/40">
+              <WhatsAppIcon className="h-4 w-4 text-[#25d366]" />
+              Meta Cloud API · Official WhatsApp Business Platform
+            </div>
           </div>
-        </div>
+        </aside>
+
+        <section className="marketing-hero-bg relative flex flex-col px-4 py-8 sm:px-8 lg:justify-center lg:py-10">
+          <div className="relative z-10 mx-auto w-full max-w-[440px]">
+            <div className="mb-5 lg:hidden">
+              <div className="flex gap-1">
+                {STEPS.map((s) => (
+                  <div
+                    key={s.id}
+                    className={`h-1 flex-1 rounded-full transition ${step >= s.id ? 'bg-[#128c7e]' : 'bg-black/10'}`}
+                  />
+                ))}
+              </div>
+              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[#71717a]">
+                Step {step} of 4 · {STEPS[step - 1].title}
+              </p>
+            </div>
+
+            <div className="hidden gap-2 lg:flex lg:mb-6">
+              {STEPS.map((s) => (
+                <div
+                  key={s.id}
+                  className={`flex-1 rounded-lg border px-2 py-2 text-center text-[10px] font-semibold ${
+                    step === s.id
+                      ? 'border-[#128c7e]/40 bg-white/80 text-[#128c7e]'
+                      : step > s.id
+                        ? 'border-emerald-200/60 bg-emerald-50/50 text-emerald-800'
+                        : 'border-black/[0.06] bg-white/40 text-[#a1a1aa]'
+                  }`}
+                >
+                  {s.id}. {s.title}
+                </div>
+              ))}
+            </div>
+
+            <div className="overflow-hidden rounded-3xl border border-white/60 bg-white/45 p-7 shadow-[0_24px_80px_rgba(17,17,17,0.1)] backdrop-blur-2xl sm:p-9">
+              {success ? (
+                <div className="py-10 text-center">
+                  <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
+                  <h1 className="mt-4 text-xl font-bold text-[#111111]">Account created</h1>
+                  <p className="mt-2 text-sm text-[#6d6c6b]">Taking you to checkout…</p>
+                  <Loader2 className="mx-auto mt-6 h-6 w-6 animate-spin text-[#128c7e]" />
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-xl font-bold text-[#111111] sm:text-2xl">{STEPS[step - 1].title}</h1>
+                  <p className="mt-1 text-sm text-[#6d6c6b]">{STEPS[step - 1].subtitle}</p>
+
+                  {error ? (
+                    <div className="mt-4 rounded-xl border border-red-200/80 bg-red-50/90 px-3 py-2.5 text-sm text-red-700">
+                      {error}
+                    </div>
+                  ) : null}
+
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={step}
+                      initial={{ opacity: 0, x: 8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.2 }}
+                      className="mt-6 space-y-4"
+                    >
+                      {step === 1 ? (
+                        <>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
+                              Full name
+                            </label>
+                            <div className="relative">
+                              <User className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a1a1aa]" />
+                              <input
+                                className={glassInput}
+                                value={form.name}
+                                onChange={(e) => patch('name', e.target.value)}
+                                placeholder="Your name"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
+                              Email
+                            </label>
+                            <div className="relative">
+                              <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a1a1aa]" />
+                              <input
+                                type="email"
+                                className={glassInput}
+                                value={form.email}
+                                onChange={(e) => patch('email', e.target.value)}
+                                onBlur={() => void runEmailCheck(form.email)}
+                                placeholder="you@gmail.com"
+                                autoComplete="email"
+                              />
+                            </div>
+                            <FieldHint status={emailStatus} message={emailMessage} />
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
+                              Password
+                            </label>
+                            <div className="relative">
+                              <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a1a1aa]" />
+                              <input
+                                type="password"
+                                className={glassInput}
+                                value={form.password}
+                                onChange={(e) => patch('password', e.target.value)}
+                                placeholder="Min. 6 characters"
+                                autoComplete="new-password"
+                              />
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+
+                      {step === 2 ? (
+                        <>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
+                              Mobile number
+                            </label>
+                            <div className="relative">
+                              <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a1a1aa]" />
+                              <input
+                                type="tel"
+                                className={glassInput}
+                                value={form.mobileNumber}
+                                onChange={(e) => patch('mobileNumber', e.target.value)}
+                                onBlur={() => void runPhoneCheck(form.mobileNumber)}
+                                placeholder="+91 98765 43210"
+                                autoComplete="tel"
+                              />
+                            </div>
+                            <FieldHint status={phoneStatus} message={phoneMessage} />
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
+                              Company name
+                            </label>
+                            <div className="relative">
+                              <Building2 className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a1a1aa]" />
+                              <input
+                                className={glassInput}
+                                value={form.companyName}
+                                onChange={(e) => patch('companyName', e.target.value)}
+                                placeholder="Your business"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
+                              Website <span className="font-normal normal-case text-[#a1a1aa]">(optional)</span>
+                            </label>
+                            <input
+                              type="url"
+                              className={`${glassInput} pl-4`}
+                              value={form.website}
+                              onChange={(e) => patch('website', e.target.value)}
+                              placeholder="https://"
+                            />
+                          </div>
+                        </>
+                      ) : null}
+
+                      {step === 3 ? (
+                        <>
+                          {plansLoading ? (
+                            <div className="flex justify-center py-8">
+                              <Loader2 className="h-6 w-6 animate-spin text-[#128c7e]" />
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-2">
+                              {plans.map((plan) => {
+                                const pid = (plan.planId || plan.name).toLowerCase();
+                                const active = form.selectedPlan === pid;
+                                return (
+                                  <button
+                                    key={plan._id}
+                                    type="button"
+                                    onClick={() => patch('selectedPlan', pid)}
+                                    className={`rounded-xl border p-3 text-left transition ${
+                                      active
+                                        ? 'border-[#128c7e] bg-emerald-50/80 ring-2 ring-[#25d366]/20'
+                                        : 'border-black/[0.08] bg-white/50 hover:border-black/[0.12]'
+                                    }`}
+                                  >
+                                    <p className="text-sm font-bold text-[#111111]">{plan.name}</p>
+                                    <p className="mt-0.5 text-xs text-[#6d6c6b]">
+                                      ₹{plan.monthlyPrice.toLocaleString('en-IN')}/mo
+                                    </p>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-3 gap-2 pt-2">
+                            {(['monthly', 'quarterly', 'annual'] as const).map((cycle) => (
+                              <button
+                                key={cycle}
+                                type="button"
+                                onClick={() => patch('billingCycle', cycle)}
+                                className={`rounded-lg border py-2 text-xs font-semibold capitalize ${
+                                  form.billingCycle === cycle
+                                    ? 'border-[#128c7e] bg-emerald-50 text-[#128c7e]'
+                                    : 'border-black/[0.08] bg-white/50 text-[#52525b]'
+                                }`}
+                              >
+                                {cycle}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+
+                      {step === 4 ? (
+                        <div className="space-y-3 rounded-xl border border-black/[0.06] bg-white/50 p-4 text-sm">
+                          <p>
+                            <span className="text-[#71717a]">Name</span> · {form.name}
+                          </p>
+                          <p>
+                            <span className="text-[#71717a]">Email</span> · {form.email}
+                          </p>
+                          <p>
+                            <span className="text-[#71717a]">Phone</span> · {form.mobileNumber}
+                          </p>
+                          <p>
+                            <span className="text-[#71717a]">Company</span> · {form.companyName}
+                          </p>
+                          <p>
+                            <span className="text-[#71717a]">Plan</span> · {selectedPlanObj?.name || form.selectedPlan}{' '}
+                            ({form.billingCycle})
+                          </p>
+                          <label className="mt-4 flex cursor-pointer items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={agreed}
+                              onChange={(e) => {
+                                setAgreed(e.target.checked);
+                                setError(null);
+                              }}
+                              className="mt-0.5 rounded border-gray-300"
+                            />
+                            <span className="text-xs leading-relaxed text-[#52525b]">
+                              I agree to the{' '}
+                              <Link href="/terms" className="font-semibold text-[#128c7e] underline">
+                                Terms
+                              </Link>{' '}
+                              and{' '}
+                              <Link href="/privacy" className="font-semibold text-[#128c7e] underline">
+                                Privacy Policy
+                              </Link>
+                              .
+                            </span>
+                          </label>
+                        </div>
+                      ) : null}
+                    </motion.div>
+                  </AnimatePresence>
+
+                  <div className="mt-8 flex gap-3">
+                    {step > 1 ? (
+                      <button
+                        type="button"
+                        onClick={back}
+                        disabled={loading}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-black/[0.08] bg-white/60 py-3 text-sm font-semibold text-[#52525b]"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        Back
+                      </button>
+                    ) : null}
+                    {step < 4 ? (
+                      <button
+                        type="button"
+                        onClick={() => void next()}
+                        disabled={loading || emailStatus === 'checking' || phoneStatus === 'checking'}
+                        className="marketing-cta-primary flex flex-[2] items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold disabled:opacity-60"
+                      >
+                        Continue
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void submit()}
+                        disabled={loading}
+                        className="marketing-cta-primary flex flex-[2] items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold disabled:opacity-60"
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Creating…
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="h-4 w-4" />
+                            Create & pay
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="mt-6 text-center text-sm text-[#6d6c6b]">
+                    Already have an account?{' '}
+                    <Link href="/auth/login" className="font-semibold text-[#128c7e] hover:underline">
+                      Log in
+                    </Link>
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
-  )
+  );
 }

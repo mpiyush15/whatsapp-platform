@@ -9,6 +9,12 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        landing: ['var(--font-landing-sans)', 'system-ui', 'sans-serif'],
+        'landing-display': ['var(--font-landing-display)', 'Georgia', 'serif'],
+        marketing: ['var(--font-marketing-sans)', 'system-ui', 'sans-serif'],
+        'marketing-display': ['var(--font-marketing-display)', 'system-ui', 'sans-serif'],
+      },
       colors: {
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',

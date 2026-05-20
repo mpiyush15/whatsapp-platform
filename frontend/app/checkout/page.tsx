@@ -2,9 +2,11 @@
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
+import Link from 'next/link'
 import { Loader, ArrowRight, Check } from 'lucide-react'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api'
+import { MarketingNavbar } from '@/components/marketing/MarketingNavbar'
+import { API_URL } from '@/lib/config/api'
+import { parsePublicPlansResponse } from '@/lib/pricing/publicPlans'
 
 function CheckoutPage() {
   const router = useRouter()
@@ -35,8 +37,8 @@ function CheckoutPage() {
 
         const res = await fetch(`${API_URL}/pricing/plans/public`)
         const data = await res.json()
-        const plans = data.data?.data || data.data || []
-        const plan = plans.find((p: any) => p.name.toLowerCase() === planName.toLowerCase())
+        const plans = parsePublicPlansResponse(data)
+        const plan = plans.find((p) => p.name.toLowerCase() === planName.toLowerCase())
         if (plan) setSelectedPlan(plan)
       } catch (err) {
         console.error('Error:', err)
@@ -195,26 +197,24 @@ function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="border-b border-gray-200 px-6 py-4">
-        <button
-          onClick={() => router.push('/pricing')}
-          className="text-gray-600 hover:text-gray-900 font-semibold"
-        >
-          ← Back to Pricing
-        </button>
+    <div className="min-h-screen bg-[#fafafa] pt-20 sm:pt-24">
+      <MarketingNavbar />
+      <div className="border-b border-black/[0.06] bg-white px-4 py-3 sm:px-6">
+        <Link href="/pricing" className="text-sm font-semibold text-[#52525b] transition hover:text-[#111111]">
+          ← Back to pricing
+        </Link>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        <h1 className="text-3xl font-bold text-gray-900 mb-12">Checkout</h1>
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#a1a1aa]">Checkout</p>
+        <h1 className="marketing-hero-title mt-2 text-2xl text-[#111111] sm:text-3xl">Complete your subscription</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-8">
             {/* Step 1: Auth */}
-            <div className="border border-gray-300 rounded-lg p-8">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Step 1: Login</h2>
+            <div className="rounded-2xl border border-black/[0.08] bg-white p-6 shadow-sm sm:p-8">
+              <h2 className="text-lg font-bold text-[#111111] mb-6">Step 1: Login</h2>
 
               {isAuthenticated ? (
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
@@ -233,7 +233,7 @@ function CheckoutPage() {
                       </button>
                       <button
                         onClick={() => { setAuthMode('signup'); setShowLogin(true) }}
-                        className="w-full p-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+                        className="marketing-cta-primary w-full rounded-xl p-4 text-sm font-semibold"
                       >
                         Create new account
                       </button>
@@ -247,8 +247,8 @@ function CheckoutPage() {
                           onClick={() => setAuthMode('login')}
                           className={`flex-1 py-2 font-semibold rounded-lg ${
                             authMode === 'login'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-200 text-gray-900'
+                              ? 'bg-[#111111] text-white'
+                              : 'bg-gray-100 text-gray-900'
                           }`}
                         >
                           Login
@@ -258,8 +258,8 @@ function CheckoutPage() {
                           onClick={() => setAuthMode('signup')}
                           className={`flex-1 py-2 font-semibold rounded-lg ${
                             authMode === 'signup'
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-200 text-gray-900'
+                              ? 'bg-[#111111] text-white'
+                              : 'bg-gray-100 text-gray-900'
                           }`}
                         >
                           Sign Up
@@ -305,7 +305,7 @@ function CheckoutPage() {
                       <button
                         type="submit"
                         disabled={authLoading}
-                        className="w-full p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold disabled:bg-gray-400"
+                        className="marketing-cta-primary w-full rounded-xl p-3 text-sm font-semibold disabled:opacity-50"
                       >
                         {authLoading ? 'Processing...' : authMode === 'login' ? 'Login' : 'Sign Up'}
                       </button>
@@ -325,20 +325,20 @@ function CheckoutPage() {
 
             {/* Step 2: Plan */}
             {selectedPlan && (
-              <div className="border border-gray-300 rounded-lg p-8">
-                <h2 className="text-xl font-bold text-gray-900 mb-6">Step 2: Your Plan</h2>
-                <div className="p-6 bg-blue-50 border-2 border-blue-200 rounded-lg">
-                  <h3 className="text-2xl font-bold text-gray-900">{selectedPlan.name}</h3>
-                  <p className="text-gray-600 mt-2 mb-4">{selectedPlan.description}</p>
-                  <p className="text-3xl font-bold text-blue-600">₹{selectedPlan.monthlyPrice}/month</p>
+              <div className="rounded-2xl border border-black/[0.08] bg-white p-6 shadow-sm sm:p-8">
+                <h2 className="text-lg font-bold text-[#111111] mb-6">Step 2: Your Plan</h2>
+                <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-6">
+                  <h3 className="text-2xl font-bold text-[#111111]">{selectedPlan.name}</h3>
+                  <p className="text-[#6d6c6b] mt-2 mb-4">{selectedPlan.description}</p>
+                  <p className="text-3xl font-bold tabular-nums text-[#128c7e]">₹{selectedPlan.monthlyPrice}/month</p>
                 </div>
               </div>
             )}
 
             {/* Step 3: Billing */}
             {isAuthenticated && (
-              <div className="border border-gray-300 rounded-lg p-8">
-                <h2 className="text-xl font-bold text-gray-900 mb-6">Step 3: Billing Period</h2>
+              <div className="rounded-2xl border border-black/[0.08] bg-white p-6 shadow-sm sm:p-8">
+                <h2 className="text-lg font-bold text-[#111111] mb-6">Step 3: Billing Period</h2>
                 <div className="grid grid-cols-3 gap-4">
                   {(['monthly', 'quarterly', 'annual'] as const).map((c) => (
                     <button
@@ -346,8 +346,8 @@ function CheckoutPage() {
                       onClick={() => setBillingCycle(c)}
                       className={`p-4 rounded-lg border-2 font-semibold ${
                         billingCycle === c
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-900 hover:border-gray-400'
+                          ? 'border-[#128c7e] bg-emerald-50 text-[#128c7e]'
+                          : 'border-black/[0.08] bg-white text-[#3f3f46] hover:border-black/[0.12]'
                       }`}
                     >
                       {c === 'monthly' && '1 Month'}
@@ -362,8 +362,8 @@ function CheckoutPage() {
 
           {/* Right Column - Summary */}
           <div className="lg:col-span-1">
-            <div className="border border-gray-300 rounded-lg p-8 sticky top-4 bg-gray-50">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Order Summary</h2>
+            <div className="sticky top-24 rounded-2xl border border-black/[0.08] bg-white p-6 shadow-[0_12px_40px_rgba(17,17,17,0.08)] sm:p-8">
+              <h2 className="text-lg font-bold text-[#111111] mb-6">Order Summary</h2>
 
               {selectedPlan ? (
                 <>
@@ -393,7 +393,7 @@ function CheckoutPage() {
 
                   <div className="mb-6">
                     <p className="text-sm text-gray-600">Total Amount</p>
-                    <p className="text-4xl font-bold text-blue-600">₹{calculatePrice()}</p>
+                    <p className="text-4xl font-bold tabular-nums text-[#128c7e]">₹{calculatePrice()}</p>
                   </div>
 
                   {isAuthenticated ? (
@@ -401,7 +401,7 @@ function CheckoutPage() {
                       <button
                         onClick={handlePayment}
                         disabled={processing}
-                        className="w-full p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-bold flex items-center justify-center gap-2"
+                        className="marketing-cta-primary flex w-full items-center justify-center gap-2 rounded-xl p-3 text-sm font-bold disabled:opacity-50"
                       >
                         {processing ? (
                           <>

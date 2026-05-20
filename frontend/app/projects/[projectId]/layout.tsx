@@ -7,6 +7,7 @@ import ProjectHeader from '@/components/ProjectHeader'
 import { ProjectProvider, useProject } from '@/lib/context/ProjectContext'
 import { LiveChatProvider } from '@/lib/context/LiveChatContext'
 import { SettingsProvider } from '@/lib/context/SettingsContext'
+import { FlowBuilderProvider } from '@/lib/context/FlowBuilderContext'
 import { authService } from '@/lib/auth'
 import ProjectStaffRouteGate from '@/components/ProjectStaffRouteGate'
 import {
@@ -92,12 +93,14 @@ function ProjectLayoutInner({ children, projectId }: { children: ReactNode; proj
         mobileOpen={mobileSidebarOpen}
         onMobileClose={() => setMobileSidebarOpen(false)}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <ProjectHeader projectId={projectId} onMenuClick={() => setMobileSidebarOpen(true)} />
-        <main className="flex-1 overflow-auto">
-          <ProjectStaffRouteGate projectId={projectId}>{children}</ProjectStaffRouteGate>
-        </main>
-      </div>
+      <FlowBuilderProvider>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <ProjectHeader projectId={projectId} onMenuClick={() => setMobileSidebarOpen(true)} />
+          <main className="flex-1 overflow-auto">
+            <ProjectStaffRouteGate projectId={projectId}>{children}</ProjectStaffRouteGate>
+          </main>
+        </div>
+      </FlowBuilderProvider>
     </div>
   )
 }

@@ -1,15 +1,10 @@
 'use client'
 
-import Navbar from '@/components/Navbar'
-import Footer from '@/components/Footer'
 import { CheckCircle, AlertCircle, Clock, DollarSign, ShieldAlert } from 'lucide-react'
 
 export default function RefundsPage() {
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      
-      <div className="pt-32 pb-16 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-white"><div className="pt-32 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Refunds & Cancellations</h1>
           <p className="text-gray-600 mb-12">Last Updated: January 2026</p>
@@ -296,9 +291,6 @@ export default function RefundsPage() {
             </div>
           </div>
         </div>
-      </div>
-
-      <Footer />
-    </div>
+      </div></div>
   )
 }

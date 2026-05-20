@@ -17,7 +17,7 @@ const STATUS_COLORS: Record<string, string> = {
   failed: 'bg-red-100 text-red-700',
 };
 
-type SortKey = 'createdAt' | 'totalOpened' | 'totalClicked' | 'totalConverted';
+type SortKey = 'createdAt' | 'totalOpened' | 'totalReplied' | 'totalConverted';
 type SortDir = 'asc' | 'desc' | null;
 
 type TemplateItem = {
@@ -102,7 +102,7 @@ export default function CampaignsPage() {
   const getValue = (row: any, key: SortKey) => {
     if (key === 'createdAt') return new Date(row.createdAt).getTime();
     if (key === 'totalOpened') return row.stats?.totalOpened ?? 0;
-    if (key === 'totalClicked') return row.stats?.totalClicked ?? 0;
+    if (key === 'totalReplied') return row.stats?.totalReplied ?? 0;
     if (key === 'totalConverted') return row.stats?.totalConverted ?? 0;
     return 0;
   };
@@ -319,7 +319,7 @@ export default function CampaignsPage() {
     { key: 'recipients', label: 'Sent', render: (_: any, row: any) => row.recipients?.sent ?? '—' },
     { key: 'delivered', label: 'Delivered', render: (_: any, row: any) => row.stats?.totalDelivered ?? '—' },
     { key: 'read', label: <SortHeader label="Read" sortK="totalOpened" />, render: (_: any, row: any) => row.stats?.totalOpened ?? '—' },
-    { key: 'replies', label: <SortHeader label="Replies" sortK="totalClicked" />, render: (_: any, row: any) => row.stats?.totalClicked ?? '—' },
+    { key: 'replies', label: <SortHeader label="Replies" sortK="totalReplied" />, render: (_: any, row: any) => row.stats?.totalReplied ?? '—' },
     { key: 'conversions', label: <SortHeader label="Conversions" sortK="totalConverted" />, render: (_: any, row: any) => row.stats?.totalConverted ?? '—' },
     {
       key: 'createdAt', label: <SortHeader label="Created" sortK="createdAt" />,
