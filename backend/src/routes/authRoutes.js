@@ -1,5 +1,6 @@
 import express from 'express';
 import authController from '../controllers/authController.js';
+import platformOtpController from '../controllers/platformOtpController.js';
 import googleAuthController from '../controllers/googleAuthController.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
 import logger from '../utils/logger.js';
@@ -17,6 +18,8 @@ router.post('/login', authController.login);
 router.get('/check-email', authController.checkEmailAvailable);
 router.get('/check-phone', authController.checkPhoneAvailable);
 router.post('/signup', authController.signup);
+router.post('/otp/send', platformOtpController.sendOtp);
+router.post('/otp/verify', platformOtpController.verifyOtp);
 router.post('/logout', authController.logout);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);

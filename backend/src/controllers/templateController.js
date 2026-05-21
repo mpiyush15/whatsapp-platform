@@ -45,40 +45,138 @@ function extractVariables(content) {
 }
 
 /**
+ * Ordered variable indices from body text ({{1}}, {{2}}, …).
+ */
+function getBodyVariableIndices(content) {
+  const matches = (content || '').match(/\{\{(\d+)\}\}/g) || [];
+  return [...new Set(matches.map((m) => parseInt(m.replace(/\D/g, ''), 10)))].sort((a, b) => a - b);
+}
+
+/**
+ * Meta requires body_text as ONE row: [["val1","val2"]], not [["val1"],["val2"]].
+ */
+function buildBodyExample(content, category = '') {
+  const indices = getBodyVariableIndices(content);
+  if (indices.length === 0) return undefined;
+
+  const isAuth = String(category).toLowerCase() === 'authentication';
+  const samples = indices.map((n) => {
+    if (isAuth && n === 1) return '123456';
+    if (n === 1) return 'Customer';
+    if (n === 2) return 'Starter';
+    if (n === 3) return 'monthly';
+    if (n === 4) return 'https://replysys.com/pay';
+    return `sample_${n}`;
+  });
+
+  return { body_text: [samples] };
+}
+
+/**
+ * Meta AUTHENTICATION templates: BODY must NOT include `text` or `example`.
+ * Meta generates OTP body copy from add_security_recommendation + language.
+ * @see https://developers.facebook.com/docs/whatsapp/business-management-api/authentication-templates
+ */
+function buildAuthenticationSubmitComponents({
+  addSecurityRecommendation = true,
+  codeExpirationMinutes = 10,
+  otpType = 'COPY_CODE',
+} = {}) {
+  const components = [
+    {
+      type: 'BODY',
+      ...(addSecurityRecommendation ? { add_security_recommendation: true } : {}),
+    },
+    {
+      type: 'FOOTER',
+      code_expiration_minutes: codeExpirationMinutes,
+    },
+    {
+      type: 'BUTTONS',
+      buttons: [
+        {
+          type: 'OTP',
+          otp_type: otpType,
+        },
+      ],
+    },
+  ];
+  return components;
+}
+
+/** Meta often expects en_US for authentication presets, not bare "en". */
+function normalizeMetaTemplateLanguage(language) {
+  const lang = (language || 'en').trim();
+  const map = {
+    en: 'en_US',
+    english: 'en_US',
+  };
+  return map[lang.toLowerCase()] || lang;
+}
+
+/**
  * Helper: build Meta-format components array from template fields
  */
-function buildMetaComponents({ hasMedia, mediaType, mediaUrl, headerText, content, footerText, buttons = [] }) {
+function buildMetaComponents({
+  hasMedia,
+  mediaType,
+  mediaUrl,
+  headerText,
+  content,
+  footerText,
+  buttons = [],
+  category = '',
+}) {
   const components = [];
+  const isAuthentication = String(category).toLowerCase() === 'authentication';
 
-  // HEADER
-  if (hasMedia && mediaType && mediaType !== 'none') {
+  // HEADER (not used on authentication templates)
+  if (!isAuthentication && hasMedia && mediaType && mediaType !== 'none') {
     const comp = { type: 'HEADER', format: mediaType.toUpperCase() };
     if (mediaUrl) comp.example = { header_handle: [mediaUrl] };
     components.push(comp);
-  } else if (headerText) {
+  } else if (!isAuthentication && headerText) {
     const hasVars = /\{\{\d+\}\}/.test(headerText);
     const comp = { type: 'HEADER', format: 'TEXT', text: headerText };
     if (hasVars) comp.example = { header_text: ['sample_value'] };
     components.push(comp);
   }
 
-  // BODY (required)
-  const bodyVars = (content.match(/\{\{(\d+)\}\}/g) || []).map(() => ['sample_value']);
+  // BODY (required) — authentication drafts keep text locally; Meta submit uses buildAuthenticationSubmitComponents
+  const bodyExample = buildBodyExample(content, category);
   const bodyComp = { type: 'BODY', text: content };
-  if (bodyVars.length > 0) bodyComp.example = { body_text: bodyVars };
+  if (bodyExample && !isAuthentication) bodyComp.example = bodyExample;
+  if (isAuthentication) {
+    bodyComp.add_security_recommendation = true;
+  }
   components.push(bodyComp);
 
   // FOOTER
-  if (footerText) {
+  if (isAuthentication) {
+    components.push({ type: 'FOOTER', code_expiration_minutes: 10 });
+  } else if (footerText) {
     components.push({ type: 'FOOTER', text: footerText });
   }
 
-  // BUTTONS
-  if (buttons && buttons.length > 0) {
-    const metaButtons = buttons.map(btn => {
+  // BUTTONS (stored for UI only on auth — real submit uses OTP payload without text field)
+  if (isAuthentication) {
+    components.push({
+      type: 'BUTTONS',
+      buttons: [{ type: 'OTP', otp_type: 'COPY_CODE' }],
+    });
+  } else if (buttons && buttons.length > 0) {
+    const metaButtons = buttons.map((btn) => {
       const type = (btn.type || 'QUICK_REPLY').toUpperCase();
-      if (type === 'URL') return { type: 'URL', text: btn.text, url: btn.url || btn.value || 'https://example.com' };
-      if (type === 'PHONE_NUMBER') return { type: 'PHONE_NUMBER', text: btn.text, phone_number: btn.phone_number || btn.value || '+1234567890' };
+      if (type === 'URL') {
+        return { type: 'URL', text: btn.text, url: btn.url || btn.value || 'https://example.com' };
+      }
+      if (type === 'PHONE_NUMBER') {
+        return {
+          type: 'PHONE_NUMBER',
+          text: btn.text,
+          phone_number: btn.phone_number || btn.value || '+1234567890',
+        };
+      }
       return { type: 'QUICK_REPLY', text: btn.text };
     });
     components.push({ type: 'BUTTONS', buttons: metaButtons });
@@ -246,9 +344,22 @@ export const createTemplate = async (req, res) => {
     if (!name || !content) return sendValidationError(res, 'Name and content are required');
     if (!category) return sendValidationError(res, 'Category is required');
 
+    const isAuthentication = String(category).toLowerCase() === 'authentication';
+
     // Determine effective media type from mediaSample or mediaType field — always lowercase to match schema enum
     const effectiveMediaType = ((mediaSample && mediaSample !== 'none') ? mediaSample : (mediaType || 'image')).toLowerCase();
-    const effectiveHasMedia = (hasMedia === 'true' || hasMedia === true);
+    let effectiveHasMedia = (hasMedia === 'true' || hasMedia === true) && !isAuthentication;
+
+    if (isAuthentication) {
+      effectiveHasMedia = false;
+      const authVars = extractVariables(content);
+      if (!authVars.includes('1') || authVars.length !== 1) {
+        return sendValidationError(
+          res,
+          'Authentication templates must contain exactly one variable {{1}} for the OTP code'
+        );
+      }
+    }
 
     // Handle file upload → S3
     let finalMediaUrl = mediaUrl || '';
@@ -288,6 +399,7 @@ export const createTemplate = async (req, res) => {
       content,
       footerText: footerText || '',
       buttons,
+      category,
     });
 
     // Meta requires snake_case name, lowercase
@@ -303,12 +415,12 @@ export const createTemplate = async (req, res) => {
       variables,
       components,
       hasMedia: effectiveHasMedia && !!finalMediaUrl,
-      mediaType: effectiveMediaType,
-      mediaUrl: finalMediaUrl,
-      mediaFilePath,
-      mediaFileName,
-      headerText: headerText || '',
-      footerText: footerText || '',
+      ...(effectiveHasMedia && !!finalMediaUrl ? { mediaType: effectiveMediaType } : {}),
+      mediaUrl: effectiveHasMedia ? finalMediaUrl : '',
+      mediaFilePath: effectiveHasMedia ? mediaFilePath : null,
+      mediaFileName: effectiveHasMedia ? mediaFileName : null,
+      headerText: isAuthentication ? '' : (headerText || ''),
+      footerText: isAuthentication ? '' : (footerText || ''),
       status: 'draft',
     });
 
@@ -355,6 +467,7 @@ export const updateTemplate = async (req, res) => {
         content: template.content,
         footerText: template.footerText,
         buttons,
+        category: template.category,
       });
     }
 
@@ -429,31 +542,53 @@ export const submitTemplateToMeta = async (req, res) => {
       }
     }
 
-    const components = buildMetaComponents({
-      hasMedia: template.hasMedia,
-      mediaType: template.mediaType,
-      mediaUrl: headerSample || template.mediaUrl,
-      headerText: template.headerText,
-      content: template.content,
-      footerText: template.footerText,
-      buttons: storedButtons,
-    });
+    const isAuthentication = String(template.category).toLowerCase() === 'authentication';
 
-    // Enforce sample for media header to avoid Meta subcode 2388273
-    const headerIdx = components.findIndex(c => c.type === 'HEADER' && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(c.format));
-    if (headerIdx >= 0) {
-      const currentSample = components[headerIdx]?.example?.header_handle?.[0];
-      const finalSample = normalizeHeaderSample(currentSample || headerSample || template.mediaUrl || '');
-      if (finalSample) {
-        components[headerIdx].example = { header_handle: [finalSample] };
+    let components;
+    if (isAuthentication) {
+      components = buildAuthenticationSubmitComponents({
+        addSecurityRecommendation: true,
+        codeExpirationMinutes: 10,
+        otpType: 'COPY_CODE',
+      });
+    } else {
+      components = buildMetaComponents({
+        hasMedia: template.hasMedia,
+        mediaType: template.mediaType,
+        mediaUrl: headerSample || template.mediaUrl,
+        headerText: template.headerText,
+        content: template.content,
+        footerText: template.footerText,
+        buttons: storedButtons,
+        category: template.category,
+      });
+
+      const bodyIdx = components.findIndex((c) => c.type === 'BODY');
+      if (bodyIdx >= 0) {
+        const example = buildBodyExample(template.content, template.category);
+        if (example) {
+          components[bodyIdx].example = example;
+        }
+      }
+
+      const headerIdx = components.findIndex(
+        (c) => c.type === 'HEADER' && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(c.format)
+      );
+      if (headerIdx >= 0) {
+        const currentSample = components[headerIdx]?.example?.header_handle?.[0];
+        const finalSample = normalizeHeaderSample(currentSample || headerSample || template.mediaUrl || '');
+        if (finalSample) {
+          components[headerIdx].example = { header_handle: [finalSample] };
+        }
       }
     }
 
     const payload = {
       name: template.name,
-      language: template.language || 'en',
+      language: normalizeMetaTemplateLanguage(template.language),
       category: template.category.toUpperCase(), // Meta: MARKETING | UTILITY | AUTHENTICATION
       components,
+      ...(isAuthentication ? { message_send_ttl_seconds: 600 } : {}),
     };
 
     logger.info(`📤 Submitting template "${template.name}" to Meta WABA: ${wabaId}`);
@@ -527,7 +662,7 @@ export const syncTemplates = async (req, res) => {
       const headerText  = headerComp?.format === 'TEXT' ? (headerComp.text || '') : '';
       const footerText  = footerComp?.text || '';
       const hasMedia    = ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComp?.format);
-      const mediaType   = hasMedia ? headerComp.format.toLowerCase() : 'image';
+      const mediaType   = hasMedia ? headerComp.format.toLowerCase() : undefined;
       const rawCategory = (mt.category || 'utility').toLowerCase();
       const dbCategory  = ['marketing', 'utility', 'authentication'].includes(rawCategory) ? rawCategory : 'utility';
       const metaStatus  = (mt.status || '').toLowerCase();
@@ -557,7 +692,7 @@ export const syncTemplates = async (req, res) => {
           headerText,
           footerText,
           hasMedia,
-          mediaType,
+          ...(hasMedia && mediaType ? { mediaType } : {}),
           components: mt.components || [],
           variables: extractVariables(content),
           status: dbStatus,

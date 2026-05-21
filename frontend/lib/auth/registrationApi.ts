@@ -36,6 +36,7 @@ export type SignupPayload = {
   website?: string;
   selectedPlan: string;
   billingCycle: string;
+  phoneVerificationToken?: string;
 };
 
 export type SignupResult = {
@@ -61,6 +62,7 @@ export async function signupAccount(payload: SignupPayload): Promise<SignupResul
       website: payload.website?.trim() || '',
       selectedPlan: payload.selectedPlan,
       billingCycle: payload.billingCycle,
+      phoneVerificationToken: payload.phoneVerificationToken,
     }),
   });
 

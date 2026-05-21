@@ -70,7 +70,6 @@ const templateSchema = new mongoose.Schema({
       values: ['image', 'video', 'document'],
       message: '{VALUE} is not a valid media type'
     },
-    default: 'image'
   },
   mediaUrl: String,              // For URL-based media
   mediaFilePath: String,         // For uploaded files (stored path)

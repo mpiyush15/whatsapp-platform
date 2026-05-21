@@ -26,6 +26,7 @@ import {
 } from '@/lib/auth/registrationApi';
 import { fetchPublicPricingPlans, type PublicPricingPlan } from '@/lib/pricing/publicPlans';
 import { WhatsAppIcon } from '@/components/marketing/WhatsAppIcon';
+import WhatsAppOtpBlock from '@/components/auth/WhatsAppOtpBlock';
 
 const STEPS = [
   { id: 1, title: 'Your account', subtitle: 'Name, email & password' },
@@ -72,6 +73,8 @@ export default function RegisterPage() {
   const [plans, setPlans] = useState<PublicPricingPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [agreed, setAgreed] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState('');
 
   const [emailStatus, setEmailStatus] = useState<FieldStatus>('idle');
   const [emailMessage, setEmailMessage] = useState('');
@@ -102,6 +105,8 @@ export default function RegisterPage() {
     if (key === 'mobileNumber') {
       setPhoneStatus('idle');
       setPhoneMessage('');
+      setPhoneVerified(false);
+      setPhoneVerificationToken('');
     }
   };
 
@@ -224,6 +229,10 @@ export default function RegisterPage() {
         setError('Use a phone number that is not already registered');
         return false;
       }
+      if (!phoneVerified || !phoneVerificationToken) {
+        setError('Verify your mobile number with the WhatsApp code');
+        return false;
+      }
       return true;
     }
     if (s === 3) {
@@ -261,7 +270,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const result = await signupAccount(form);
+      const result = await signupAccount({ ...form, phoneVerificationToken });
       if (!result.ok) {
         setError(result.message || 'Registration failed');
         return;
@@ -485,6 +494,25 @@ export default function RegisterPage() {
                             </div>
                             <FieldHint status={phoneStatus} message={phoneMessage} />
                           </div>
+                          {phoneStatus === 'ok' ? (
+                            <WhatsAppOtpBlock
+                              phone={form.mobileNumber}
+                              purpose="signup"
+                              email={form.email}
+                              disabled={phoneStatus !== 'ok'}
+                              onSignupVerified={(token) => {
+                                setPhoneVerificationToken(token);
+                                setPhoneVerified(true);
+                                setError(null);
+                              }}
+                            />
+                          ) : null}
+                          {phoneVerified ? (
+                            <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                              <Check className="h-3.5 w-3.5" />
+                              WhatsApp number verified
+                            </p>
+                          ) : null}
                           <div>
                             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
                               Company name

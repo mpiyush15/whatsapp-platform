@@ -5,9 +5,9 @@ import { motion } from 'framer-motion';
 import type { FeatureCardCategory, FeatureCardStatus } from '@/components/marketing/marketing-features-pages-data';
 
 const CATEGORY_STYLES: Record<FeatureCardCategory, string> = {
-  Messaging: 'bg-sky-50 text-sky-800 border-sky-200/80',
-  Growth: 'bg-orange-50 text-orange-900 border-orange-200/80',
-  Intelligence: 'bg-violet-50 text-violet-900 border-violet-200/80',
+  Chats: 'bg-sky-50 text-sky-800 border-sky-200/80',
+  Marketing: 'bg-orange-50 text-orange-900 border-orange-200/80',
+  Reports: 'bg-violet-50 text-violet-900 border-violet-200/80',
 };
 
 type MarketingFeatureCardProps = {

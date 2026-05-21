@@ -8,6 +8,7 @@ import { setupSocketIOHandlers } from './src/services/liveChat-socketHandler.js'
 import { initializeSocketIO } from './src/services/liveChat-socketService.js';
 import { startWorkflowTimeoutScheduler } from './src/schedulers/workflowTimeoutScheduler.js';
 import { startHealthcareReminderScheduler } from './src/schedulers/healthcareReminderScheduler.js';
+import { startPlatformBillingReminderScheduler } from './src/schedulers/platformBillingReminderScheduler.js';
 
 // Load environment variables
 dotenv.config();
@@ -40,6 +41,7 @@ mongoose.connect(MONGO_URI)
     await fixUsersAccountIdIndex();
     startWorkflowTimeoutScheduler();
     startHealthcareReminderScheduler();
+    startPlatformBillingReminderScheduler();
   })
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err.message);

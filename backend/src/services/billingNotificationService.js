@@ -1,8 +1,9 @@
 import NotificationDispatch from '../models/NotificationDispatch.js';
 import notificationService from './notificationService.js';
 import { emailService } from './emailService.js';
-import whatsappService from './whatsappService.js';
+import platformWhatsAppService from './platformWhatsAppService.js';
 import logger from '../utils/logger.js';
+import { normalizePhone } from '../utils/normalizePhone.js';
 
 class BillingNotificationService {
   async claimDispatch({ accountId, channel, eventType, dispatchKey, referenceType, referenceId, metadata = {} }) {
@@ -254,22 +255,18 @@ class BillingNotificationService {
     }
 
     try {
-      const templateName = process.env.BILLING_ONBOARDING_TEMPLATE_NAME;
-      const senderPhoneNumberId = process.env.BILLING_ONBOARDING_PHONE_NUMBER_ID;
-      const recipientPhone = account.phone || account.whatsappNumber || null;
+      const recipientPhone = normalizePhone(account.phone || account.whatsappNumber || '');
+      const cfg = platformWhatsAppService.getConfig();
 
-      if (!templateName || !senderPhoneNumberId || !recipientPhone) {
+      if (!cfg.isConfigured || !recipientPhone) {
         await this.markSkipped(dispatch._id, 'WHATSAPP_ONBOARDING_NOT_ELIGIBLE');
         return { channel: 'whatsapp', eventType: 'onboarding_whatsapp', skipped: true, reason: 'WHATSAPP_ONBOARDING_NOT_ELIGIBLE' };
       }
 
-      const result = await whatsappService.sendTemplateMessage(
-        account.accountId,
-        senderPhoneNumberId,
+      const result = await platformWhatsAppService.sendWelcome(
         recipientPhone,
-        templateName,
-        [account.name || 'Customer', planName || 'Plan'],
-        { source: 'billing_onboarding', orderId }
+        account.name || 'Customer',
+        planName || 'Plan'
       );
 
       if (!result?.success) {

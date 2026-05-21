@@ -10,12 +10,12 @@ export type FooterColumn = {
 export const marketingFooterProductLinks: FooterLink[] = [
   { label: 'Home', href: '/marketing' },
   { label: 'Pricing', href: '/pricing' },
-  { label: 'Solutions hub', href: '/marketing/solutions' },
-  { label: 'Features', href: '/marketing/features' },
+  { label: 'Use cases', href: '/marketing/solutions' },
+  { label: 'What you get', href: '/marketing/features' },
   { label: 'Broadcasts', href: '/marketing#broadcast' },
   { label: 'Platform', href: '/marketing#platform' },
   { label: 'Why WhatsApp', href: '/marketing#why-whatsapp' },
-  { label: 'Official API', href: '/marketing#api' },
+  { label: 'Official WhatsApp', href: '/marketing#api' },
   { label: 'FAQ', href: '/marketing#faq' },
 ];
 
@@ -28,22 +28,22 @@ export const marketingFooterCompanyLinks: FooterLink[] = [
 
 export const marketingFooterColumns: FooterColumn[] = [
   {
-    title: 'Solutions',
+    title: 'Use cases',
     links: megaMenuFooterLinks('solutions', 6),
   },
   {
-    title: 'Features',
+    title: 'What you get',
     links: megaMenuFooterLinks('features', 6),
   },
   {
-    title: 'Industry',
+    title: 'For your business',
     links: megaMenuFooterLinks('industry', 6),
   },
 ];
 
 export const marketingFooterCopy = {
   tagline:
-    'WhatsApp operations for teams that sell, support, and scale — live inbox, campaigns, flows, and analytics on Meta’s Cloud API.',
+    'WhatsApp for teams that sell, support, and grow — team inbox, bulk messages, auto-replies, and reports on official WhatsApp Business.',
   companyLine: 'A product of Pixels Digital Solutions',
   officialPlatformLine:
     'ReplySys uses the official WhatsApp Business Platform for secure and compliant messaging.',

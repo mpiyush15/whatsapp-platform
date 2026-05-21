@@ -19,13 +19,13 @@ import {
 /** Copy for /marketing/solutions */
 
 export const solutionsPageHeroCopy = {
-  eyebrow: 'Solutions',
+  eyebrow: 'Use cases',
   titleLine1: 'WhatsApp that fits',
-  titleHighlight: 'your team and your industry',
+  titleHighlight: 'your team and your business',
   subtitle:
-    'Replysys on the official Meta Cloud API — proven playbooks for sales, support, and growth, plus vertical depth for clinics, institutes, and stores.',
-  useCaseHeading: 'By use case',
-  industryHeading: 'By industry',
+    'Official WhatsApp Business — ready setups for sales, support, and promotions, plus tailored tools for clinics, schools, and shops.',
+  useCaseHeading: 'What you want to do',
+  industryHeading: 'Your type of business',
   ctaBookDemo: 'Book demo',
   ctaExplore: 'Explore solutions',
   ctaExploreHref: '#use-cases',
@@ -41,7 +41,7 @@ export type SolutionsHeroChip = {
 export const solutionsHeroUseCases: SolutionsHeroChip[] = [
   {
     id: 'sales',
-    label: 'Sales & outbound',
+    label: 'Sales on WhatsApp',
     href: '/marketing/solutions/sales',
     icon: Zap,
   },
@@ -53,13 +53,13 @@ export const solutionsHeroUseCases: SolutionsHeroChip[] = [
   },
   {
     id: 'marketing',
-    label: 'Marketing & growth',
+    label: 'Promotions & bulk messages',
     href: '/marketing/solutions/marketing',
     icon: Megaphone,
   },
   {
     id: 'agencies',
-    label: 'Agencies & resellers',
+    label: 'Agencies managing clients',
     href: '/marketing/solutions/agencies',
     icon: Building2,
   },
@@ -74,13 +74,13 @@ export const solutionsHeroIndustries: SolutionsHeroChip[] = [
   },
   {
     id: 'education',
-    label: 'Education & edtech',
+    label: 'Schools & coaching',
     href: '/solutions/education',
     icon: GraduationCap,
   },
   {
     id: 'ecommerce',
-    label: 'E-commerce & D2C',
+    label: 'Online shops',
     href: '/solutions/ecommerce',
     icon: ShoppingBag,
   },
@@ -106,10 +106,10 @@ export const solutionsHeroIndustries: SolutionsHeroChip[] = [
 
 export const solutionsUseCasesSectionCopy = {
   eyebrow: 'Use cases',
-  title: 'Outcomes your team',
-  titleHighlight: 'can run on Replysys',
+  title: 'Goals your team',
+  titleHighlight: 'can reach on Replysys',
   subtitle:
-    'Official WhatsApp Business API — pick your motion below and see how Replysys helps you win that use case.',
+    'Official WhatsApp Business — pick what you want to do and see how Replysys helps you get there.',
   replysysHelpsLabel: 'How Replysys helps',
 } as const;
 
@@ -126,7 +126,7 @@ export const solutionsUseCases: SolutionsUseCaseItem[] = [
   {
     id: 'solution-sales',
     title: 'Close more leads before they go cold',
-    tagline: 'Sales & outbound',
+    tagline: 'Sales on WhatsApp',
     description:
       'Leads from wa.me links, ads, and campaigns need a fast owner — or they slip to a competitor’s chat.',
     replysysSolution:
@@ -146,7 +146,7 @@ export const solutionsUseCases: SolutionsUseCaseItem[] = [
   {
     id: 'solution-marketing',
     title: 'Turn broadcasts into the next campaign',
-    tagline: 'Marketing & growth',
+    tagline: 'Promotions & bulk messages',
     description:
       'Email open rates drop; you need a channel customers actually read — with opt-in and template rules intact.',
     replysysSolution:
@@ -156,7 +156,7 @@ export const solutionsUseCases: SolutionsUseCaseItem[] = [
   {
     id: 'solution-agencies',
     title: 'Scale client WhatsApp without inbox chaos',
-    tagline: 'Agencies & resellers',
+    tagline: 'Agencies managing clients',
     description:
       'Juggling logins and numbers per client slows delivery and risks sending from the wrong brand.',
     replysysSolution:
@@ -191,7 +191,7 @@ export const solutionsTeamSizeItems: SolutionsSimpleItem[] = [
     tagline: 'Startups',
     description: 'You need official API access and a real inbox — not weeks of integration before the first send.',
     replysysSolution:
-      'Replysys onboards you on Meta’s Cloud API with a shared inbox, templates, and flows so a small team can start talking to customers on day one.',
+      'Replysys connects you on official WhatsApp Business with a team inbox, ready-made messages, and auto-replies so a small team can talk to customers from day one.',
     icon: Zap,
     href: '/pricing',
     linkLabel: 'See startup plans',
@@ -221,29 +221,29 @@ export const solutionsTeamSizeItems: SolutionsSimpleItem[] = [
 ];
 
 export const solutionsPlatformSectionCopy = {
-  eyebrow: 'Platform',
+  eyebrow: 'How it works',
   title: 'Everything runs on',
-  titleHighlight: 'official WhatsApp infrastructure',
-  subtitle: 'API, templates, and billing — the foundation behind every Replysys solution above.',
+  titleHighlight: 'official WhatsApp Business',
+  subtitle: 'Your business number, approved message formats, and clear billing — the foundation behind every use case above.',
   replysysHelpsLabel: 'What you get',
 } as const;
 
 export const solutionsPlatformItems: SolutionsSimpleItem[] = [
   {
     id: 'platform-api',
-    title: 'Connect on Meta’s Cloud API the right way',
-    tagline: 'WhatsApp Cloud API',
+    title: 'Connect your business number the right way',
+    tagline: 'Official WhatsApp Business',
     description: 'Business verification, WABA setup, and number registration need a guided path — not guesswork.',
     replysysSolution:
       'Replysys walks your team through Meta Business Manager, template approval, and go-live on a verified business number.',
     icon: MessageSquare,
     href: '/marketing#api',
-    linkLabel: 'Learn about the API',
+    linkLabel: 'Learn how setup works',
   },
   {
     id: 'platform-templates',
     title: 'Send messages customers can actually receive',
-    tagline: 'Templates & compliance',
+    tagline: 'Approved message formats',
     description: 'Marketing and utility sends must use approved templates — or Meta blocks delivery.',
     replysysSolution:
       'Replysys syncs approved templates, quick replies, and session rules so agents and campaigns stay compliant by default.',
@@ -265,10 +265,10 @@ export const solutionsPlatformItems: SolutionsSimpleItem[] = [
 ];
 
 export const solutionsIndustriesSectionCopy = {
-  eyebrow: 'By industry',
-  title: 'Vertical playbooks',
-  titleHighlight: 'on Replysys',
-  subtitle: 'Core WhatsApp for every industry — deeper modules where your business needs them.',
+  eyebrow: 'For your business',
+  title: 'Setups for your',
+  titleHighlight: 'type of business',
+  subtitle: 'Standard WhatsApp tools for everyone — extra features where your business needs them.',
   replysysHelpsLabel: 'How Replysys helps',
 } as const;
 
@@ -287,7 +287,7 @@ export const solutionsIndustryItems: SolutionsSimpleItem[] = [
   {
     id: 'industry-education',
     title: 'Keep parents and students in the loop',
-    tagline: 'Education & edtech',
+    tagline: 'Schools & coaching',
     description: 'Institutes juggle admissions, fees, and class updates across channels parents ignore.',
     replysysSolution:
       'Replysys runs admissions follow-up, parent broadcasts, and fee reminders on core inbox, flows, and campaigns.',
@@ -298,7 +298,7 @@ export const solutionsIndustryItems: SolutionsSimpleItem[] = [
   {
     id: 'industry-ecommerce',
     title: 'Orders and support in the channel customers open',
-    tagline: 'E-commerce & D2C',
+    tagline: 'Online shops',
     description: 'Cart updates and support chats split across tools — customers miss messages.',
     replysysSolution:
       'Replysys combines order updates, recovery sends, and agent support on one WhatsApp business number.',
@@ -367,21 +367,21 @@ export const solutionsIndustryItems: SolutionsSimpleItem[] = [
 export const solutionsIndustryHubItems: SolutionsSimpleItem[] = solutionsIndustryItems;
 
 export const solutionsIndustriesHubCopy = {
-  title: 'Industry playbooks',
-  titleHighlight: 'on Replysys',
+  title: 'Setups for your',
+  titleHighlight: 'type of business',
   subtitle:
-    'Eight verticals you already built content for — now on the same modern layout as sales, support, and marketing solutions. Pick yours and see how inbox, templates, flows, and campaigns fit.',
+    'Eight business types — same clear layout as sales, support, and promotions. Pick yours and see how inbox, bulk messages, and auto-replies fit.',
   ctaDemo: 'Book a walkthrough',
   ctaStart: 'Get started',
-  gridEyebrow: 'All industries',
-  gridTitle: 'Vertical playbooks',
+  gridEyebrow: 'All business types',
+  gridTitle: 'Business setups',
   gridTitleHighlight: 'ready to explore',
-  gridSubtitle: 'Each link opens a full industry page with pains, modules, workflow, and honest shipped vs roadmap notes.',
+  gridSubtitle: 'Each link opens a full page for that business — common problems, how Replysys helps, and what you can use today.',
   replysysHelpsLabel: 'How Replysys helps',
   steps: [
     {
-      title: 'Choose your vertical',
-      body: 'Healthcare, education, commerce, property, F&B, finance, travel, or SaaS — start with the closest match.',
+      title: 'Choose your business type',
+      body: 'Healthcare, schools, shops, property, food, finance, travel, or software — start with the closest match.',
     },
     {
       title: 'Review the playbook',
@@ -389,11 +389,11 @@ export const solutionsIndustriesHubCopy = {
     },
     {
       title: 'Book or start',
-      body: 'Book a demo for your team or register and connect WhatsApp Cloud API when you are ready.',
+      body: 'Book a demo for your team or register and connect official WhatsApp Business when you are ready.',
     },
     {
       title: 'Scale on one stack',
-      body: 'Same inbox, templates, and campaigns as our use-case solutions — no separate tool per vertical.',
+      body: 'Same inbox, message formats, and bulk sends as our use-case pages — no separate app per business type.',
     },
   ],
 } as const;

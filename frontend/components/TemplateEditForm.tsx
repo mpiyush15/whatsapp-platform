@@ -16,7 +16,7 @@ export interface TemplateFormData {
   name: string
   language: string
   category: string
-  authUseCase?: "login_otp" | "signup_otp" | "order_verification"
+  authUseCase?: "login_otp" | "signup_otp" | "order_verification" | "custom_otp"
   authAutoFillEnabled?: boolean
   appPackageName?: string
   appSignatureHash?: string
@@ -81,13 +81,29 @@ const TYPE_LABEL: Record<string, string> = {
   calling_permissions_request: "Calling permissions request",
 }
 
-const AUTH_FIXED_MESSAGE = "{{1}} is your verification code. Do not share this code."
+export const AUTH_OTP_BODY_PRESETS: Record<string, string> = {
+  login_otp: "{{1}} is your verification code. Do not share this code.",
+  signup_otp: "{{1}} is your verification code. Do not share this code.",
+  order_verification:
+    "{{1}} is your verification code. For your security, do not share this code.",
+  custom_otp: "{{1}} is your verification code. Do not share this code.",
+}
+
+const AUTH_FIXED_MESSAGE = AUTH_OTP_BODY_PRESETS.login_otp
 
 const AUTH_USE_CASE_OPTIONS = [
-  { value: "login_otp", label: "Login OTP" },
-  { value: "signup_otp", label: "Signup OTP" },
-  { value: "order_verification", label: "Order verification" },
+  { value: "login_otp", label: "Login OTP (preset)" },
+  { value: "signup_otp", label: "Signup OTP (preset)" },
+  { value: "order_verification", label: "Order verification (preset)" },
+  { value: "custom_otp", label: "Custom OTP — your template name & message" },
 ] as const
+
+export function isValidAuthOtpBody(content: string): boolean {
+  const trimmed = (content || "").trim()
+  if (!trimmed.includes("{{1}}")) return false
+  const matches = trimmed.match(/\{\{\d+\}\}/g) || []
+  return matches.length === 1 && matches[0] === "{{1}}"
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -151,12 +167,14 @@ export default function TemplateEditForm({ formData, setFormData, category, temp
   const isUtilityDefault = category === "utility" && templateType === "default"
   const isAuthenticationDefault = category === "authentication" && templateType === "default"
 
+  const authUseCase = formData.authUseCase || "login_otp"
+  const isCustomAuthOtp = authUseCase === "custom_otp"
+
   useEffect(() => {
     if (!isAuthenticationDefault) return
 
     const patch: Partial<TemplateFormData> = {}
 
-    if (formData.content !== AUTH_FIXED_MESSAGE) patch.content = AUTH_FIXED_MESSAGE
     if (!formData.authUseCase) patch.authUseCase = "login_otp"
     if (formData.variableType !== "Number") patch.variableType = "Number"
     if (formData.hasMedia) patch.hasMedia = false
@@ -170,7 +188,6 @@ export default function TemplateEditForm({ formData, setFormData, category, temp
     if (Object.keys(patch).length > 0) set(patch)
   }, [
     isAuthenticationDefault,
-    formData.content,
     formData.authUseCase,
     formData.variableType,
     formData.hasMedia,
@@ -239,11 +256,32 @@ export default function TemplateEditForm({ formData, setFormData, category, temp
             <p className="text-xs text-gray-500 mt-1">Simple OTP setup for ecommerce use-cases.</p>
           </div>
 
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+            <p className="font-semibold">Authentication vs Utility</p>
+            <p className="mt-1 leading-relaxed">
+              Use <strong>Authentication</strong> only for OTP codes (must include {"{{1}}"}).
+              Welcome, payment, low-credit, and other custom messages → choose <strong>Utility</strong> or <strong>Marketing</strong> instead.
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Use case</label>
             <select
-              value={formData.authUseCase || "login_otp"}
-              onChange={(e) => set({ authUseCase: e.target.value as TemplateFormData["authUseCase"] })}
+              value={authUseCase}
+              onChange={(e) => {
+                const next = e.target.value as TemplateFormData["authUseCase"]
+                const presetBody = AUTH_OTP_BODY_PRESETS[next] || AUTH_FIXED_MESSAGE
+                const nameHints: Record<string, string> = {
+                  login_otp: "replysys_login_otp",
+                  signup_otp: "replysys_signup_otp",
+                  order_verification: "order_verification_otp",
+                }
+                set({
+                  authUseCase: next,
+                  content: presetBody,
+                  ...(nameHints[next] && !formData.name.trim() ? { name: nameHints[next] } : {}),
+                })
+              }}
               className="w-full max-w-sm px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               {AUTH_USE_CASE_OPTIONS.map((item) => (
@@ -253,14 +291,31 @@ export default function TemplateEditForm({ formData, setFormData, category, temp
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Message (fixed)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {isCustomAuthOtp ? "Message (custom, Meta OTP rules)" : "Message (preset)"}
+            </label>
             <textarea
-              value={AUTH_FIXED_MESSAGE}
-              readOnly
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 resize-none"
+              value={formData.content}
+              readOnly={!isCustomAuthOtp}
+              onChange={(e) => isCustomAuthOtp && set({ content: e.target.value })}
+              rows={4}
+              className={`w-full px-3 py-2 border rounded-lg text-sm resize-none ${
+                isCustomAuthOtp
+                  ? "border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  : "border-gray-200 bg-gray-50 text-gray-700"
+              }`}
             />
-            <p className="text-xs text-gray-400 mt-1">Replysys keeps this fixed to match Meta authentication policy.</p>
+            {isCustomAuthOtp ? (
+              <p className={`text-xs mt-1 ${isValidAuthOtpBody(formData.content) ? "text-emerald-700" : "text-red-600"}`}>
+                {isValidAuthOtpBody(formData.content)
+                  ? "Valid — exactly one {{1}} for the OTP code."
+                  : "Must include exactly one variable {{1}} (OTP). No header, media, or extra variables."}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 mt-1">
+                Preset copy for Meta. Pick <strong>Custom OTP</strong> to edit the message and use your own template name.
+              </p>
+            )}
           </div>
 
           <div className="pt-2 border-t border-gray-100">

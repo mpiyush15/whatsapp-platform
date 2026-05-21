@@ -20,16 +20,16 @@ import {
 /** Copy for /marketing/features */
 
 export const featuresPageHeroCopy = {
-  eyebrow: 'Platform features',
+  eyebrow: 'What you get',
   titleLine1: 'Everything your team needs',
-  titleHighlight: 'in one WhatsApp OS',
+  titleHighlight: 'on one WhatsApp number',
   subtitle:
-    'Live inbox, campaigns, flows, templates, and analytics on Meta’s official Cloud API — plus clinic workflows when you need healthcare depth.',
+    'Team inbox, bulk messages, auto-replies, ready-made message formats, and simple reports — on official WhatsApp Business. Extra tools for clinics when you need them.',
   ctaBookDemo: 'Book demo',
   ctaGetStarted: 'Get started',
 } as const;
 
-export type FeatureCardCategory = 'Messaging' | 'Growth' | 'Intelligence';
+export type FeatureCardCategory = 'Chats' | 'Marketing' | 'Reports';
 
 export type FeatureCardStatus = 'shipped' | 'partial';
 
@@ -43,83 +43,83 @@ export type MarketingFeatureCardItem = {
 };
 
 export const featuresGridSectionCopy = {
-  eyebrow: 'Capabilities',
-  title: 'WhatsApp automation',
-  titleHighlight: 'built for operators',
+  eyebrow: 'What you get',
+  title: 'WhatsApp tools',
+  titleHighlight: 'built for your team',
   subtitle:
-    'Inbox, campaigns, flows, and reporting on the official API — modular tools that work together on one business number.',
+    'Inbox, bulk messages, auto-replies, and reports on official WhatsApp — everything works together on one business number.',
 } as const;
 
 export const marketingFeatureCards: MarketingFeatureCardItem[] = [
   {
     id: 'live-inbox',
-    category: 'Messaging',
-    title: 'Live team inbox',
+    category: 'Chats',
+    title: 'Team WhatsApp inbox',
     description: 'Shared WhatsApp inbox with assignment, tags, notes, and real-time updates for every agent.',
     icon: MessageSquare,
     status: 'shipped',
   },
   {
     id: 'templates',
-    category: 'Messaging',
-    title: 'Templates & quick replies',
+    category: 'Chats',
+    title: 'Ready-made messages & quick replies',
     description: 'Sync Meta-approved templates and save quick replies your team uses every day.',
     icon: Workflow,
     status: 'shipped',
   },
   {
     id: 'multi-agent',
-    category: 'Messaging',
-    title: 'Multi-agent collaboration',
+    category: 'Chats',
+    title: 'Several staff, one number',
     description: 'Route conversations to the right person with assignments and internal notes on each chat.',
     icon: Users,
     status: 'shipped',
   },
   {
     id: 'campaigns',
-    category: 'Growth',
-    title: 'Campaigns & broadcasts',
+    category: 'Marketing',
+    title: 'Bulk message campaigns',
     description: 'Schedule template sends to tagged segments and track delivered, read, and replied.',
     icon: Megaphone,
     status: 'shipped',
   },
   {
     id: 'flows',
-    category: 'Growth',
-    title: 'Chatbots & flows',
-    description: 'Visual flow builder for FAQs, lead capture, and handoff to humans when it matters.',
+    category: 'Marketing',
+    title: 'Auto-replies & menus',
+    description: 'Set up automatic answers for FAQs, capture leads, and hand off to a person when needed.',
     icon: Bot,
     status: 'shipped',
   },
   {
     id: 'contacts',
-    category: 'Growth',
-    title: 'Contacts & CRM',
+    category: 'Marketing',
+    title: 'Customer list & history',
     description: 'Contact lists, tags, segments, and full conversation history in one place.',
     icon: Users,
     status: 'shipped',
   },
   {
     id: 'analytics',
-    category: 'Intelligence',
-    title: 'Analytics & reporting',
+    category: 'Reports',
+    title: 'Reports & message stats',
     description: 'Message volume, campaign performance, and Meta category spend — transparent in INR.',
     icon: BarChart3,
     status: 'shipped',
   },
   {
     id: 'healthcare',
-    category: 'Intelligence',
-    title: 'Healthcare module',
+    category: 'Reports',
+    title: 'Clinics & hospitals tools',
     description: 'Patients, appointments, prescriptions, billing, and consent-aware WhatsApp reminders.',
     icon: HeartPulse,
     status: 'shipped',
   },
   {
     id: 'api',
-    category: 'Intelligence',
-    title: 'API & webhooks',
-    description: 'REST APIs and webhooks to send messages, sync contacts, and plug into your stack.',
+    category: 'Reports',
+    title: 'Connect other software',
+    description: 'Link Replysys to tools you already use — send messages and sync contacts automatically.',
     icon: Zap,
     status: 'shipped',
   },
@@ -139,11 +139,11 @@ export type MarketingFeaturesPillarItem = {
 };
 
 export const featuresPillarsSectionCopy = {
-  eyebrow: 'Platform pillars',
-  title: 'Three layers',
-  titleHighlight: 'one WhatsApp stack',
+  eyebrow: 'How it fits together',
+  title: 'Three parts',
+  titleHighlight: 'one WhatsApp setup',
   subtitle:
-    'Operate conversations, grow with automation, and measure what matters — without switching tools or numbers.',
+    'Handle chats, send promotions, and see what’s working — without juggling different apps or phone numbers.',
 } as const;
 
 export const marketingFeaturesPillars: MarketingFeaturesPillarItem[] = [
@@ -151,33 +151,33 @@ export const marketingFeaturesPillars: MarketingFeaturesPillarItem[] = [
     id: 'messaging',
     index: '01',
     accent: 'messaging',
-    label: 'Messaging',
-    title: 'Run the inbox like a team sport',
+    label: 'Chats',
+    title: 'Run the inbox as a team',
     description:
-      'One business number, every agent in sync. Assign chats, use approved templates, and keep full context on every thread.',
-    bullets: ['Shared live inbox', 'Meta templates & quick replies', 'Assignments, tags & internal notes'],
+      'One business number, everyone on the same page. Pass chats between staff, use approved message formats, and keep full history.',
+    bullets: ['Shared team inbox', 'Approved messages & quick replies', 'Handoffs, labels & private notes'],
     icon: MessageSquare,
   },
   {
     id: 'growth',
     index: '02',
     accent: 'growth',
-    label: 'Growth',
-    title: 'Broadcast, automate, and segment',
+    label: 'Marketing',
+    title: 'Send offers and stay organized',
     description:
-      'Send campaigns to tagged lists, build flows for FAQs and capture, and keep contacts organized for the next send.',
-    bullets: ['Scheduled template broadcasts', 'Visual chatbot & flow builder', 'Contacts, tags & segments'],
+      'Message customer groups on a schedule, set up auto-replies for common questions, and keep your customer list tidy.',
+    bullets: ['Scheduled bulk messages', 'Auto-replies & simple menus', 'Customer groups & labels'],
     icon: Megaphone,
   },
   {
     id: 'intelligence',
     index: '03',
     accent: 'intelligence',
-    label: 'Intelligence',
-    title: 'Measure, specialize, integrate',
+    label: 'Reports',
+    title: 'See results, add clinic tools, connect apps',
     description:
-      'See delivery and spend in INR, go deep on clinic workflows when you need them, and connect via API when you outgrow the UI.',
-    bullets: ['Campaign & inbox analytics', 'Healthcare patients & appointments', 'REST API & webhooks'],
+      'Check delivery and costs in rupees, use clinic-specific tools when you need them, and connect other software as you grow.',
+    bullets: ['Campaign & inbox reports', 'Patients & appointments for clinics', 'Connect to your other tools'],
     icon: LineChart,
   },
 ];
@@ -245,12 +245,12 @@ export const featuresHealthcareVerticalCallout: FeaturesVerticalCalloutConfig = 
     title: 'Clinics get',
     titleHighlight: 'dedicated product depth',
     subtitle:
-      'Patients, appointments, prescriptions, and billing on the same WhatsApp number as inbox and campaigns — not a generic CRM add-on.',
+      'Patients, appointments, prescriptions, and billing on the same WhatsApp number as inbox and campaigns — built for clinics, not a generic contact list.',
   },
   tagLabel: 'Clinic workflows',
   badge: 'Shipped today',
   body:
-    'Other industries run on core WhatsApp — inbox, campaigns, and flows. Healthcare adds a dedicated module when you need structured patient operations, not spreadsheets beside chat.',
+    'Other businesses use the standard inbox and bulk messages. Healthcare adds dedicated tools when you need patient records and appointments, not spreadsheets beside chat.',
   bullets: [
     'Same business number for care team and front desk',
     'Appointment reminders and follow-ups over WhatsApp',
@@ -295,7 +295,7 @@ export const featuresEdtechVerticalCallout: FeaturesVerticalCalloutConfig = {
     title: 'Manage and automate',
     titleHighlight: 'your institute on WhatsApp',
     subtitle:
-      'Admissions, parent updates, fee reminders, and class announcements — flows, campaigns, and inbox on one institute number.',
+      'Admissions, parent updates, fee reminders, and class announcements — auto-replies, bulk messages, and inbox on one school number.',
   },
   tagLabel: 'Institute workflows',
   badge: 'Core platform',
@@ -349,11 +349,11 @@ export const featuresCompareSectionCopy = {
 export const featuresIncludedToday = [
   'Live team inbox with assignments, tags, and notes',
   'Template broadcasts with scheduling and delivery stats',
-  'Visual flow builder for rule-based automation',
+  'Auto-replies and menus for common questions',
   'Contacts, tags, segments, and conversation history',
   'Campaign and inbox analytics with Meta spend in INR',
   'Healthcare module — patients, appointments, prescriptions, billing',
-  'REST API and webhooks for your stack',
+  'Connect to other software you already use',
   'Multi-project workspaces for agencies (client switching)',
 ] as const;
 

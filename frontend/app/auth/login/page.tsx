@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { login, UserRole, getPostLoginRedirect } from '@/lib/auth';
+import WhatsAppOtpBlock from '@/components/auth/WhatsAppOtpBlock';
 import { isAppDomain, redirectToDomain } from '@/lib/domain';
 import { WhatsAppIcon } from '@/components/marketing/WhatsAppIcon';
 
@@ -49,6 +50,8 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [loginMode, setLoginMode] = useState<'password' | 'whatsapp'>('password');
+  const [phone, setPhone] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,6 +198,96 @@ export default function LoginPage() {
                     <p className="mt-2 text-sm text-[#6d6c6b]">Continue where you left off with your team inbox.</p>
                   </div>
 
+                  <div className="mb-5 flex rounded-xl border border-black/[0.08] bg-white/40 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setLoginMode('password')}
+                      className={`flex-1 rounded-lg py-2 text-xs font-semibold transition ${
+                        loginMode === 'password'
+                          ? 'bg-white text-[#111111] shadow-sm'
+                          : 'text-[#71717a]'
+                      }`}
+                    >
+                      Email
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLoginMode('whatsapp')}
+                      className={`flex-1 rounded-lg py-2 text-xs font-semibold transition ${
+                        loginMode === 'whatsapp'
+                          ? 'bg-white text-[#111111] shadow-sm'
+                          : 'text-[#71717a]'
+                      }`}
+                    >
+                      WhatsApp OTP
+                    </button>
+                  </div>
+
+                  {loginMode === 'whatsapp' ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
+                          Mobile number
+                        </label>
+                        <input
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="+91 98765 43210"
+                          className="w-full rounded-xl border border-white/80 bg-white/50 py-3 px-4 text-sm text-[#111111] shadow-inner backdrop-blur-md focus:border-[#25d366]/50 focus:outline-none focus:ring-2 focus:ring-[#25d366]/25"
+                        />
+                      </div>
+                      <WhatsAppOtpBlock
+                        phone={phone}
+                        purpose="login"
+                        onLoginSuccess={(token, rawUser) => {
+                          const u = rawUser as {
+                            email?: string;
+                            name?: string;
+                            role?: string;
+                            type?: string;
+                            accountId?: string;
+                          };
+                          const user = {
+                            id: u.accountId || '1',
+                            email: u.email || '',
+                            name: u.name || '',
+                            role:
+                              u.role === 'superadmin'
+                                ? UserRole.SUPERADMIN
+                                : u.role === 'admin'
+                                  ? UserRole.ADMIN
+                                  : UserRole.USER,
+                            type: u.type,
+                            accountId: u.accountId,
+                          };
+                          localStorage.setItem('token', token);
+                          localStorage.setItem('isAuthenticated', 'true');
+                          localStorage.setItem('user', JSON.stringify(user));
+                          localStorage.setItem('replysys_last_activity', Date.now().toString());
+                          setSuccess(true);
+                          const redirectPath = getPostLoginRedirect(user);
+                          setTimeout(() => {
+                            if (user.type === 'internal' && user.role === UserRole.SUPERADMIN) {
+                              redirectToDomain('admin', redirectPath);
+                              return;
+                            }
+                            if (user.type === 'client' || user.type === 'agency') {
+                              if (isAppDomain()) router.push(redirectPath);
+                              else redirectToDomain('app', redirectPath);
+                              return;
+                            }
+                            router.push(redirectPath);
+                          }, 1200);
+                        }}
+                      />
+                      {error ? (
+                        <div className="rounded-xl border border-red-200/80 bg-red-50/80 px-4 py-3 text-sm text-red-700">
+                          {error}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
                   <form onSubmit={handleLogin} className="space-y-5">
                     <div>
                       <label htmlFor="email" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-[#71717a]">
@@ -263,6 +356,7 @@ export default function LoginPage() {
                       )}
                     </button>
                   </form>
+                  )}
 
                   <p className="mt-6 text-center text-sm text-[#6d6c6b]">
                     New to Replysys?{' '}

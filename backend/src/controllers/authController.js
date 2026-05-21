@@ -11,17 +11,10 @@ import logger from '../utils/logger.js';
 import { sendSuccess, sendValidationError, sendConflict, sendUnauthorized } from '../utils/responseHandler.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import { resolveStaffRoutes } from '../constants/healthcareStaffRoutes.js';
+import { normalizePhone } from '../utils/normalizePhone.js';
+import { verifyPhoneVerificationToken } from '../services/platformOtpService.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function normalizePhone(raw = '') {
-  const digits = String(raw).replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.length === 10) return `+91${digits}`;
-  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
-  if (digits.length > 10 && digits.startsWith('91')) return `+${digits}`;
-  return digits.startsWith('+') ? digits : `+${digits}`;
-}
 
 export const checkEmailAvailable = async (req, res) => {
   try {
@@ -199,12 +192,26 @@ export const signup = async (req, res) => {
       companyName,
       selectedPlan,
       billingCycle,
+      phoneVerificationToken,
     } = req.body;
     const phone = normalizePhone(phoneRaw || mobileNumber || '');
     const companyResolved = (company || companyName || '').trim();
 
     if (!name || !email || !password) {
       return sendValidationError(res, 'Name, email, and password are required');
+    }
+
+    if (!phone) {
+      return sendValidationError(res, 'Mobile number is required');
+    }
+
+    if (!phoneVerificationToken) {
+      return sendValidationError(res, 'Verify your mobile number with WhatsApp OTP before continuing');
+    }
+    try {
+      verifyPhoneVerificationToken(phoneVerificationToken, phone);
+    } catch (verifyErr) {
+      return sendValidationError(res, verifyErr.message || 'Phone verification expired. Request a new OTP.');
     }
 
     if (!selectedPlan || selectedPlan.trim() === '') {

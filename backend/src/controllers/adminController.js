@@ -212,26 +212,27 @@ export const sendPaymentReminder = async (req, res) => {
 
     const paymentLink = `${(process.env.FRONTEND_URL || 'https://replysys.com').replace(/\/$/, '')}/checkout?plan=${account.plan.toLowerCase()}&billingCycle=${account.billingCycle.toLowerCase()}`;
 
-    await emailService.sendPaymentReminderEmail(
-      account.email,
-      account.name,
-      account.plan,
-      amountDue,
-      account.billingCycle,
-      paymentLink
+    const platformBillingNotificationService = (
+      await import('../services/platformBillingNotificationService.js')
+    ).default;
+
+    const channels = await platformBillingNotificationService.sendPaymentReminderEmailAndWhatsApp(
+      account
     );
 
     logger.info('✅ Payment reminder sent to:', {
       email: account.email,
       name: account.name,
-      amount: amountDue
+      amount: amountDue,
+      channels,
     });
 
     return sendSuccess(res, {
       email: account.email,
       name: account.name,
       plan: account.plan,
-      amountDue
+      amountDue,
+      channels,
     }, 'Payment reminder sent');
   } catch (error) {
     return handleControllerError(res, error, 'sendPaymentReminder');
@@ -251,7 +252,7 @@ export const sendReminderAllPending = async (req, res) => {
       status: 'pending',
       isInternal: { $ne: true },
       createdAt: { $lt: cutoffTime }
-    }).select('_id name email plan billingCycle createdAt');
+    }).select('accountId name email phone plan billingCycle createdAt');
 
     logger.info(`📧 Found ${pendingUsers.length} pending users to remind`);
 
@@ -277,14 +278,11 @@ export const sendReminderAllPending = async (req, res) => {
 
         const paymentLink = `${(process.env.FRONTEND_URL || 'https://replysys.com').replace(/\/$/, '')}/checkout?plan=${user.plan.toLowerCase()}&billingCycle=${user.billingCycle.toLowerCase()}`;
 
-        await emailService.sendPaymentReminderEmail(
-          user.email,
-          user.name,
-          user.plan,
-          amountDue,
-          user.billingCycle,
-          paymentLink
-        );
+        const platformBillingNotificationService = (
+          await import('../services/platformBillingNotificationService.js')
+        ).default;
+
+        await platformBillingNotificationService.sendPaymentReminderEmailAndWhatsApp(user);
 
         results.sent++;
         logger.info(`✅ Reminder sent to: ${user.email}`);

@@ -18,7 +18,11 @@ import {
   packReadiness,
   type HealthcareTemplatePreset,
 } from "@/lib/healthcareWhatsAppPack"
-import TemplateEditForm, { type TemplateFormData } from "@/components/TemplateEditForm"
+import TemplateEditForm, {
+  type TemplateFormData,
+  AUTH_OTP_BODY_PRESETS,
+  isValidAuthOtpBody,
+} from "@/components/TemplateEditForm"
 import {
   Plus,
   RefreshCw,
@@ -97,6 +101,23 @@ interface Template {
   presetLabel?: string
 }
 
+/** Media header only when Meta HEADER component or hasMedia — not from stale mediaType default */
+function resolveTemplateHeaderDisplay(t: Template) {
+  const headerComp = t.components?.find(
+    (c: { type?: string; format?: string; text?: string; example?: { header_handle?: string[] } }) =>
+      c.type === 'HEADER'
+  )
+  const format = String(headerComp?.format || '').toUpperCase()
+  const hasMediaFlag = t.hasMedia === true
+  return {
+    headerText: format === 'TEXT' ? (headerComp?.text || t.headerText || '') : '',
+    hasImage: format === 'IMAGE' || (hasMediaFlag && t.mediaType === 'image'),
+    hasVideo: format === 'VIDEO' || (hasMediaFlag && t.mediaType === 'video'),
+    hasDoc: format === 'DOCUMENT' || (hasMediaFlag && t.mediaType === 'document'),
+    mediaUrl: t.mediaUrl || headerComp?.example?.header_handle?.[0] || '',
+  }
+}
+
 interface Stats {
   approved: number
   pending: number
@@ -109,7 +130,7 @@ interface FormData {
   name: string
   language: string
   category: string
-  authUseCase?: 'login_otp' | 'signup_otp' | 'order_verification'
+  authUseCase?: 'login_otp' | 'signup_otp' | 'order_verification' | 'custom_otp'
   authAutoFillEnabled?: boolean
   appPackageName?: string
   appSignatureHash?: string
@@ -256,9 +277,37 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
   }
 
   // Create template
+  const canSaveTemplate = useMemo(() => {
+    if (!formData.name?.trim() || !formData.content?.trim()) return false
+    if (formData.category === 'authentication' && !isValidAuthOtpBody(formData.content)) {
+      return false
+    }
+    return true
+  }, [formData.name, formData.content, formData.category])
+
   const createTemplate = async () => {
     try {
-      let finalData: any = { ...formData, projectId }
+      if (formData.category === 'authentication' && !isValidAuthOtpBody(formData.content)) {
+        alert('Authentication templates must include exactly one {{1}} variable for the OTP code.')
+        return
+      }
+
+      const isAuth = formData.category === 'authentication'
+      let finalData: any = {
+        ...formData,
+        projectId,
+        ...(isAuth
+          ? {
+              hasMedia: false,
+              mediaSample: 'none',
+              mediaUrl: '',
+              mediaFile: null,
+              headerText: '',
+              footerText: '',
+              buttons: [],
+            }
+          : {}),
+      }
       
       // If using file upload, create FormData to send file
       if (formData.hasMedia && formData.mediaInputType === 'file' && formData.mediaFile) {
@@ -1079,11 +1128,11 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
                                 setFormData({
                                   ...formData,
                                   category: c.id as any,
-                                  authUseCase: 'login_otp',
+                                  authUseCase: 'custom_otp',
                                   authAutoFillEnabled: false,
                                   appPackageName: '',
                                   appSignatureHash: '',
-                                  content: '{{1}} is your verification code. Do not share this code.',
+                                  content: AUTH_OTP_BODY_PRESETS.custom_otp,
                                   variableType: 'Number',
                                   hasMedia: false,
                                   mediaSample: 'none',
@@ -1169,7 +1218,7 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
                   {createFlowStep === 1 ? (
                     <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setCreateFlowStep(2)}>Next</Button>
                   ) : (
-                    <Button className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold" onClick={createTemplate} disabled={!formData.name || !formData.content}>
+                    <Button className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold" onClick={createTemplate} disabled={!canSaveTemplate}>
                       Create Template
                     </Button>
                   )}
@@ -1183,17 +1232,12 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
       {/* View Modal */}
       {showViewModal && selectedTemplate && (() => {
         const t = selectedTemplate
-        const headerComp = t.components?.find((c: any) => c.type === 'HEADER')
         const bodyComp   = t.components?.find((c: any) => c.type === 'BODY')
         const footerComp = t.components?.find((c: any) => c.type === 'FOOTER')
         const buttonsComp = t.components?.find((c: any) => c.type === 'BUTTONS')
-        const mediaUrl   = t.mediaUrl || headerComp?.example?.header_handle?.[0] || ''
+        const { headerText, hasImage, hasVideo, hasDoc, mediaUrl } = resolveTemplateHeaderDisplay(t)
         const bodyText   = bodyComp?.text || t.content || ''
         const footerText = footerComp?.text || t.footerText || ''
-        const headerText = headerComp?.format === 'TEXT' ? (headerComp.text || t.headerText || '') : ''
-        const hasImage   = headerComp?.format === 'IMAGE' || t.mediaType === 'image'
-        const hasVideo   = headerComp?.format === 'VIDEO' || t.mediaType === 'video'
-        const hasDoc     = headerComp?.format === 'DOCUMENT' || t.mediaType === 'document'
         const buttons    = buttonsComp?.buttons || []
         const statusColors: Record<string, string> = {
           approved: 'bg-green-100 text-green-700',
