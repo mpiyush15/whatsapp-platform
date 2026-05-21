@@ -8,6 +8,7 @@ import ClinicTypeSelector from "@/components/ClinicSetupSections/ClinicTypeSelec
 import PrescriptionSettings from "@/components/ClinicSetupSections/PrescriptionSettings"
 import BillingSettings from "@/components/ClinicSetupSections/BillingSettings"
 import WhatsAppSettings from "@/components/ClinicSetupSections/WhatsAppSettings"
+import HealthcareWhatsAppClinicCard from "@/components/healthcare/HealthcareWhatsAppClinicCard"
 import PrescriptionPreview from "@/components/ClinicSetupSections/PrescriptionPreview"
 import ToggleRow from "@/components/ClinicSetupSections/ToggleRow"
 import {
@@ -474,8 +475,17 @@ export default function ClinicSetupPage() {
           {/* BILLING SETTINGS */}
           <BillingSettings settings={settings} onUpdate={updateBillingSettings} />
 
-          {/* WHATSAPP AUTOMATION */}
-          <WhatsAppSettings settings={settings} onUpdate={updateWhatsAppSettings} />
+          {/* WHATSAPP PACK + AUTOMATION */}
+          <HealthcareWhatsAppClinicCard
+            projectId={projectId}
+            automationToggles={
+              <WhatsAppSettings
+                embedded
+                settings={settings}
+                onUpdate={updateWhatsAppSettings}
+              />
+            }
+          />
         </div>
 
         <PrescriptionPreview settings={settings} />

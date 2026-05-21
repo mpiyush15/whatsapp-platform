@@ -155,7 +155,7 @@ export function MarketingNavbar() {
           <div className="flex h-12 shrink-0 items-center justify-between gap-2 sm:h-14 sm:px-1">
             <Link
               href="/marketing"
-              className="font-marketing-display shrink-0 pl-4 text-xl font-extrabold tracking-[-0.04em] text-[#18181b] sm:pl-5 sm:text-2xl"
+              className="font-marketing-display shrink-0 pl-4 text-xl font-extrabold tracking-[-0.04em] text-teal-900 transition-colors hover:text-teal-800 sm:pl-5 sm:text-2xl"
             >
               replysys
             </Link>
@@ -214,13 +214,13 @@ export function MarketingNavbar() {
                 <>
                   <Link
                     href="/auth/login"
-                    className="rounded-lg border border-[#e4e4e7]/80 bg-white/50 px-3.5 py-2 text-sm font-medium text-[#3f3f46] shadow-sm backdrop-blur-sm transition hover:bg-white/80"
+                    className="rounded-lg border border-emerald-700 bg-white/50 px-3.5 py-2 text-sm font-medium text-emerald-700 shadow-sm backdrop-blur-sm transition hover:bg-emerald-50"
                   >
                     Log in
                   </Link>
                   <Link
                     href="/auth/register"
-                    className="marketing-cta-primary rounded-lg px-3.5 py-2 text-sm font-medium"
+                    className="rounded-lg bg-emerald-700 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-800"
                   >
                     Sign up
                   </Link>
@@ -339,14 +339,14 @@ export function MarketingNavbar() {
                       <Link
                         href="/auth/login"
                         onClick={() => setMobileOpen(false)}
-                        className="rounded-lg border border-[#e4e4e7] bg-white/60 py-2.5 text-center text-sm font-medium text-[#3f3f46]"
+                        className="rounded-lg border border-emerald-700 bg-white/60 py-2.5 text-center text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
                       >
                         Log in
                       </Link>
                       <Link
                         href="/auth/register"
                         onClick={() => setMobileOpen(false)}
-                        className="marketing-cta-primary py-2.5 text-center text-sm font-medium"
+                        className="rounded-lg bg-emerald-700 py-2.5 text-center text-sm font-medium text-white transition hover:bg-emerald-800"
                       >
                         Sign up
                       </Link>

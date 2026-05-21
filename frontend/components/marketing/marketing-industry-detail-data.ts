@@ -17,7 +17,8 @@ type IndustryBuildInput = {
   slug: string;
   icon: LucideIcon;
   proofMock: SolutionDetailProofMock;
-  hero: Omit<SolutionDetailPageData['hero'], 'ctaBookDemo' | 'ctaGetStarted'>;
+  hero: Omit<SolutionDetailPageData['hero'], 'ctaBookDemo' | 'ctaGetStarted' | 'eyebrow'> &
+    Partial<Pick<SolutionDetailPageData['hero'], 'ctaBookDemo' | 'ctaGetStarted' | 'eyebrow'>>;
   problem: SolutionDetailPageData['problem'];
   helps: SolutionDetailPageData['helps'];
   proof: SolutionDetailPageData['proof'];
@@ -34,6 +35,7 @@ function buildIndustry(input: IndustryBuildInput): SolutionDetailPageData {
     slug: input.slug,
     icon: input.icon,
     hero: {
+      eyebrow: '',
       ctaBookDemo: 'See it on a live walkthrough',
       ctaGetStarted: 'Get started on Replysys',
       hideBackLink: true,
@@ -72,32 +74,60 @@ export const healthcareIndustryDetail = buildIndustry({
   icon: HeartPulse,
   proofMock: 'liveChat',
   hero: {
-    eyebrow: 'Healthcare & clinics · WhatsApp Cloud API',
-    kicker: 'Patient communication where families already respond — with clinic-grade workflows on one number.',
-    title: 'Fewer no-shows,',
-    titleHighlight: 'stronger patient follow-through',
+    title: 'Appointments, reminders and patient follow-ups —',
+    titleHighlight: 'all managed from one WhatsApp-powered clinic system.',
     subtitle:
-      'Replysys helps clinics run appointment reminders, prescription follow-ups, lab result nudges, and care-team inbox on Meta’s official stack — so front desk stops living on personal phones.',
-    outcomeStrip: ['Appointment reminders', 'Digital Rx handoff', 'Lab result follow-ups', 'One clinic number'],
+      'ReplySys helps clinics manage appointments, patient reminders, follow-ups and WhatsApp communication through one centralized dashboard.',
+    ctaBookDemo: 'Book clinic demo',
+    ctaGetStarted: 'See pricing',
+    ctaFootnote:
+      'Built for clinics handling appointments, patient communication and follow-ups daily.',
   },
   problem: {
     eyebrow: 'Clinic operations',
-    title: 'Revenue and care suffer when',
-    titleHighlight: 'WhatsApp is informal',
-    subtitle: 'High no-show rates and missed follow-ups are often a communication problem, not a clinical one.',
-    lead: 'Patients expect WhatsApp updates; without automation and ownership, clinics lose slots and repeat visits.',
-    bullets: [
-      'No-show rates spike when reminders are manual calls or easy-to-ignore SMS',
-      'Prescriptions and lab results sit in email while patients message the front desk on personal numbers',
-      'Staff hours burn on repetitive reminder calls instead of in-clinic care',
-      'Leadership cannot see who answered which patient thread or what was promised',
+    title: 'Clinic operations break when',
+    titleHighlight: 'WhatsApp stays manual.',
+    subtitle:
+      'Patients expect fast updates and reminders on WhatsApp — but most clinics still manage communication manually.',
+    layout: 'healthcare-clinic-ops',
+    bullets: [],
+    painCards: [
+      {
+        id: 'missed-appointments',
+        title: 'Missed appointments',
+        body: 'Manual reminders get ignored and no-shows increase.',
+        icon: 'calendar',
+        tone: 'rose',
+      },
+      {
+        id: 'delayed-followups',
+        title: 'Follow-ups get delayed',
+        body: 'Patients stop responding when follow-ups are manual.',
+        icon: 'message',
+        tone: 'amber',
+      },
+      {
+        id: 'personal-numbers',
+        title: 'Staff use personal numbers',
+        body: 'Conversations are scattered and no visibility for clinic admins.',
+        icon: 'users',
+        tone: 'violet',
+      },
+      {
+        id: 'scattered-comms',
+        title: 'Communication gets scattered',
+        body: 'Prescriptions, reports and updates are all over the place.',
+        icon: 'files',
+        tone: 'sky',
+      },
     ],
   },
   helps: {
     eyebrow: 'How Replysys helps clinics',
-    title: 'Patient journeys',
-    titleHighlight: 'on one business number',
-    subtitle: 'Automate the repetitive; keep humans in the loop for care decisions.',
+    title: 'From appointments to follow-ups —',
+    titleHighlight: 'managed on WhatsApp',
+    subtitle: 'Automate reminders and routine updates while your staff focuses on patient care.',
+    layout: 'sticky-notes',
     bullets: [
       {
         title: 'Appointment reminders that convert',
@@ -118,9 +148,41 @@ export const healthcareIndustryDetail = buildIndustry({
   },
   proof: {
     eyebrow: 'In the product',
-    title: 'Team inbox built',
-    titleHighlight: 'for patient conversations',
-    subtitle: 'Assign threads to front desk or coordinators, use templates after session reset, and keep PHI-handling discipline your compliance team expects.',
+    layout: 'healthcare-product',
+    title: 'Keep patient communication',
+    titleGradient: 'organized across',
+    titleAccent: 'your clinic team.',
+    titleHighlight: 'your clinic team.',
+    subtitle:
+      'Assign patient conversations, send reminders, track follow-ups and keep every update visible to your clinic staff.',
+    features: [
+      {
+        title: 'Team collaboration',
+        body: 'Assign chats to the right person and work together.',
+        icon: 'users',
+        tone: 'violet',
+      },
+      {
+        title: 'Smart templates',
+        body: 'Use approved templates for faster, consistent communication.',
+        icon: 'message',
+        tone: 'emerald',
+      },
+      {
+        title: 'Compliance ready',
+        body: 'Templates, permissions and audit trails built for healthcare.',
+        icon: 'shield',
+        tone: 'sky',
+      },
+    ],
+    staffActive: 12,
+    journeySteps: [
+      { title: 'Appointment Booked', icon: 'calendar', tone: 'violet' },
+      { title: 'Reminder Sent', icon: 'bell', tone: 'emerald' },
+      { title: 'Patient Confirmed', icon: 'user', tone: 'sky' },
+      { title: 'Visit & Prescription Shared', icon: 'document', tone: 'violet' },
+      { title: 'Follow-up Completed', icon: 'followup', tone: 'orange' },
+    ],
   },
   modules: {
     eyebrow: 'Healthcare playbook',

@@ -1,6 +1,8 @@
 import Project from '../models/Project.js';
 import Account from '../models/Account.js';
 import { BusinessCategory } from '../constants/enums.js';
+import { normalizeVertical } from '../config/projectPresets.js';
+import { applyProjectPreset, listProjectPresets } from '../services/projectPresetService.js';
 
 /**
  * Project Controller
@@ -101,8 +103,27 @@ export async function getProject(req, res) {
 }
 
 /**
+ * GET /api/projects/presets/list
+ * Presets for project creation wizard
+ */
+export async function getProjectPresets(req, res) {
+  try {
+    res.json({
+      success: true,
+      data: { presets: listProjectPresets() },
+    });
+  } catch (error) {
+    console.error('Error listing project presets:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to list presets',
+    });
+  }
+}
+
+/**
  * POST /api/projects
- * Create a new project
+ * Create a new project (optional vertical + preset for wizard)
  */
 export async function createProject(req, res) {
   try {
@@ -110,42 +131,42 @@ export async function createProject(req, res) {
     const {
       name,
       businessCategory = 'other',
+      vertical: verticalInput = 'whatsapp',
+      presetId = null,
+      clinicType = 'consultation',
       whatsappPhoneNumber = null,
       whatsappPhoneNumberId = null,
       whatsappBusinessAccountId = null,
-      settings = {}
+      settings = {},
     } = req.body;
 
-    // Validation
     if (!name || name.trim().length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'Project name is required'
+        error: 'Project name is required',
       });
     }
 
     if (!Object.values(BusinessCategory).includes(businessCategory)) {
       return res.status(400).json({
         success: false,
-        error: `Invalid business category. Allowed: ${Object.values(BusinessCategory).join(', ')}`
+        error: `Invalid business category. Allowed: ${Object.values(BusinessCategory).join(', ')}`,
       });
     }
 
-    // Generate unique projectId (same pattern as accountId: YYXXXXX)
-    const timestamp = Date.now();
-    const random = Math.floor(Math.random() * 1000000);
-    const projectId = `${timestamp}${random}`.slice(0, 8);
+    const vertical = normalizeVertical(verticalInput);
+    const slugPrefix = vertical === 'healthcare' ? 'hc' : vertical === 'ecommerce' ? 'ec' : 'wa';
+    const projectId = `proj_${slugPrefix}_${Date.now()}`;
 
-    // Check if it's the first project (should be default)
     const existingProjects = await Project.countDocuments({ accountId });
     const isDefault = existingProjects === 0;
 
-    // Create project
     const project = new Project({
       projectId,
       accountId,
       name: name.trim(),
       businessCategory,
+      vertical,
       whatsappPhoneNumber,
       whatsappPhoneNumberId,
       whatsappBusinessAccountId,
@@ -154,33 +175,62 @@ export async function createProject(req, res) {
         autoReplyEnabled: settings.autoReplyEnabled !== false,
         notificationsEnabled: settings.notificationsEnabled !== false,
         webhookUrl: settings.webhookUrl || null,
-        ...settings
+        ...settings,
       },
       isDefault,
-      status: 'active'
+      status: 'active',
     });
 
     const savedProject = await project.save();
 
-    // If this is the first project, update account's defaultProjectId
+    let presetResult = null;
+    try {
+      presetResult = await applyProjectPreset({
+        accountId,
+        projectId,
+        projectName: name.trim(),
+        vertical,
+        presetId,
+        clinicType,
+      });
+    } catch (presetError) {
+      console.error('Project preset apply failed (project still created):', presetError);
+      presetResult = {
+        vertical,
+        defaultHomePath: vertical === 'healthcare' ? 'healthcare' : 'root',
+        checklist: [],
+        clinicSeeded: false,
+        presetError: presetError.message,
+      };
+    }
+
     if (isDefault) {
       await Account.findOneAndUpdate(
         { accountId },
         { defaultProjectId: projectId },
-        { new: true }
+        { new: true },
       );
     }
 
+    const redirectPath =
+      presetResult?.defaultHomePath === 'healthcare'
+        ? `/projects/${projectId}/healthcare`
+        : `/projects/${projectId}`;
+
     res.status(201).json({
       success: true,
-      data: savedProject,
-      message: 'Project created successfully'
+      data: {
+        ...savedProject.toObject(),
+        redirectPath,
+        onboarding: presetResult,
+      },
+      message: 'Project created successfully',
     });
   } catch (error) {
     console.error('Error creating project:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to create project'
+      error: error.message || 'Failed to create project',
     });
   }
 }

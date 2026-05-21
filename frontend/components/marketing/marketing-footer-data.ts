@@ -45,6 +45,6 @@ export const marketingFooterCopy = {
   tagline:
     'WhatsApp operations for teams that sell, support, and scale — live inbox, campaigns, flows, and analytics on Meta’s Cloud API.',
   companyLine: 'A product of Pixels Digital Solutions',
-  metaBadgeTitle: 'Meta Business Partner',
-  metaBadgeSubtitle: 'Official WhatsApp Business Platform',
+  officialPlatformLine:
+    'ReplySys uses the official WhatsApp Business Platform for secure and compliant messaging.',
 } as const;

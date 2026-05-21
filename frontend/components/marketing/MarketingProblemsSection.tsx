@@ -23,8 +23,8 @@ export function MarketingProblemsSection() {
         viewport={{ once: true }}
         className="mx-auto mt-12 max-w-4xl rounded-2xl border border-black/[0.06] bg-gradient-to-br from-white via-white to-[#faf5ff] px-6 py-10 text-center sm:mt-14 sm:px-10 sm:py-14"
       >
-        <h3 className="marketing-hero-title text-[1.75rem] font-bold tracking-[-0.04em] text-[#111111] sm:text-4xl lg:text-[3rem]">
-          {problemsSectionCopy.calloutTitle}
+        <h3 className="marketing-section-title text-[#111111]">
+          <span className="marketing-section-title__line">{problemsSectionCopy.calloutTitle}</span>
         </h3>
         <p className="mx-auto mt-5 max-w-2xl text-base font-semibold leading-relaxed text-[#52525b] sm:mt-6 sm:text-lg sm:leading-[1.6] lg:text-xl">
           {problemsSectionCopy.calloutBody}

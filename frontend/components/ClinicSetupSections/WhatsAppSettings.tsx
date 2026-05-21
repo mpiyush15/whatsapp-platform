@@ -8,14 +8,12 @@ interface Props {
     followUpReminders: boolean
   }
   onUpdate: (updates: any) => void
+  /** Inside healthcare pack panel — no outer card */
+  embedded?: boolean
 }
 
-export default function WhatsAppSettings({ settings, onUpdate }: Props) {
-  return (
-    <SectionCard
-      title="WhatsApp Automation"
-      subtitle="Enable Replysys communication workflows"
-    >
+export default function WhatsAppSettings({ settings, onUpdate, embedded = false }: Props) {
+  const toggles = (
       <div className="space-y-4">
         <ToggleRow
           title="Send Prescription on WhatsApp"
@@ -38,6 +36,24 @@ export default function WhatsAppSettings({ settings, onUpdate }: Props) {
           onChange={(value) => onUpdate({ followUpReminders: value })}
         />
       </div>
+  )
+
+  if (embedded) {
+    return (
+      <div>
+        <p className="mb-3 text-sm font-semibold text-slate-900">Automation toggles</p>
+        <p className="mb-4 text-xs text-slate-500">Enable when templates are approved—backend will respect these soon.</p>
+        {toggles}
+      </div>
+    )
+  }
+
+  return (
+    <SectionCard
+      title="WhatsApp Automation"
+      subtitle="Enable Replysys communication workflows"
+    >
+      {toggles}
     </SectionCard>
   )
 }

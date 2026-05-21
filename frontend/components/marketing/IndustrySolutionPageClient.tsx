@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { BookDemoModal } from '@/components/BookDemoModal';
 import { getIndustrySectionVisuals } from '@/components/marketing/industry-section-visuals';
 import { MarketingEcommerceIndustryHero } from '@/components/marketing/MarketingEcommerceIndustryHero';
+import { MarketingHealthcareIndustryHero } from '@/components/marketing/MarketingHealthcareIndustryHero';
 import { MarketingEcommerceModulesBlock } from '@/components/marketing/MarketingEcommerceModulesBlock';
 import { MarketingSolutionDetailLayout } from '@/components/marketing/MarketingSolutionDetailLayout';
 import {
@@ -31,6 +32,8 @@ export function IndustrySolutionPageClient({ slug }: IndustrySolutionPageClientP
         heroOverride={
           slug === 'ecommerce' ? (
             <MarketingEcommerceIndustryHero page={page} onBookDemo={() => setDemoOpen(true)} />
+          ) : slug === 'healthcare' ? (
+            <MarketingHealthcareIndustryHero page={page} onBookDemo={() => setDemoOpen(true)} />
           ) : undefined
         }
         modulesOverride={

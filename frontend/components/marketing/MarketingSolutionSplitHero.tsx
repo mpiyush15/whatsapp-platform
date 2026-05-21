@@ -80,6 +80,12 @@ export function MarketingSolutionSplitHero({
                 {hero.ctaGetStarted}
               </Link>
             </div>
+
+            {hero.ctaFootnote ? (
+              <p className="mt-4 max-w-xl text-sm font-medium leading-relaxed text-[#52525b]">
+                <span className="text-gradient-marketing">{hero.ctaFootnote}</span>
+              </p>
+            ) : null}
           </motion.div>
 
           <motion.div

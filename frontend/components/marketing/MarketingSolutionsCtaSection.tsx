@@ -21,9 +21,11 @@ export function MarketingSolutionsCtaSection({ onBookDemo }: MarketingSolutionsC
         className="mx-auto max-w-3xl px-4 text-center sm:px-6"
       >
         <WhatsAppIcon className="marketing-icon-wa mx-auto h-10 w-10" />
-        <h2 className="marketing-hero-title mt-5 text-[2rem] text-[#111111] sm:text-4xl">
-          <span className="block">{copy.title}</span>
-          <span className="text-gradient-marketing mt-1.5 block">{copy.titleHighlight}</span>
+        <h2 className="marketing-section-title mt-5 text-[#111111]">
+          <span className="marketing-section-title__line">{copy.title}</span>
+          <span className="marketing-section-title__line marketing-section-title__line--gradient text-gradient-marketing">
+            {copy.titleHighlight}
+          </span>
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-[#6d6c6b] sm:text-lg">
           {copy.subtitle}

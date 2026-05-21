@@ -9,7 +9,6 @@ import {
   IndianRupee,
   MessageSquare,
   Pill,
-  Stethoscope,
   TrendingDown,
   Users,
 } from 'lucide-react';
@@ -24,14 +23,9 @@ import {
 } from '@/components/marketing/MarketingIndustryMockPrimitives';
 import type { ReactNode } from 'react';
 
+/** KPIs live in split hero footer — no duplicate hero section visuals */
 function HealthcareHeroVisuals() {
-  return (
-    <SectionVisualGrid cols={3} exampleWorkspace>
-      <KpiTile label="Clinic revenue" value="₹32.6L" sub="This month · +18%" icon={IndianRupee} tone="emerald" />
-      <KpiTile label="Appointments" value="86" sub="Today · 12 open slots filled" icon={Calendar} tone="sky" />
-      <KpiTile label="No-show rate" value="12%" sub="Down from 28% last quarter" icon={TrendingDown} tone="rose" />
-    </SectionVisualGrid>
-  );
+  return null;
 }
 
 function HealthcareProblemVisuals() {
@@ -140,61 +134,6 @@ function HealthcareHelpsVisuals() {
   );
 }
 
-function HealthcareProofVisuals() {
-  return (
-    <SectionVisualGrid cols={2} className="mt-0 max-w-none lg:grid-cols-1">
-      <CroppedFrame label="Live chat · patients">
-        <ul className="space-y-1.5">
-          {[
-            { name: 'Priya Sharma', preview: 'Can I reschedule to Friday?', time: '2m', unread: 1 },
-            { name: 'Ramesh Verma', preview: 'Received lab report, thanks', time: '18m', unread: 0 },
-            { name: 'Metro Dental', preview: 'Post-op care instructions', time: '1h', unread: 0 },
-          ].map((c) => (
-            <li
-              key={c.name}
-              className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[10px] ${
-                c.unread ? 'bg-emerald-50/80 ring-1 ring-emerald-100' : 'bg-slate-50'
-              }`}
-            >
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-slate-800">{c.name}</p>
-                <p className="truncate text-slate-500">{c.preview}</p>
-              </div>
-              <span className="shrink-0 tabular-nums text-slate-400">{c.time}</span>
-            </li>
-          ))}
-        </ul>
-      </CroppedFrame>
-      <CroppedFrame label="Front desk SLA">
-        <div className="flex items-end justify-between">
-          <div>
-            <p className="text-[10px] text-slate-500">Median first reply</p>
-            <p className="text-2xl font-bold tabular-nums text-emerald-700">4m</p>
-          </div>
-          <Stethoscope className="h-8 w-8 text-sky-600/35" />
-        </div>
-        <MiniBars heights={[45, 50, 42, 38, 35, 32, 28]} />
-      </CroppedFrame>
-      <CroppedFrame label="Utility templates">
-        <div className="space-y-1.5">
-          {[
-            { name: 'appointment_reminder', status: 'Approved' },
-            { name: 'lab_result_ready', status: 'Approved' },
-            { name: 'rx_followup_v2', status: 'Approved' },
-          ].map((t) => (
-            <div key={t.name} className="flex items-center justify-between gap-2 text-[10px]">
-              <span className="truncate font-medium text-slate-700">{t.name}</span>
-              <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-800">
-                {t.status}
-              </span>
-            </div>
-          ))}
-        </div>
-      </CroppedFrame>
-    </SectionVisualGrid>
-  );
-}
-
 function HealthcareModulesVisuals() {
   return (
     <SectionVisualGrid cols={2}>
@@ -283,10 +222,7 @@ function HealthcareHonestyVisuals() {
 
 export const healthcareSectionVisuals: Partial<Record<IndustrySectionVisualId, ReactNode>> = {
   hero: <HealthcareHeroVisuals />,
-  problem: <HealthcareProblemVisuals />,
   helps: <HealthcareHelpsVisuals />,
-  proof: <HealthcareProofVisuals />,
   modules: <HealthcareModulesVisuals />,
-  workflow: <HealthcareWorkflowVisuals />,
   honesty: <HealthcareHonestyVisuals />,
 };

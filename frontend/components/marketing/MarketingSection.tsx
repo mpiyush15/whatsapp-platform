@@ -50,14 +50,16 @@ export function MarketingSection({
             />
             {eyebrow}
           </p>
-          <h2 className="marketing-hero-title text-[2rem] text-[#111111] sm:text-4xl lg:text-[3.25rem]">
+          <h2 className="marketing-section-title text-balance text-[#111111]">
             {titleHighlight ? (
               <>
-                <span className="block sm:whitespace-nowrap">{title}</span>
-                <span className="text-gradient-marketing mt-1.5 block">{titleHighlight}</span>
+                <span className="marketing-section-title__line">{title}</span>
+                <span className="marketing-section-title__line marketing-section-title__line--gradient text-gradient-marketing">
+                  {titleHighlight}
+                </span>
               </>
             ) : (
-              title
+              <span className="marketing-section-title__line">{title}</span>
             )}
           </h2>
           {subtitle ? (

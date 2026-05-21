@@ -15,6 +15,20 @@ import { MarketingProblemsSection } from '@/components/marketing/MarketingProble
 import { MarketingWhyReplysysSection } from '@/components/marketing/MarketingWhyReplysysSection';
 import { MarketingWhatsAppApiVideoSection } from '@/components/marketing/MarketingWhatsAppApiVideoSection';
 
+/** Landing hero only — emerald highlight on the word WhatsApp */
+function highlightWhatsAppText(text: string) {
+  const parts = text.split(/(WhatsApp)/g);
+  return parts.map((part, index) =>
+    part === 'WhatsApp' ? (
+      <span key={`${part}-${index}`} className="text-emerald-600">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
+
 export default function MarketingHeroPage() {
   const [demoOpen, setDemoOpen] = useState(false);
 
@@ -29,8 +43,8 @@ export default function MarketingHeroPage() {
           className="mb-5 inline-flex max-w-full items-center gap-2 rounded-full border border-black/[0.06] bg-white/80 px-3 py-1.5 text-[10px] font-medium tracking-[0.1em] shadow-sm backdrop-blur-sm sm:mb-8 sm:px-4 sm:text-[11px] sm:tracking-[0.12em]"
         >
           <span className="marketing-badge-dot--wa h-2 w-2 shrink-0 rounded-full" aria-hidden />
-          <WhatsAppIcon className="marketing-icon-wa h-3.5 w-3.5 shrink-0" />
-          <span className="marketing-text-wa uppercase">{heroSectionCopy.eyebrow}</span>
+          <WhatsAppIcon className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+          <span className="uppercase text-[#52525b]">{highlightWhatsAppText(heroSectionCopy.eyebrow)}</span>
         </motion.div>
 
         <motion.h1
@@ -39,7 +53,7 @@ export default function MarketingHeroPage() {
           transition={{ delay: 0.06 }}
           className="marketing-hero-title marketing-hero-title--lead w-full max-w-[22rem] text-balance text-[#111111] sm:max-w-4xl"
         >
-          <span className="block">{heroSectionCopy.titleLine1}</span>
+          <span className="block">{highlightWhatsAppText(heroSectionCopy.titleLine1)}</span>
           <span className="text-gradient-marketing mt-1 block sm:mt-2">{heroSectionCopy.titleHighlight}</span>
         </motion.h1>
 
@@ -49,7 +63,7 @@ export default function MarketingHeroPage() {
           transition={{ delay: 0.12 }}
           className="mt-5 max-w-[21rem] text-sm leading-[1.6] tracking-[-0.01em] text-[#6d6c6b] sm:mt-7 sm:max-w-2xl sm:text-lg sm:leading-[1.55]"
         >
-          {heroSectionCopy.subtitle}
+          {highlightWhatsAppText(heroSectionCopy.subtitle)}
         </motion.p>
 
         <motion.ul
@@ -63,7 +77,7 @@ export default function MarketingHeroPage() {
               key={benefit}
               className="inline-flex items-center justify-center gap-2 rounded-full border border-black/[0.06] bg-white/90 px-3.5 py-2 text-xs font-medium text-[#52525b] shadow-sm sm:text-[13px]"
             >
-              <WhatsAppIcon className="marketing-icon-wa h-3.5 w-3.5 shrink-0" />
+              <WhatsAppIcon className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
               {benefit}
             </li>
           ))}

@@ -60,6 +60,20 @@ export const MARKETING_PROBLEM_MANUAL_FOLLOWUPS_URL =
 
 export const MARKETING_PROBLEM_MANUAL_FOLLOWUPS_LOCAL = '/marketing/problems/manual-follow-ups.jpg';
 
+/** Healthcare industry hero — doctor + WhatsApp notification bubbles (PNG on S3) */
+export const MARKETING_HEALTHCARE_HERO_DOCTOR_URL =
+  process.env.NEXT_PUBLIC_MARKETING_HEALTHCARE_HERO_DOCTOR_URL ||
+  'https://pixels-official.s3.ap-south-1.amazonaws.com/marketing/healthcare-hero-doctor.png';
+
+export const MARKETING_HEALTHCARE_HERO_DOCTOR_LOCAL = '/marketing/healthcare-hero-doctor.png';
+
+/** Healthcare clinic operations — before/after comparison (PNG on S3) */
+export const MARKETING_HEALTHCARE_CLINIC_OPS_COMPARE_URL =
+  process.env.NEXT_PUBLIC_MARKETING_HEALTHCARE_CLINIC_OPS_COMPARE_URL ||
+  'https://pixels-official.s3.ap-south-1.amazonaws.com/marketing/dr+sec+2.png';
+
+export const MARKETING_HEALTHCARE_CLINIC_OPS_COMPARE_LOCAL = '/marketing/healthcare-clinic-ops-compare.png';
+
 /** Sales solution page hero — pipeline illustration (JPG on S3) */
 export const MARKETING_SALES_SOLUTION_HERO_URL =
   process.env.NEXT_PUBLIC_MARKETING_SALES_SOLUTION_HERO_URL ||

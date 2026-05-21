@@ -15,8 +15,8 @@ export function MarketingFinalCtaSection() {
         className="mx-auto max-w-3xl px-4 text-center sm:px-6"
       >
         <WhatsAppIcon className="marketing-icon-wa mx-auto h-10 w-10" />
-        <h2 className="marketing-hero-title mt-5 text-[2rem] text-[#111111] sm:text-4xl">
-          {finalCtaCopy.title}
+        <h2 className="marketing-section-title mt-5 text-[#111111]">
+          <span className="marketing-section-title__line">{finalCtaCopy.title}</span>
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-base text-[#6d6c6b] sm:text-lg">{finalCtaCopy.subtitle}</p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">

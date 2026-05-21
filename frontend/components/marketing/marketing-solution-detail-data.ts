@@ -1,6 +1,14 @@
 import type { LucideIcon } from 'lucide-react';
 import { Building2, Megaphone, MessageSquare, Zap } from 'lucide-react';
 
+export type HealthcarePainCard = {
+  id: string;
+  title: string;
+  body: string;
+  icon: 'calendar' | 'message' | 'users' | 'files';
+  tone: 'rose' | 'amber' | 'violet' | 'sky';
+};
+
 export type SolutionDetailProofMock =
   | 'campaigns'
   | 'broadcast'
@@ -28,6 +36,8 @@ export type SolutionDetailPageData = {
     hideEyebrow?: boolean;
     ctaBookDemo: string;
     ctaGetStarted: string;
+    /** Small highlight line under hero CTAs (split layout) */
+    ctaFootnote?: string;
   };
   problem: {
     eyebrow: string;
@@ -37,6 +47,11 @@ export type SolutionDetailPageData = {
     /** Short lead before bullets */
     lead?: string;
     bullets: readonly string[];
+    /** `glass-row` = four glossy cards in one row (lg) */
+    bulletLayout?: 'list' | 'glass-row';
+    /** Full clinic-ops block: pain cards + before/after + stats */
+    layout?: 'default' | 'healthcare-clinic-ops';
+    painCards?: readonly HealthcarePainCard[];
   };
   helps: {
     eyebrow: string;
@@ -44,6 +59,7 @@ export type SolutionDetailPageData = {
     titleHighlight: string;
     subtitle: string;
     bullets: readonly { title: string; body: string; angle?: string }[];
+    layout?: 'default' | 'sticky-notes';
   };
   proofMock: SolutionDetailProofMock;
   /** Headlines above the dashboard mock */
@@ -52,6 +68,24 @@ export type SolutionDetailPageData = {
     title: string;
     titleHighlight: string;
     subtitle: string;
+    /** `healthcare-product` = split headline + feature list + mock collage + journey bar */
+    layout?: 'default' | 'healthcare-product';
+    /** Mid-headline gradient phrase (healthcare-product) */
+    titleGradient?: string;
+    /** End headline accent phrase (healthcare-product) */
+    titleAccent?: string;
+    features?: readonly {
+      title: string;
+      body: string;
+      icon: 'users' | 'message' | 'shield';
+      tone: 'violet' | 'emerald' | 'sky';
+    }[];
+    staffActive?: number;
+    journeySteps?: readonly {
+      title: string;
+      icon: 'calendar' | 'bell' | 'user' | 'document' | 'followup';
+      tone: 'violet' | 'emerald' | 'sky' | 'orange';
+    }[];
   };
   modules: {
     eyebrow: string;

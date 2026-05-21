@@ -1,8 +1,23 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { useSettings } from "@/lib/context/SettingsContext"
+import { useProject } from "@/lib/context/ProjectContext"
+import HealthcareTemplatesInstructions from "@/components/healthcare/HealthcareTemplatesInstructions"
+import {
+  createDraftTemplate,
+  fetchHealthcareTemplatePresets,
+  fetchProjectWhatsAppStatus,
+  installHealthcareTemplatePack,
+} from "@/lib/healthcareWhatsAppApi"
+import {
+  HEALTHCARE_TEMPLATES_CATEGORY,
+  isHealthcarePackTemplateName,
+  mergePackWithTemplates,
+  packReadiness,
+  type HealthcareTemplatePreset,
+} from "@/lib/healthcareWhatsAppPack"
 import TemplateEditForm, { type TemplateFormData } from "@/components/TemplateEditForm"
 import {
   Plus,
@@ -76,6 +91,10 @@ interface Template {
   projectId: string
   createdAt: string
   updatedAt: string
+  /** Healthcare preset row not yet installed as draft */
+  isPresetPreview?: boolean
+  triggerEvents?: string[]
+  presetLabel?: string
 }
 
 interface Stats {
@@ -110,6 +129,7 @@ interface FormData {
 }
 
 export default function TemplatesTab({ projectId }: { projectId: string }) {
+  const { vertical } = useProject()
   const [templates, setTemplates] = useState<Template[]>([])
   const [stats, setStats] = useState<Stats>({ approved: 0, pending: 0, rejected: 0, draft: 0, total: 0 })
   const [isLoading, setIsLoading] = useState(true)
@@ -125,7 +145,19 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [localMediaPreviewUrl, setLocalMediaPreviewUrl] = useState('')
   const itemsPerPage = 10
-  
+
+  const isHealthcareProject = vertical === 'healthcare'
+  const isHealthcareCategory =
+    isHealthcareProject && categoryFilter === HEALTHCARE_TEMPLATES_CATEGORY
+
+  const [healthcareLoading, setHealthcareLoading] = useState(false)
+  const [healthcareInstalling, setHealthcareInstalling] = useState(false)
+  const [healthcarePresets, setHealthcarePresets] = useState<HealthcareTemplatePreset[]>([])
+  const [healthcareWaConnected, setHealthcareWaConnected] = useState(false)
+  const [healthcarePackMessage, setHealthcarePackMessage] = useState<string | null>(null)
+  const [healthcarePackError, setHealthcarePackError] = useState<string | null>(null)
+  const [creatingPresetName, setCreatingPresetName] = useState<string | null>(null)
+
   // Get settings context to connect buttons to topbar
   const { setShowSyncButton, setShowCreateButton, setSyncClick, setCreateClick, setIsSyncing: setContextIsSyncing } = useSettings()
 
@@ -359,7 +391,10 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
       if (response.ok) {
         const payload = result.data || result
         alert(`✅ ${result.message || 'Templates synced'}\n\n📊 Created: ${payload.created ?? 0}\n🔄 Updated: ${payload.updated ?? 0}\n📈 Total Synced: ${payload.synced ?? 0}`)
-        fetchTemplates()
+        await fetchTemplates()
+        if (isHealthcareCategory) {
+          await loadHealthcarePack()
+        }
       } else {
         alert(`❌ ${result.message || "Failed to sync templates"}`)
       }
@@ -417,22 +452,167 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
     fetchTemplates()
   }, [projectId])
 
+  const healthcareCategoryDefaulted = useRef(false)
+  useEffect(() => {
+    if (isHealthcareProject && !healthcareCategoryDefaulted.current) {
+      setCategoryFilter(HEALTHCARE_TEMPLATES_CATEGORY)
+      healthcareCategoryDefaulted.current = true
+    }
+  }, [isHealthcareProject])
+
+  const loadHealthcarePack = async () => {
+    if (!isHealthcareProject) return
+    try {
+      setHealthcareLoading(true)
+      setHealthcarePackError(null)
+      const [presetList, phone] = await Promise.all([
+        fetchHealthcareTemplatePresets(projectId),
+        fetchProjectWhatsAppStatus(projectId),
+      ])
+      setHealthcarePresets(presetList)
+      setHealthcareWaConnected(phone.whatsappConnected)
+    } catch (e) {
+      setHealthcarePackError(e instanceof Error ? e.message : 'Failed to load healthcare pack')
+    } finally {
+      setHealthcareLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isHealthcareCategory) {
+      loadHealthcarePack()
+    }
+  }, [isHealthcareCategory, projectId])
+
+  const healthcarePackRows = useMemo(() => {
+    if (!isHealthcareCategory) return []
+    return mergePackWithTemplates(healthcarePresets, templates)
+  }, [isHealthcareCategory, healthcarePresets, templates])
+
+  const healthcareReadiness = useMemo(() => packReadiness(healthcarePackRows), [healthcarePackRows])
+
+  const healthcareDisplayTemplates = useMemo((): Template[] => {
+    if (!isHealthcareCategory) return []
+    const q = searchQuery.trim().toLowerCase()
+
+    return healthcarePackRows
+      .filter(({ preset, status }) => {
+        const matchesSearch =
+          !q ||
+          preset.name.toLowerCase().includes(q) ||
+          preset.recommendedTemplateName.toLowerCase().includes(q) ||
+          preset.sampleMessage.toLowerCase().includes(q) ||
+          preset.triggerEvents.some((e) => e.toLowerCase().includes(q))
+        const matchesStatus =
+          statusFilter === 'all' ||
+          status === statusFilter ||
+          (statusFilter === 'draft' && status === 'missing')
+        return matchesSearch && matchesStatus
+      })
+      .map(({ preset, status, existing }) => {
+        const account = existing?._id
+          ? templates.find((t) => t._id === existing._id && t.name === preset.recommendedTemplateName)
+          : null
+
+        if (account) {
+          return {
+            ...account,
+            triggerEvents: preset.triggerEvents,
+            presetLabel: preset.name,
+            isPresetPreview: false,
+          }
+        }
+
+        return {
+          _id: `preset-${preset.key}`,
+          name: preset.recommendedTemplateName,
+          language: 'en',
+          category: TemplateCategory.UTILITY,
+          content: preset.sampleMessage,
+          status: TemplateStatus.DRAFT,
+          variables: preset.variables.map((_, i) => String(i + 1)),
+          projectId,
+          createdAt: '',
+          updatedAt: '',
+          isPresetPreview: true,
+          triggerEvents: preset.triggerEvents,
+          presetLabel: preset.name,
+        }
+      })
+  }, [
+    isHealthcareCategory,
+    healthcarePackRows,
+    templates,
+    searchQuery,
+    statusFilter,
+    projectId,
+  ])
+
+  const handleInstallHealthcarePack = async () => {
+    try {
+      setHealthcareInstalling(true)
+      setHealthcarePackMessage(null)
+      setHealthcarePackError(null)
+      const result = await installHealthcareTemplatePack(projectId)
+      if (result.created.length > 0) {
+        setHealthcarePackMessage(`Created ${result.created.length} draft(s). View preview, then submit to Meta.`)
+      } else {
+        setHealthcarePackMessage('All pack templates exist. Submit drafts or sync status.')
+      }
+      if (result.errors.length > 0) {
+        setHealthcarePackError(result.errors.map((e) => `${e.name}: ${e.message}`).join(' · '))
+      }
+      await fetchTemplates()
+      await loadHealthcarePack()
+    } catch (e) {
+      setHealthcarePackError(e instanceof Error ? e.message : 'Install failed')
+    } finally {
+      setHealthcareInstalling(false)
+    }
+  }
+
+  const handleCreateHealthcareDraft = async (preset: HealthcareTemplatePreset) => {
+    try {
+      setCreatingPresetName(preset.recommendedTemplateName)
+      await createDraftTemplate(projectId, preset)
+      setHealthcarePackMessage(`Draft created: ${preset.recommendedTemplateName}`)
+      await fetchTemplates()
+      await loadHealthcarePack()
+    } catch (e) {
+      setHealthcarePackError(e instanceof Error ? e.message : 'Create draft failed')
+    } finally {
+      setCreatingPresetName(null)
+    }
+  }
+
+  const openTemplateView = (template: Template) => {
+    setSelectedTemplate(template)
+    setShowViewModal(true)
+  }
+
   // Filter templates
-  const filteredTemplates = Array.isArray(templates) 
+  const filteredTemplates = Array.isArray(templates)
     ? templates.filter((template) => {
-        // Search filter
-        const matchesSearch = template.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        const matchesSearch =
+          template.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           template.category?.toLowerCase().includes(searchQuery.toLowerCase())
-        
-        // Status filter
-        const matchesStatus = statusFilter === 'all' || template.status?.toLowerCase() === statusFilter.toLowerCase()
-        
-        // Category filter
-        const matchesCategory = categoryFilter === 'all' || template.category === categoryFilter
-        
+
+        const matchesStatus =
+          statusFilter === 'all' || template.status?.toLowerCase() === statusFilter.toLowerCase()
+
+        let matchesCategory = categoryFilter === 'all'
+        if (categoryFilter === HEALTHCARE_TEMPLATES_CATEGORY) {
+          matchesCategory = isHealthcarePackTemplateName(template.name)
+        } else if (categoryFilter !== 'all') {
+          matchesCategory = template.category === categoryFilter
+        }
+
         return matchesSearch && matchesStatus && matchesCategory
       })
     : []
+
+  const tableTemplates = isHealthcareCategory ? healthcareDisplayTemplates : filteredTemplates
+  const tableLoading = isHealthcareCategory ? healthcareLoading : isLoading
 
   // Format date
   const formatDate = (dateString?: string) => {
@@ -671,31 +851,68 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
         </div>
 
         {/* Right Content - Templates Table */}
-        <div className="flex-1">
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            {/* Table Header */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+        <div className="flex-1 min-w-0">
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden flex flex-col max-h-[calc(100vh-12rem)]">
+            {isHealthcareCategory ? (
+              <HealthcareTemplatesInstructions
+                projectId={projectId}
+                waConnected={healthcareWaConnected}
+                approved={healthcareReadiness.approved}
+                total={healthcareReadiness.total}
+                missing={healthcareReadiness.missing}
+                ready={healthcareReadiness.ready}
+                loading={healthcareLoading}
+                installing={healthcareInstalling}
+                syncing={isSyncing}
+                message={healthcarePackMessage}
+                error={healthcarePackError}
+                onInstallPack={handleInstallHealthcarePack}
+                onSync={syncTemplatesFromWhatsApp}
+              />
+            ) : null}
+
+            <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+              <table className="w-full min-w-[920px]">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-[1]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Category</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Health</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Created At</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700">Action</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Category</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Type</th>
+                    {isHealthcareCategory ? (
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap min-w-[140px]">Triggers</th>
+                    ) : (
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Health</th>
+                    )}
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Created At</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredTemplates.length > 0 ? (
-                    filteredTemplates.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((template) => (
+                  {tableLoading ? (
+                    <tr>
+                      <td colSpan={isHealthcareCategory ? 7 : 7} className="px-6 py-10 text-center text-gray-500">
+                        Loading templates…
+                      </td>
+                    </tr>
+                  ) : tableTemplates.length > 0 ? (
+                    (isHealthcareCategory
+                      ? tableTemplates
+                      : tableTemplates.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                    ).map((template) => (
                       <tr key={template._id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{template.name}</td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{template.category}</td>
-                        <td className="px-6 py-4 text-sm">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900 whitespace-nowrap">
+                          <span className="block">{template.name}</span>
+                          {template.presetLabel ? (
+                            <span className="text-xs font-normal text-gray-500">{template.presetLabel}</span>
+                          ) : null}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{template.category}</td>
+                        <td className="px-6 py-4 text-sm whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                            template.status === TemplateStatus.APPROVED
+                            template.isPresetPreview
+                              ? "bg-violet-100 text-violet-800"
+                              : template.status === TemplateStatus.APPROVED
                               ? "bg-green-100 text-green-700"
                               : template.status === TemplateStatus.PENDING
                               ? "bg-orange-100 text-orange-700"
@@ -703,30 +920,74 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
                               ? "bg-red-100 text-red-700"
                               : "bg-gray-100 text-gray-700"
                           }`}>
-                            {template.status}
+                            {template.isPresetPreview ? 'preset preview' : template.status}
                           </span>
+                          {template.rejectedReason ? (
+                            <p className="mt-1 max-w-[200px] truncate text-[10px] text-rose-600" title={template.rejectedReason}>
+                              {template.rejectedReason}
+                            </p>
+                          ) : null}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{template.language}</td>
-                        <td className="px-6 py-4 text-sm">
-                          <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
-                            High
-                          </span>
+                        <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{template.language}</td>
+                        {isHealthcareCategory ? (
+                          <td className="px-6 py-4 text-xs text-gray-500 max-w-[220px]">
+                            {template.triggerEvents?.length ? template.triggerEvents.join(', ') : '—'}
+                          </td>
+                        ) : (
+                          <td className="px-6 py-4 text-sm whitespace-nowrap">
+                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                              High
+                            </span>
+                          </td>
+                        )}
+                        <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
+                          {template.isPresetPreview ? '—' : formatDate(template.createdAt)}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{formatDate(template.createdAt)}</td>
-                        <td className="px-6 py-4 text-sm">
-                          <div className="flex gap-2">
-                            <button onClick={() => {
-                              setSelectedTemplate(template)
-                              setShowViewModal(true)
-                            }} className="text-blue-600 hover:text-blue-800">
+                        <td className="px-6 py-4 text-sm whitespace-nowrap">
+                          <div className="flex gap-2 items-center">
+                            <button
+                              type="button"
+                              onClick={() => openTemplateView(template)}
+                              className="text-blue-600 hover:text-blue-800"
+                              title="View & preview"
+                            >
                               <Eye size={16} />
                             </button>
-                            <button onClick={() => submitTemplateToMeta(template._id)} className="text-green-600 hover:text-green-800">
-                              <CheckCircle size={16} />
-                            </button>
-                            <button onClick={() => deleteTemplate(template._id)} className="text-red-600 hover:text-red-800">
-                              <Trash2 size={16} />
-                            </button>
+                            {template.isPresetPreview ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const preset = healthcarePresets.find(
+                                    (p) => p.recommendedTemplateName === template.name,
+                                  )
+                                  if (preset) handleCreateHealthcareDraft(preset)
+                                }}
+                                disabled={creatingPresetName === template.name}
+                                className="text-xs font-semibold text-violet-600 hover:text-violet-800"
+                              >
+                                {creatingPresetName === template.name ? '…' : 'Create draft'}
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => submitTemplateToMeta(template._id)}
+                                  className="text-green-600 hover:text-green-800 disabled:opacity-40"
+                                  title="Submit to Meta"
+                                  disabled={template.status === TemplateStatus.APPROVED}
+                                >
+                                  <CheckCircle size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteTemplate(template._id)}
+                                  className="text-red-600 hover:text-red-800"
+                                  title="Delete"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -734,7 +995,9 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
                   ) : (
                     <tr>
                       <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                        No templates found
+                        {isHealthcareCategory
+                          ? 'No healthcare presets match this filter.'
+                          : 'No templates found'}
                       </td>
                     </tr>
                   )}
@@ -743,7 +1006,7 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
             </div>
 
             {/* Pagination */}
-            {filteredTemplates.length > itemsPerPage && (
+            {!isHealthcareCategory && filteredTemplates.length > itemsPerPage && (
               <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-gray-50">
                 <p className="text-sm text-gray-600">
                   {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredTemplates.length)} of {filteredTemplates.length}
@@ -938,6 +1201,7 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
           rejected: 'bg-red-100 text-red-700',
           draft:    'bg-gray-100 text-gray-600',
         }
+        const isPresetPreview = Boolean(t.isPresetPreview || t._id.startsWith('preset-'))
         return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[92vh] overflow-hidden">
@@ -955,8 +1219,8 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className={`px-2.5 py-1 text-xs font-semibold rounded-full capitalize ${statusColors[t.status] || 'bg-gray-100 text-gray-600'}`}>
-                  {t.status}
+                <span className={`px-2.5 py-1 text-xs font-semibold rounded-full capitalize ${isPresetPreview ? 'bg-violet-100 text-violet-800' : statusColors[t.status] || 'bg-gray-100 text-gray-600'}`}>
+                  {isPresetPreview ? 'preset preview' : t.status}
                 </span>
                 <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
                   <X className="h-5 w-5" />
@@ -968,6 +1232,19 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
             <div className="flex flex-1 overflow-hidden">
               {/* Left: template info */}
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {isPresetPreview ? (
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+                    <p className="font-semibold">Healthcare preset preview</p>
+                    <p className="mt-1 text-violet-800">
+                      Sample message before install. Click <strong>Create draft</strong> in the table, then submit to Meta.
+                    </p>
+                    {t.triggerEvents && t.triggerEvents.length > 0 ? (
+                      <p className="mt-2 text-xs text-violet-700">
+                        Triggers: {t.triggerEvents.join(', ')}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {/* Rejection banner */}
                 {t.status === TemplateStatus.REJECTED && t.rejectedReason && (
                   <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
@@ -1138,7 +1415,7 @@ export default function TemplatesTab({ projectId }: { projectId: string }) {
                 ID: <span className="font-mono">{t._id}</span>
               </div>
               <div className="flex gap-2">
-                {t.status === TemplateStatus.DRAFT && (
+                {!isPresetPreview && t.status === TemplateStatus.DRAFT && (
                   <Button
                     className="bg-green-600 hover:bg-green-700 text-white text-sm"
                     onClick={() => { closeModal(); submitTemplateToMeta(t._id) }}

@@ -21,6 +21,7 @@ import {
 import { resolveProjectIdForAccountPhone } from './projectScopeResolver.js';
 import { debitCreditsForOutboundMessage } from './messageBillingService.js';
 import logger from '../utils/logger.js';
+import { fireHealthcareWhatsAppTrigger } from './healthcareWhatsAppService.js';
 
 function resolveMessageCampaign(metadata = {}) {
   if (metadata.campaign) return metadata.campaign;
@@ -333,6 +334,19 @@ class WhatsAppService {
           healthcareConsentCheck: true,
         }
       );
+
+      if (session.projectId) {
+        const scheduledLabel = scheduledAt.toLocaleDateString('en-IN');
+        const timeLabel = scheduledAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        fireHealthcareWhatsAppTrigger(session.accountId, session.projectId, 'appointment_booked', {
+          patientId: patient.patientId,
+          patientPhone: patient.phoneNumber || patient.whatsappNumber || normalizedPhone,
+          patientName: patient.fullName,
+          doctorName: doctor?.fullName,
+          appointmentDate: scheduledLabel,
+          appointmentTime: timeLabel,
+        });
+      }
 
       logger.info('✅ vertical_action:book_appointment', {
         sessionId: String(session._id),

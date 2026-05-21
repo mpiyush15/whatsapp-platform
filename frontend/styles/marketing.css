@@ -212,6 +212,49 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  /* Prevent top/bottom clip on gradient text */
+  display: inline-block;
+  padding-block: 0.12em;
+  line-height: 1.25;
+}
+
+/* Section headings (MarketingSection, etc.) — roomy line height, no crop */
+.marketing-section-title {
+  font-family: var(--font-marketing-display), system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  font-size: clamp(1.75rem, 5.2vw, 2.65rem);
+  line-height: 1.22;
+  overflow: visible;
+  padding-block: 0.15rem;
+}
+
+@media (min-width: 640px) {
+  .marketing-section-title {
+    font-size: clamp(2rem, 4.2vw, 2.85rem);
+    line-height: 1.2;
+  }
+}
+
+@media (min-width: 1024px) {
+  .marketing-section-title {
+    font-size: clamp(2.125rem, 3.2vw, 3.1rem);
+    line-height: 1.18;
+  }
+}
+
+.marketing-section-title__line {
+  display: block;
+  line-height: inherit;
+  overflow: visible;
+}
+
+.marketing-section-title__line--gradient.text-gradient-marketing {
+  display: block;
+  margin-top: 0.28em;
+  padding-top: 0.1em;
+  padding-bottom: 0.16em;
+  line-height: 1.28;
 }
 
 .marketing-cta-primary {
@@ -328,9 +371,12 @@
   line-height: 1.12;
 }
 
-/* Stacked title + gradient line — slight gap between lines */
+/* Stacked title + gradient line — gap between lines (hero / split layouts) */
 .marketing-hero-title:has(> span + span) > span + span {
-  margin-top: 0.12em;
+  margin-top: 0.22em;
+  padding-top: 0.06em;
+  padding-bottom: 0.1em;
+  line-height: 1.2;
 }
 
 /* Hero headline — large on all breakpoints */
@@ -436,6 +482,29 @@
   }
 }
 
+/* Healthcare split hero — slightly smaller (longer highlight line) */
+.marketing-hero-title--healthcare-split {
+  font-size: clamp(1.5rem, 5vw, 2.05rem);
+  line-height: 1.14;
+  letter-spacing: -0.032em;
+}
+
+@media (min-width: 640px) {
+  .marketing-hero-title--healthcare-split {
+    font-size: clamp(1.75rem, 4vw, 2.35rem);
+    line-height: 1.12;
+    letter-spacing: -0.034em;
+  }
+}
+
+@media (min-width: 1024px) {
+  .marketing-hero-title--healthcare-split {
+    font-size: clamp(1.875rem, 2.8vw, 2.65rem);
+    line-height: 1.1;
+    letter-spacing: -0.036em;
+  }
+}
+
 .marketing-solutions-hero-subtitle {
   font-size: clamp(1rem, 2.2vw, 1.25rem);
   line-height: 1.6;
@@ -511,6 +580,28 @@
 }
 
 /* Horizontal problem cards — scroll + edge fade */
+/* Problem section — ice / glossy glass chips (one row on lg) */
+.marketing-sticky-note {
+  border-radius: 4px 4px 12px 12px;
+  min-height: 11rem;
+}
+
+.marketing-problem-glass-card {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.38) 48%,
+    rgba(244, 243, 239, 0.45) 100%
+  );
+  box-shadow:
+    0 8px 32px rgba(17, 17, 17, 0.06),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 -1px 0 rgba(255, 255, 255, 0.35) inset;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
 .marketing-problems-scroll {
   -webkit-overflow-scrolling: touch;
   overflow-x: auto;
@@ -533,10 +624,6 @@
   .marketing-problem-card {
     min-height: 560px;
   }
-}
-
-.marketing-footer {
-  background: #0b1120;
 }
 
 .marketing-footer-meta-badge {

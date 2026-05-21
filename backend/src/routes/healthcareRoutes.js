@@ -16,6 +16,7 @@ import PatientInvoice from '../models/PatientInvoice.js';
 import PatientPayment from '../models/PatientPayment.js';
 import ConsentRecord from '../models/ConsentRecord.js';
 import whatsappService from '../services/whatsappService.js';
+import { fireHealthcareWhatsAppTrigger } from '../services/healthcareWhatsAppService.js';
 import { sendSuccess, sendNotFound, sendValidationError } from '../utils/responseHandler.js';
 import { handleControllerError, NotFoundError, ValidationError } from '../utils/errorHandler.js';
 import handleMulterError from '../middlewares/multerErrorHandler.js';
@@ -73,24 +74,37 @@ const MAX_LIMIT = 100;
 
 const HEALTHCARE_TEMPLATE_PRESETS = [
   {
+    key: 'patient-welcome',
+    name: 'Patient welcome',
+    category: 'utility',
+    channel: 'whatsapp',
+    recommendedTemplateName: 'healthcare_patient_welcome',
+    purpose: 'patient-onboarding',
+    triggerEvents: ['patient_created'],
+    variables: ['patientName', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, welcome to {{2}}. Save this number for appointment updates and care messages.',
+  },
+  {
     key: 'appointment-reminder',
     name: 'Healthcare Appointment Reminder',
     category: 'utility',
     channel: 'whatsapp',
     recommendedTemplateName: 'healthcare_appointment_reminder',
     purpose: 'appointment-reminder',
+    triggerEvents: ['appointment_booked', 'appointment_rescheduled', 'appointment_reminder'],
     variables: ['patientName', 'doctorName', 'appointmentDate', 'appointmentTime', 'clinicName'],
     sampleMessage: 'Hi {{1}}, reminder: your appointment with Dr. {{2}} is on {{3}} at {{4}}. - {{5}}',
   },
   {
-    key: 'follow-up-checkin',
-    name: 'Follow-up Care Check-in',
+    key: 'appointment-cancelled',
+    name: 'Appointment cancelled',
     category: 'utility',
     channel: 'whatsapp',
-    recommendedTemplateName: 'healthcare_followup_checkin',
-    purpose: 'follow-up',
-    variables: ['patientName', 'doctorName', 'followUpDate', 'clinicName'],
-    sampleMessage: 'Hi {{1}}, this is your follow-up reminder from Dr. {{2}} for {{3}}. Reply if you need to reschedule. - {{4}}',
+    recommendedTemplateName: 'healthcare_appointment_cancelled',
+    purpose: 'appointment-cancelled',
+    triggerEvents: ['appointment_cancelled'],
+    variables: ['patientName', 'appointmentDate', 'appointmentTime', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, your appointment on {{2}} at {{3}} has been cancelled. Contact {{4}} to rebook.',
   },
   {
     key: 'refill-reminder',
@@ -99,8 +113,53 @@ const HEALTHCARE_TEMPLATE_PRESETS = [
     channel: 'whatsapp',
     recommendedTemplateName: 'healthcare_refill_reminder',
     purpose: 'refill-reminder',
+    triggerEvents: ['prescription_saved'],
     variables: ['patientName', 'medicineName', 'daysLeft', 'clinicName'],
     sampleMessage: 'Hi {{1}}, your medicine {{2}} may run out in {{3}} day(s). Contact {{4}} for refill support.',
+  },
+  {
+    key: 'follow-up-checkin',
+    name: 'Follow-up Care Check-in',
+    category: 'utility',
+    channel: 'whatsapp',
+    recommendedTemplateName: 'healthcare_followup_checkin',
+    purpose: 'follow-up',
+    triggerEvents: ['follow_up'],
+    variables: ['patientName', 'doctorName', 'followUpDate', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, this is your follow-up reminder from Dr. {{2}} for {{3}}. Reply if you need to reschedule. - {{4}}',
+  },
+  {
+    key: 'invoice-created',
+    name: 'Invoice created',
+    category: 'utility',
+    channel: 'whatsapp',
+    recommendedTemplateName: 'healthcare_invoice_created',
+    purpose: 'billing-invoice',
+    triggerEvents: ['invoice_created'],
+    variables: ['patientName', 'totalAmount', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, your clinic invoice total is INR {{2}}. - {{3}}',
+  },
+  {
+    key: 'payment-received',
+    name: 'Payment received',
+    category: 'utility',
+    channel: 'whatsapp',
+    recommendedTemplateName: 'healthcare_payment_received',
+    purpose: 'payment-received',
+    triggerEvents: ['payment_received'],
+    variables: ['patientName', 'amount', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, we received your payment of INR {{2}}. Thank you. - {{3}}',
+  },
+  {
+    key: 'payment-pending',
+    name: 'Payment pending reminder',
+    category: 'utility',
+    channel: 'whatsapp',
+    recommendedTemplateName: 'healthcare_payment_pending_reminder',
+    purpose: 'payment-pending',
+    triggerEvents: ['payment_pending_reminder'],
+    variables: ['patientName', 'amount', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, a payment of INR {{2}} is pending. - {{3}}',
   },
 ];
 
@@ -132,108 +191,6 @@ const HEALTHCARE_FLOW_PRESETS = [
     ],
   },
 ];
-
-// ─── Healthcare WhatsApp trigger helper ────────────────────────────────────
-// Fire-and-forget: never throws, never blocks the main response.
-// event: 'patient_created' | 'appointment_booked' | 'appointment_rescheduled' | 'appointment_cancelled' | 'prescription_saved' | 'invoice_created' | 'payment_received' | 'payment_pending_reminder' | 'follow_up'
-async function fireHealthcareWhatsAppTrigger(accountId, projectId, event, data = {}) {
-  try {
-    const project = await Project.findOne({ accountId, projectId, status: 'active' })
-      .select('whatsappPhoneNumberId whatsappPhoneNumber name');
-
-    if (!project?.whatsappPhoneNumberId) return; // no phone configured — skip silently
-
-    const phoneNumberId = project.whatsappPhoneNumberId;
-    const clinicName = project.name || 'Clinic';
-
-    let recipientPhone = null;
-    let templateName = null;
-    let params = [];
-
-    if (event === 'patient_created') {
-      recipientPhone = data.phoneNumber || data.whatsappNumber;
-      templateName = 'healthcare_patient_welcome';
-      params = [data.fullName || 'Patient', clinicName];
-    } else if (event === 'appointment_booked') {
-      recipientPhone = data.patientPhone;
-      templateName = 'healthcare_appointment_reminder';
-      params = [
-        data.patientName || 'Patient',
-        data.doctorName || 'Doctor',
-        data.appointmentDate || '',
-        data.appointmentTime || '',
-        clinicName,
-      ];
-    } else if (event === 'appointment_rescheduled') {
-      recipientPhone = data.patientPhone;
-      templateName = 'healthcare_appointment_reminder';
-      params = [
-        data.patientName || 'Patient',
-        data.doctorName || 'Doctor',
-        data.appointmentDate || '',
-        data.appointmentTime || '',
-        clinicName,
-      ];
-    } else if (event === 'appointment_cancelled') {
-      recipientPhone = data.patientPhone;
-      templateName = 'healthcare_appointment_cancelled';
-      params = [
-        data.patientName || 'Patient',
-        data.appointmentDate || '',
-        data.appointmentTime || '',
-        clinicName,
-      ];
-    } else if (event === 'prescription_saved') {
-      recipientPhone = data.patientPhone;
-      templateName = 'healthcare_refill_reminder';
-      params = [data.patientName || 'Patient', data.medicineSummary || 'your prescription', '30', clinicName];
-    } else if (event === 'invoice_created') {
-      recipientPhone = data.patientPhone;
-      templateName = 'healthcare_invoice_created';
-      params = [data.patientName || 'Patient', String(data.totalAmount || ''), clinicName];
-    } else if (event === 'payment_received') {
-      recipientPhone = data.patientPhone;
-      templateName = 'healthcare_payment_received';
-      params = [
-        data.patientName || 'Patient',
-        String(data.amount || ''),
-        clinicName,
-      ];
-    } else if (event === 'payment_pending_reminder') {
-      recipientPhone = data.patientPhone;
-      templateName = 'healthcare_payment_pending_reminder';
-      params = [
-        data.patientName || 'Patient',
-        String(data.amount || ''),
-        clinicName,
-      ];
-    } else if (event === 'follow_up') {
-      recipientPhone = data.patientPhone;
-      templateName = 'healthcare_followup_checkin';
-      params = [data.patientName || 'Patient', data.doctorName || 'Doctor', data.followUpDate || '', clinicName];
-    }
-
-    if (!recipientPhone || !templateName) return;
-
-    await whatsappService.sendTemplateMessage(
-      accountId,
-      phoneNumberId,
-      recipientPhone,
-      templateName,
-      params,
-      {
-        campaign: 'healthcare',
-        projectId,
-        patientId: data.patientId || null,
-        purpose: event,
-        healthcareConsentCheck: true,
-      }
-    );
-  } catch (_err) {
-    // Intentionally swallowed — trigger failure must never break the main operation
-  }
-}
-// ────────────────────────────────────────────────────────────────────────────
 
 const formatDateForTrigger = (value) => {
   if (!value) return '';
@@ -1611,16 +1568,6 @@ router.post('/prescriptions', async (req, res) => {
       medicineSummary: prescription.medicines?.[0]?.medicineName,
     });
 
-    if (prescription.followUpAt) {
-      fireHealthcareWhatsAppTrigger(scope.accountId, scope.projectId, 'follow_up', {
-        patientId: prescription.patientId,
-        patientPhone: prescription.patientSnapshot?.phoneNumber,
-        patientName: prescription.patientSnapshot?.fullName,
-        doctorName: prescription.doctorSnapshot?.fullName,
-        followUpDate: formatDateForTrigger(prescription.followUpAt),
-      });
-    }
-
     return sendSuccess(res, { prescription }, 'Prescription created', 201);
   } catch (error) {
     if (error instanceof ValidationError) {
@@ -2334,13 +2281,6 @@ router.post('/payments', async (req, res) => {
     const patient = await findPatient(scope, payment.patientId);
     if (payment.status === 'completed') {
       fireHealthcareWhatsAppTrigger(scope.accountId, scope.projectId, 'payment_received', {
-        patientId: payment.patientId,
-        patientPhone: patient.phoneNumber || patient.whatsappNumber,
-        patientName: patient.fullName,
-        amount: payment.amount,
-      });
-    } else if (payment.status === 'pending') {
-      fireHealthcareWhatsAppTrigger(scope.accountId, scope.projectId, 'payment_pending_reminder', {
         patientId: payment.patientId,
         patientPhone: patient.phoneNumber || patient.whatsappNumber,
         patientName: patient.fullName,

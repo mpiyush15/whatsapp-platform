@@ -20,10 +20,16 @@ interface ProjectContextType {
   projectId: string
   project: Project | null
   vertical: 'whatsapp' | 'healthcare' | 'ecommerce'
+  /** True only on first load (or projectId change) — not on background refresh */
   loading: boolean
   error: string | null
   refreshProject: () => Promise<void>
   switchProject: (newProjectId: string) => Promise<void>
+}
+
+function getAuthToken() {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('authToken') || localStorage.getItem('token')
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined)
@@ -39,17 +45,20 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch project details
-  const fetchProject = async () => {
+  // Fetch project details (silent = background refresh without full-page loader)
+  const fetchProject = async (opts?: { silent?: boolean }) => {
     try {
-      setLoading(true)
+      if (!opts?.silent) {
+        setLoading(true)
+      }
       setError(null)
 
+      const token = getAuthToken()
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api'
       const response = await fetch(`${apiUrl}/projects/${projectId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       })
 
       if (!response.ok) {
@@ -74,9 +83,9 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
     }
   }, [projectId])
 
-  // Refresh project data
+  // Refresh project data without blocking the shell
   const refreshProject = async () => {
-    await fetchProject()
+    await fetchProject({ silent: true })
   }
 
   // Switch to different project
@@ -84,11 +93,12 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
     try {
       // Set new project as default
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api'
+      const token = getAuthToken()
       const response = await fetch(`${apiUrl}/projects/${newProjectId}/set-default`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       })
 
       if (!response.ok) {

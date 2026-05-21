@@ -23,6 +23,9 @@ router.use(requireJWT);
 // GET /api/projects - List all user's projects
 router.get('/', projectController.getProjects);
 
+// GET /api/projects/presets/list - Wizard presets (before :projectId)
+router.get('/presets/list', projectController.getProjectPresets);
+
 // POST /api/projects - Create new project
 router.post('/', projectController.createProject);
 

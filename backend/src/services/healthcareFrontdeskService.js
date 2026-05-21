@@ -1,5 +1,4 @@
-import Project from '../models/Project.js';
-import whatsappService from './whatsappService.js';
+import { sendHealthcareTrigger } from './healthcareWhatsAppService.js';
 import frontdeskRepository from '../repositories/healthcareFrontdeskRepository.js';
 import { ValidationError } from '../utils/errorHandler.js';
 
@@ -76,84 +75,29 @@ const getQueueStage = (appointment) => {
 };
 
 async function sendFrontdeskTrigger(scope, appointment, triggerType) {
-  const project = await Project.findOne({
-    accountId: scope.accountId,
-    projectId: scope.projectId,
-    status: 'active',
-  }).select('whatsappPhoneNumberId name');
-
-  if (!project?.whatsappPhoneNumberId) {
-    return { attempted: false, sent: false, reason: 'no_whatsapp_phone_configured' };
-  }
-
-  const recipientPhone = appointment?.patientSnapshot?.phoneNumber;
-  if (!recipientPhone) {
-    return { attempted: false, sent: false, reason: 'patient_phone_missing' };
-  }
-
-  const clinicName = project.name || 'Clinic';
-  const patientName = appointment?.patientSnapshot?.fullName || 'Patient';
-  const doctorName = appointment?.doctorSnapshot?.fullName || 'Doctor';
-
-  let templateName = null;
-  let params = [];
-  let purpose = 'healthcare-outbound';
+  const base = {
+    patientId: appointment.patientId,
+    patientPhone: appointment?.patientSnapshot?.phoneNumber,
+    patientName: appointment?.patientSnapshot?.fullName,
+    doctorName: appointment?.doctorSnapshot?.fullName,
+  };
 
   if (triggerType === 'appointment-reminder') {
-    templateName = 'healthcare_appointment_reminder';
-    params = [
-      patientName,
-      doctorName,
-      toDisplayDate(appointment.scheduledAt),
-      toDisplayTime(appointment.scheduledAt),
-      clinicName,
-    ];
-    purpose = 'appointment-reminder';
-  } else if (triggerType === 'follow-up') {
-    templateName = 'healthcare_followup_checkin';
-    params = [
-      patientName,
-      doctorName,
-      toDisplayDate(new Date()),
-      clinicName,
-    ];
-    purpose = 'follow-up';
-  } else {
-    return { attempted: false, sent: false, reason: 'unsupported_trigger_type' };
+    return sendHealthcareTrigger(scope.accountId, scope.projectId, 'appointment_reminder', {
+      ...base,
+      appointmentDate: toDisplayDate(appointment.scheduledAt),
+      appointmentTime: toDisplayTime(appointment.scheduledAt),
+    });
   }
 
-  try {
-    await whatsappService.sendTemplateMessage(
-      scope.accountId,
-      project.whatsappPhoneNumberId,
-      recipientPhone,
-      templateName,
-      params,
-      {
-        campaign: 'healthcare-frontdesk',
-        projectId: scope.projectId,
-        patientId: appointment.patientId,
-        purpose,
-        healthcareConsentCheck: true,
-      }
-    );
-
-    return {
-      attempted: true,
-      sent: true,
-      reason: null,
-      templateName,
-      triggerType,
-    };
-  } catch (error) {
-    return {
-      attempted: true,
-      sent: false,
-      reason: error?.message || 'template_send_failed',
-      templateName,
-      triggerType,
-    };
+  if (triggerType === 'follow-up') {
+    return sendHealthcareTrigger(scope.accountId, scope.projectId, 'follow_up', {
+      ...base,
+      followUpDate: toDisplayDate(new Date()),
+    });
   }
+
+  return { attempted: false, sent: false, reason: 'unsupported_trigger_type', event: triggerType };
 }
 
 async function getQueueBoard(scope, { date, status, doctorId, limit }) {

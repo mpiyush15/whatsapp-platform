@@ -11,6 +11,10 @@ import { MarketingCampaignsDashboardMock } from '@/components/marketing/Marketin
 import { MarketingLiveChatDashboardMock } from '@/components/marketing/MarketingLiveChatDashboardMock';
 import { MarketingSalesAnalyticsDashboardMock } from '@/components/marketing/MarketingSalesAnalyticsDashboardMock';
 import { MarketingAgenciesDashboardMock } from '@/components/marketing/MarketingAgenciesDashboardMock';
+import { MarketingHealthcareClinicOperationsSection } from '@/components/marketing/MarketingHealthcareClinicOperationsSection';
+import { MarketingHealthcareProductProofSection } from '@/components/marketing/MarketingHealthcareProductProofSection';
+import { MarketingHelpsStickyNotes } from '@/components/marketing/MarketingHelpsStickyNotes';
+import { MarketingProblemGlassCards } from '@/components/marketing/MarketingProblemGlassCards';
 import { MarketingSection } from '@/components/marketing/MarketingSection';
 import { WhatsAppIcon } from '@/components/marketing/WhatsAppIcon';
 
@@ -164,15 +168,21 @@ export function MarketingSolutionDetailLayout({
             {page.problem.lead}
           </p>
         ) : null}
-        <ul className="mx-auto max-w-2xl space-y-4 text-left">
-          {page.problem.bullets.map((bullet) => (
-            <li key={bullet} className="flex gap-3 text-sm leading-relaxed text-[#52525b] sm:text-base">
-              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#ea580c]" aria-hidden />
-              {bullet}
-            </li>
-          ))}
-        </ul>
-        {sectionVisuals?.problem}
+        {page.problem.layout === 'healthcare-clinic-ops' && page.problem.painCards ? (
+          <MarketingHealthcareClinicOperationsSection painCards={page.problem.painCards} />
+        ) : page.problem.bulletLayout === 'glass-row' ? (
+          <MarketingProblemGlassCards items={page.problem.bullets} />
+        ) : (
+          <ul className="mx-auto max-w-2xl space-y-4 text-left">
+            {page.problem.bullets.map((bullet) => (
+              <li key={bullet} className="flex gap-3 text-sm leading-relaxed text-[#52525b] sm:text-base">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#ea580c]" aria-hidden />
+                {bullet}
+              </li>
+            ))}
+          </ul>
+        )}
+        {page.problem.layout === 'healthcare-clinic-ops' ? null : sectionVisuals?.problem}
       </MarketingSection>
 
       <MarketingSection
@@ -184,33 +194,47 @@ export function MarketingSolutionDetailLayout({
         tone="light"
         accent="whatsapp"
       >
-        <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-3">
-          {page.helps.bullets.map((item, i) => {
-            const border =
-              i === 0 ? 'border-l-orange-500' : i === 1 ? 'border-l-sky-500' : 'border-l-violet-500';
-            return (
-              <div key={item.title} className={`border-l-4 ${border} pl-5 text-left`}>
-                {item.angle ? (
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a1a1aa]">{item.angle}</p>
-                ) : null}
-                <p className="mt-1 text-base font-semibold text-[#111111]">{item.title}</p>
-                <p className="mt-2 text-sm leading-relaxed text-[#6d6c6b]">{item.body}</p>
-              </div>
-            );
-          })}
-        </div>
+        {page.helps.layout === 'sticky-notes' ? (
+          <MarketingHelpsStickyNotes items={page.helps.bullets} />
+        ) : (
+          <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-3">
+            {page.helps.bullets.map((item, i) => {
+              const border =
+                i === 0 ? 'border-l-orange-500' : i === 1 ? 'border-l-sky-500' : 'border-l-violet-500';
+              return (
+                <div key={item.title} className={`border-l-4 ${border} pl-5 text-left`}>
+                  {item.angle ? (
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a1a1aa]">
+                      {item.angle}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-base font-semibold text-[#111111]">{item.title}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-[#6d6c6b]">{item.body}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {sectionVisuals?.helps}
       </MarketingSection>
 
       <section className="bg-[#f4f3ef] py-16 sm:py-20">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          {page.proof ? (
+        <div
+          className={`mx-auto px-4 sm:px-6 ${
+            page.proof?.layout === 'healthcare-product' ? 'max-w-6xl' : 'max-w-5xl'
+          }`}
+        >
+          {page.proof?.layout === 'healthcare-product' ? (
+            <MarketingHealthcareProductProofSection proof={page.proof} />
+          ) : page.proof ? (
             <div className="flex flex-col gap-10 lg:grid lg:grid-cols-12 lg:items-center lg:gap-x-10 lg:gap-y-0 xl:gap-x-12">
               <div className="text-left lg:col-span-5">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#a1a1aa]">{page.proof.eyebrow}</p>
-                <h2 className="marketing-hero-title mt-3 text-[1.65rem] text-[#111111] sm:text-[1.85rem] lg:text-[1.75rem] xl:text-3xl">
-                  <span className="block">{page.proof.title}</span>
-                  <span className="text-gradient-marketing mt-2 block">{page.proof.titleHighlight}</span>
+                <h2 className="marketing-section-title mt-3 text-left text-[#111111]">
+                  <span className="marketing-section-title__line">{page.proof.title}</span>
+                  <span className="marketing-section-title__line marketing-section-title__line--gradient text-gradient-marketing">
+                    {page.proof.titleHighlight}
+                  </span>
                 </h2>
                 {page.proof.subtitle ? (
                   <p className="mt-4 max-w-md text-sm leading-relaxed text-[#6d6c6b] sm:text-base">{page.proof.subtitle}</p>
@@ -263,6 +287,7 @@ export function MarketingSolutionDetailLayout({
         )}
       </MarketingSection>
 
+      {page.proof?.layout !== 'healthcare-product' ? (
       <MarketingSection
         id="workflow"
         eyebrow={page.workflow.eyebrow}
@@ -288,6 +313,7 @@ export function MarketingSolutionDetailLayout({
         </ol>
         {sectionVisuals?.workflow}
       </MarketingSection>
+      ) : null}
 
       <MarketingSection
         id="honesty"
@@ -375,9 +401,11 @@ export function MarketingSolutionDetailLayout({
           className="mx-auto max-w-3xl px-4 text-center sm:px-6"
         >
           <WhatsAppIcon className="marketing-icon-wa mx-auto h-10 w-10" />
-          <h2 className="marketing-hero-title mt-5 text-[2rem] text-[#111111] sm:text-4xl">
-            <span className="block">{page.cta.title}</span>
-            <span className="text-gradient-marketing mt-1.5 block">{page.cta.titleHighlight}</span>
+          <h2 className="marketing-section-title mt-5 text-[#111111]">
+            <span className="marketing-section-title__line">{page.cta.title}</span>
+            <span className="marketing-section-title__line marketing-section-title__line--gradient text-gradient-marketing">
+              {page.cta.titleHighlight}
+            </span>
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-base text-[#6d6c6b]">{page.cta.subtitle}</p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
