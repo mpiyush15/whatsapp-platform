@@ -185,7 +185,8 @@ export default function HealthcarePrescriptionsPage() {
       await handlePrescriptionAction({
         prescription: rx,
         clinic,
-        action: 'view'
+        action: 'view',
+        projectId,
       })
     } catch (err) {
       console.error('Failed to open prescription:', err)
@@ -202,7 +203,8 @@ export default function HealthcarePrescriptionsPage() {
       await handlePrescriptionAction({
         prescription: rx,
         clinic,
-        action: 'print'
+        action: 'print',
+        projectId,
       })
     } catch (err) {
       console.error('Failed to print prescription:', err)

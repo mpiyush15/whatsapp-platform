@@ -11,6 +11,13 @@ import WhatsAppSettings from "@/components/ClinicSetupSections/WhatsAppSettings"
 import HealthcareWhatsAppClinicCard from "@/components/healthcare/HealthcareWhatsAppClinicCard"
 import PrescriptionPreview from "@/components/ClinicSetupSections/PrescriptionPreview"
 import ToggleRow from "@/components/ClinicSetupSections/ToggleRow"
+import { ClinicSetupTabNav } from "@/components/healthcare/clinic/ClinicSetupTabNav"
+import {
+  CLINIC_MODULE_OPTIONS,
+  CLINIC_SETUP_TABS,
+  CLINIC_TYPE_PLAIN,
+  type ClinicSetupTabId,
+} from "@/lib/healthcareClinicSetupUi"
 import {
   MODULE_PRESETS,
   clinicTypeForSelector,
@@ -42,21 +49,6 @@ interface ClinicSettings {
   followUpReminders: boolean
   enabledModules: string[]
 }
-
-const HEALTHCARE_MODULES = [
-  { id: "patients", title: "Patients", description: "Patient registry and history" },
-  { id: "appointments", title: "Appointments", description: "Booking and schedule flow" },
-  { id: "frontdesk", title: "Front Desk", description: "Token queue and check-in" },
-  { id: "doctors", title: "Doctors", description: "Doctor profiles and assignment" },
-  { id: "nurses", title: "Nurses / Staff", description: "Nurse and staff module" },
-  { id: "prescriptions", title: "Prescriptions", description: "Clinical prescription builder" },
-  { id: "pharmacy", title: "Medicine master", description: "Catalog of medicines for prescribing and counter reference" },
-  { id: "inventory", title: "Inventory", description: "Stock, price, batch and expiry" },
-  { id: "billing", title: "Billing", description: "Invoices and payments" },
-  { id: "compliance", title: "Compliance", description: "Consent, audit and retention" },
-  { id: "whatsapp", title: "WhatsApp Automation", description: "Reminders and patient updates" },
-  { id: "flow-builder", title: "Flow Builder", description: "Healthcare chatbot actions" },
-]
 
 const initialSettings: ClinicSettings = {
   clinicName: "",
@@ -132,7 +124,10 @@ const mapSettingsToClinicPayload = (settings: ClinicSettings) => ({
   website: settings.website,
   address: settings.address,
   logoUrl: settings.clinicLogo || "",
-  enablePrescriptionDesign: settings.useReplysysPrescription,
+  enablePrescriptionDesign:
+    settings.uploadPrescriptionPDF && settings.prescriptionPDFUrl
+      ? false
+      : settings.useReplysysPrescription,
   prescriptionBlankPdfUrl: settings.prescriptionPDFUrl || "",
   clinicType: settings.clinicType,
   enabledModules: settings.enabledModules,
@@ -150,10 +145,14 @@ const mapSettingsToClinicPayload = (settings: ClinicSettings) => ({
   },
 })
 
+const MAIN_MODULES = CLINIC_MODULE_OPTIONS.filter((m) => m.group === "main")
+const EXTRA_MODULES = CLINIC_MODULE_OPTIONS.filter((m) => m.group === "extra")
+
 export default function ClinicSetupPage() {
   const params = useParams()
   const projectId = params.projectId as string
   const [settings, setSettings] = useState<ClinicSettings>(initialSettings)
+  const [activeTab, setActiveTab] = useState<ClinicSetupTabId>("basics")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState("")
@@ -293,7 +292,7 @@ export default function ClinicSetupPage() {
       setMessage("")
 
       await saveClinic()
-      setMessage("✓ Clinic settings saved successfully!")
+      setMessage("✓ Saved! Your clinic settings are updated.")
       setTimeout(() => setMessage(""), 3000)
     } catch (err: any) {
       setMessage(`✗ ${err?.message || "Failed to save settings"}`)
@@ -347,6 +346,7 @@ export default function ClinicSetupPage() {
     const pdfUrl = payload?.data?.prescriptionBlankPdfUrl
     updateSettings({
       uploadPrescriptionPDF: true,
+      useReplysysPrescription: false,
       prescriptionPDFUrl: pdfUrl,
       prescriptionPDFName: file.name,
     })
@@ -354,10 +354,16 @@ export default function ClinicSetupPage() {
   }
 
   const selectorMode = clinicTypeForSelector(settings.clinicType)
+  const typePlain =
+    selectorMode === "consultation" ? CLINIC_TYPE_PLAIN.consultation : CLINIC_TYPE_PLAIN.clinic_pharmacy
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 md:px-6">
-      <div className="mx-auto grid max-w-[min(100%,1200px)] gap-6 xl:grid-cols-[1fr_min(380px,100%)]">
+      <div
+        className={`mx-auto max-w-[min(100%,1200px)] ${
+          activeTab === "prescription" ? "grid gap-6 xl:grid-cols-[1fr_min(380px,100%)]" : ""
+        }`}
+      >
         <div className="space-y-5">
           <header className="border-b border-slate-200 pb-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -366,7 +372,7 @@ export default function ClinicSetupPage() {
                   Clinic setup
                 </h1>
                 <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                  Branding, clinic type, prescription layout, billing, and WhatsApp—kept on one scroll.
+                  Set up your clinic in 5 simple steps. Pick a tab, fill details, press Save.
                 </p>
               </div>
               <button
@@ -383,7 +389,7 @@ export default function ClinicSetupPage() {
                 ) : (
                   <>
                     <Save className="h-4 w-4" />
-                    Save
+                    Save all
                   </>
                 )}
               </button>
@@ -391,8 +397,8 @@ export default function ClinicSetupPage() {
 
             {settings.clinicType === "hospital" && (
               <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                This project still stores the legacy <span className="font-medium">hospital</span> type. The selector shows{" "}
-                <span className="font-medium">integrated dispensary</span>. Pick the mode you want and save to move to the new two-type model.
+                Old hospital type detected. Pick <span className="font-medium">Doctor clinic only</span> or{" "}
+                <span className="font-medium">Clinic + medicine counter</span> and save.
               </p>
             )}
 
@@ -408,87 +414,103 @@ export default function ClinicSetupPage() {
             {loading && (
               <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Loading clinic settings…
+                Loading…
               </div>
             )}
           </header>
 
-          {/* CLINIC INFO SECTION */}
-          <ClinicInfoSection settings={settings} onUpdate={updateSettings} onLogoUpload={handleLogoUpload} />
+          <ClinicSetupTabNav tabs={CLINIC_SETUP_TABS} activeTab={activeTab} onChange={setActiveTab} />
 
-          {/* CLINIC TYPE SECTION */}
-          <ClinicTypeSelector settings={settings} onUpdate={handleClinicTypeUpdate} />
-
-          <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-            {selectorMode === "consultation" ? (
-              <>
-                <span className="font-medium text-slate-800">Consultation only</span> — patients, appointments, doctors,
-                prescriptions, medicine catalog, billing, WhatsApp. Inventory and stock-linked pharmacy billing stay off unless you turn them on below.
-              </>
-            ) : (
-              <>
-                <span className="font-medium text-slate-800">Integrated dispensary</span> — adds inventory and ties
-                pharmacy billing to stock. Extra modules (front desk, nurses, compliance, flow builder) stay optional—open advanced to toggle.
-              </>
-            )}
-          </p>
-
-          <details className="group rounded-lg border border-slate-200 bg-white shadow-sm">
-            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-900 marker:content-none [&::-webkit-details-marker]:hidden">
-              <span className="flex items-center justify-between gap-2">
-                Sidebar modules
-                <span className="text-xs font-normal text-slate-500 group-open:hidden">Show</span>
-                <span className="hidden text-xs font-normal text-slate-500 group-open:inline">Hide</span>
-              </span>
-              <p className="mt-1 text-xs font-normal text-slate-500">
-                Usually matches your clinic type; expand only to hide or add items (e.g. front desk, compliance).
+          {activeTab === "basics" && (
+            <div className="space-y-5">
+              <ClinicInfoSection settings={settings} onUpdate={updateSettings} onLogoUpload={handleLogoUpload} />
+              <ClinicTypeSelector settings={settings} onUpdate={handleClinicTypeUpdate} />
+              <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                <span className="font-medium text-slate-900">{typePlain.title}</span>
+                {" — "}
+                {typePlain.description}
               </p>
-            </summary>
-            <div className="border-t border-slate-100 p-4 pt-2">
-              <div className="grid gap-2 md:grid-cols-2">
-                {HEALTHCARE_MODULES.map((module) => (
-                  <ToggleRow
-                    key={module.id}
-                    title={module.title}
-                    description={module.description}
-                    enabled={settings.enabledModules.includes(module.id)}
-                    onChange={(enabled) => toggleModule(module.id, enabled)}
-                  />
-                ))}
-              </div>
-              {!settings.enabledModules.includes("pharmacy") && (
-                <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Pharmacy is off: prescription medicines stay free-text and are not linked to the medicine master.
-                </p>
-              )}
-              {settings.clinicType === "consultation" && settings.enabledModules.includes("pharmacy") && !settings.enablePharmacyBilling && (
-                <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  Consultation default: pharmacy billing from stock is off. Enable it under Billing if you invoice medicines in-app.
-                </p>
-              )}
             </div>
-          </details>
+          )}
 
-          {/* PRESCRIPTION SETTINGS */}
-          <PrescriptionSettings settings={settings} onUpdate={updateSettings} onPdfUpload={handlePrescriptionPdfUpload} />
+          {activeTab === "features" && (
+            <div className="space-y-5">
+              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="text-base font-semibold text-slate-900">What shows in the left menu</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Turn off anything your staff should not see. Most clinics only need the main options.
+                </p>
 
-          {/* BILLING SETTINGS */}
-          <BillingSettings settings={settings} onUpdate={updateBillingSettings} />
+                <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Main (recommended)</p>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  {MAIN_MODULES.map((module) => (
+                    <ToggleRow
+                      key={module.id}
+                      title={module.title}
+                      description={module.description}
+                      enabled={settings.enabledModules.includes(module.id)}
+                      onChange={(enabled) => toggleModule(module.id, enabled)}
+                    />
+                  ))}
+                </div>
 
-          {/* WHATSAPP PACK + AUTOMATION */}
-          <HealthcareWhatsAppClinicCard
-            projectId={projectId}
-            automationToggles={
-              <WhatsAppSettings
-                embedded
-                settings={settings}
-                onUpdate={updateWhatsAppSettings}
-              />
-            }
-          />
+                <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-500">Extra (optional)</p>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  {EXTRA_MODULES.map((module) => (
+                    <ToggleRow
+                      key={module.id}
+                      title={module.title}
+                      description={module.description}
+                      enabled={settings.enabledModules.includes(module.id)}
+                      onChange={(enabled) => toggleModule(module.id, enabled)}
+                    />
+                  ))}
+                </div>
+
+                {!settings.enabledModules.includes("pharmacy") && (
+                  <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    Medicine list is off — doctor will type medicine names manually on prescription.
+                  </p>
+                )}
+                {settings.clinicType === "consultation" &&
+                  settings.enabledModules.includes("pharmacy") &&
+                  !settings.enablePharmacyBilling && (
+                    <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      Medicine list is on but counter billing is off. Turn on &quot;Sell medicines at counter&quot; under Payments tab if needed.
+                    </p>
+                  )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "prescription" && (
+            <PrescriptionSettings
+              settings={settings}
+              onUpdate={updateSettings}
+              onPdfUpload={handlePrescriptionPdfUpload}
+            />
+          )}
+
+          {activeTab === "billing" && (
+            <BillingSettings settings={settings} onUpdate={updateBillingSettings} />
+          )}
+
+          {activeTab === "whatsapp" && (
+            <HealthcareWhatsAppClinicCard
+              projectId={projectId}
+              automationToggles={
+                <WhatsAppSettings embedded settings={settings} onUpdate={updateWhatsAppSettings} />
+              }
+            />
+          )}
         </div>
 
-        <PrescriptionPreview settings={settings} />
+        {activeTab === "prescription" && (
+          <aside className="xl:sticky xl:top-6 xl:self-start">
+            <p className="mb-2 text-xs font-medium text-slate-500">Preview — how print will look</p>
+            <PrescriptionPreview settings={settings} />
+          </aside>
+        )}
       </div>
     </div>
   )

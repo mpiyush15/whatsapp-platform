@@ -60,29 +60,39 @@ export default function PrescriptionSettings({ settings, onUpdate, onPdfUpload }
   }
   return (
     <SectionCard
-      title="Prescription Design"
-      subtitle="Configure prescription printing and layout"
+      title="How prescriptions look on paper"
+      subtitle="Use Replysys layout — best for View and Print on patient page"
     >
       <div className="space-y-4">
         <ToggleRow
-          title="Use Replysys Prescription Design"
-          description="Use modern built-in prescription templates"
+          title="Use Replysys prescription layout"
+          description="Ready-made print format (recommended)"
           enabled={settings.useReplysysPrescription}
-          onChange={(value) => onUpdate({ useReplysysPrescription: value })}
+          onChange={(value) =>
+            onUpdate({
+              useReplysysPrescription: value,
+              ...(value ? { uploadPrescriptionPDF: false } : {}),
+            })
+          }
         />
 
         <ToggleRow
-          title="Upload Existing Prescription PDF"
-          description="Use your current clinic letterhead as background"
+          title="Use my own letterhead PDF"
+          description="Medicines print on your uploaded clinic paper"
           enabled={settings.uploadPrescriptionPDF}
-          onChange={(value) => onUpdate({ uploadPrescriptionPDF: value })}
+          onChange={(value) =>
+            onUpdate({
+              uploadPrescriptionPDF: value,
+              ...(value ? { useReplysysPrescription: false } : {}),
+            })
+          }
         />
 
         {settings.uploadPrescriptionPDF && (
           <div className="border-2 rounded-3xl p-5 bg-slate-50">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
               <div>
-                <h3 className="font-bold text-slate-900">Uploaded Prescription Template</h3>
+                <h3 className="font-bold text-slate-900">Your letterhead PDF</h3>
                 <p className="text-sm text-slate-500 mt-2">
                   {settings.prescriptionPDFName || 'No PDF uploaded yet'}
                 </p>

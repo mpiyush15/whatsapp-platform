@@ -1,3 +1,4 @@
+import axios from 'axios';
 import Clinic from '../models/Clinic.js';
 import Project from '../models/Project.js';
 import { BusinessCategory } from '../constants/enums.js';
@@ -123,6 +124,39 @@ export const updateClinicLogo = async (req, res) => {
   }
 };
 
+/** Stream uploaded clinic letterhead PDF (avoids browser CORS on S3 signed URLs). */
+export const getPrescriptionBlankPdf = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { accountId } = req.user;
+
+    const project = await Project.findOne({ projectId, accountId });
+    if (!project) {
+      throw new NotFoundError('Project not found');
+    }
+
+    const clinic = await Clinic.findOne({ projectId });
+    if (!clinic?.prescriptionBlankPdfUrl?.trim()) {
+      throw new NotFoundError('No prescription letterhead PDF uploaded for this clinic');
+    }
+
+    const pdfResponse = await axios.get(clinic.prescriptionBlankPdfUrl.trim(), {
+      responseType: 'arraybuffer',
+      timeout: 30000,
+      maxContentLength: 15 * 1024 * 1024,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(Buffer.from(pdfResponse.data));
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return handleControllerError(res, new NotFoundError('Prescription letterhead PDF not found'), 'getPrescriptionBlankPdf');
+    }
+    handleControllerError(res, error, 'getPrescriptionBlankPdf');
+  }
+};
+
 // Update prescription design settings
 export const updatePrescriptionDesign = async (req, res) => {
   try {
@@ -152,6 +186,7 @@ export const updatePrescriptionDesign = async (req, res) => {
         7 * 24 * 3600 // 1 week max
       );
       clinic.prescriptionBlankPdfUrl = s3Url;
+      clinic.enablePrescriptionDesign = false;
     } else if (prescriptionBlankPdfUrl !== undefined) {
       clinic.prescriptionBlankPdfUrl = prescriptionBlankPdfUrl;
     }

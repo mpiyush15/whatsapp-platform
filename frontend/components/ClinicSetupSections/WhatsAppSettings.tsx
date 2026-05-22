@@ -16,22 +16,22 @@ export default function WhatsAppSettings({ settings, onUpdate, embedded = false 
   const toggles = (
       <div className="space-y-4">
         <ToggleRow
-          title="Send Prescription on WhatsApp"
-          description="Automatically share prescription PDF"
+          title="Send prescription on WhatsApp"
+          description="Patient gets PDF after doctor saves"
           enabled={settings.sendPrescriptionWhatsApp}
           onChange={(value) => onUpdate({ sendPrescriptionWhatsApp: value })}
         />
 
         <ToggleRow
-          title="Medicine Reminder Automation"
-          description="Send medicine reminders to patients"
+          title="Medicine reminders"
+          description="Daily reminder messages for medicines"
           enabled={settings.medicineReminders}
           onChange={(value) => onUpdate({ medicineReminders: value })}
         />
 
         <ToggleRow
-          title="Follow-up Reminder Automation"
-          description="Automatically remind patients before visits"
+          title="Visit reminders"
+          description="Remind patient before next appointment"
           enabled={settings.followUpReminders}
           onChange={(value) => onUpdate({ followUpReminders: value })}
         />
@@ -41,8 +41,8 @@ export default function WhatsAppSettings({ settings, onUpdate, embedded = false 
   if (embedded) {
     return (
       <div>
-        <p className="mb-3 text-sm font-semibold text-slate-900">Automation toggles</p>
-        <p className="mb-4 text-xs text-slate-500">Enable when templates are approved—backend will respect these soon.</p>
+        <p className="mb-3 text-sm font-semibold text-slate-900">What to send automatically</p>
+        <p className="mb-4 text-xs text-slate-500">Turn on after your WhatsApp templates are approved.</p>
         {toggles}
       </div>
     )
@@ -50,8 +50,8 @@ export default function WhatsAppSettings({ settings, onUpdate, embedded = false 
 
   return (
     <SectionCard
-      title="WhatsApp Automation"
-      subtitle="Enable Replysys communication workflows"
+      title="WhatsApp messages"
+      subtitle="What to send to patients automatically"
     >
       {toggles}
     </SectionCard>

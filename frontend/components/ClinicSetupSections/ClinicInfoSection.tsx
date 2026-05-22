@@ -63,8 +63,8 @@ export default function ClinicInfoSection({ settings, onUpdate, onLogoUpload }: 
 
   return (
     <SectionCard
-      title="Clinic Information"
-      subtitle="Basic clinic and doctor details"
+      title="Your clinic details"
+      subtitle="Shown on prescriptions and messages to patients"
     >
       <div className="grid md:grid-cols-2 gap-5 mb-6">
         <div>

@@ -1,5 +1,6 @@
 import jsPDF from "jspdf"
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+import { fetchAPI } from './api-client'
 
 export type PrescriptionTemplate = 'classic' | 'modern' | 'minimal' | 'clean'
 
@@ -7,6 +8,9 @@ export interface PrescriptionPdfData {
   prescriptionId: string
   patientSnapshot?: {
     fullName?: string | null
+    phoneNumber?: string | null
+    ageYears?: number | string | null
+    gender?: string | null
   }
   doctorSnapshot?: {
     fullName?: string | null
@@ -45,6 +49,43 @@ function formatDate(value?: string | null) {
   } catch {
     return value
   }
+}
+
+function formatDateShort(value?: string | null) {
+  if (!value) return ""
+  try {
+    return new Date(value).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    })
+  } catch {
+    return String(value)
+  }
+}
+
+export function computeAgeYears(dateOfBirth?: string | null): number | null {
+  if (!dateOfBirth) return null
+  try {
+    const dob = new Date(dateOfBirth)
+    if (Number.isNaN(dob.getTime())) return null
+    const today = new Date()
+    let age = today.getFullYear() - dob.getFullYear()
+    const monthDiff = today.getMonth() - dob.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) age -= 1
+    return age >= 0 ? age : null
+  } catch {
+    return null
+  }
+}
+
+function formatMedicineSchedule(medicine: NonNullable<PrescriptionPdfData["medicines"]>[number]) {
+  const parts: string[] = []
+  if (medicine.dosage?.trim()) parts.push(medicine.dosage.trim())
+  if (medicine.frequency?.trim()) parts.push(medicine.frequency.trim())
+  if (medicine.durationDays && medicine.durationDays > 0) parts.push(`${medicine.durationDays} days`)
+  if (medicine.quantity && medicine.quantity > 0) parts.push(`Qty ${medicine.quantity}`)
+  return parts.join("  •  ")
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -532,13 +573,13 @@ export async function buildPrescriptionPdf(prescription: PrescriptionPdfData, te
   })
 
   if (!prescription.clinicLogoDataUrl && prescription.clinicLogoUrl) {
-    console.log('🔄 Converting logo URL to data URL:', prescription.clinicLogoUrl)
-    const dataUrl = await getDataUrlFromRemoteImage(prescription.clinicLogoUrl)
-    if (dataUrl) {
-      console.log('✅ Logo converted to data URL')
-      pdfPrescription = { ...prescription, clinicLogoDataUrl: dataUrl }
-    } else {
-      console.log('❌ Failed to convert logo URL to data URL')
+    try {
+      const dataUrl = await getDataUrlFromRemoteImage(prescription.clinicLogoUrl)
+      if (dataUrl) {
+        pdfPrescription = { ...prescription, clinicLogoDataUrl: dataUrl }
+      }
+    } catch {
+      /* logo optional — CORS on S3 is common */
     }
   }
 
@@ -566,86 +607,285 @@ function estimateTextLines(text: string, maxWidth: number, fontSize: number) {
   return Math.max(1, Math.ceil(text.length * averageCharWidth / maxWidth))
 }
 
-export async function openPrescriptionPdfWithBackground(prescription: PrescriptionPdfData, backgroundPdfUrl: string, autoPrint = false) {
+export type PrescriptionBackgroundPdfOptions = {
+  /** Load via authenticated API (clinic letterhead proxy). */
+  authenticated?: boolean
+}
+
+async function loadBackgroundPdfBytes(
+  backgroundPdfUrl: string,
+  options?: PrescriptionBackgroundPdfOptions
+): Promise<ArrayBuffer> {
   try {
-    const response = await fetch(backgroundPdfUrl)
+    const response = options?.authenticated
+      ? await fetchAPI(backgroundPdfUrl)
+      : await fetch(backgroundPdfUrl)
+
     if (!response.ok) {
       throw new Error(`Failed to fetch background PDF: ${response.status}`)
     }
 
-    const pdfBytes = await response.arrayBuffer()
+    return response.arrayBuffer()
+  } catch (networkErr) {
+    const hint =
+      networkErr instanceof TypeError && networkErr.message === 'Failed to fetch'
+        ? 'Cannot load your clinic letterhead PDF. Re-upload it in Clinic setup → Prescription paper.'
+        : networkErr instanceof Error
+          ? networkErr.message
+          : 'Cannot load uploaded prescription PDF.'
+    throw new Error(hint)
+  }
+}
+
+/** Overlay patient, doctor, medicines on uploaded clinic letterhead (no clinic name / Rx id). */
+async function renderPrescriptionOnLetterhead(
+  prescription: PrescriptionPdfData,
+  pdfDoc: PDFDocument
+) {
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+  const textColor = rgb(0.1, 0.1, 0.1)
+  const labelColor = rgb(0.35, 0.35, 0.35)
+  const ruleColor = rgb(0.75, 0.75, 0.75)
+
+  const page = pdfDoc.getPages()[0]
+  const { width, height } = page.getSize()
+
+  const marginX = Math.max(42, width * 0.08)
+  const marginRight = width - marginX
+  const contentWidth = marginRight - marginX
+  const bottomSafe = Math.max(56, height * 0.1)
+  const topContentY = height - Math.max(200, height * 0.28)
+
+  let y = topContentY
+  const gap = (n = 1) => {
+    y -= n * 4
+  }
+
+  const lineHeightFor = (size: number) => size * 1.35
+
+  const measureLines = (text: string, size: number, maxW: number) =>
+    estimateTextLines(text, maxW, size)
+
+  const advanceY = (text: string, size: number, maxW: number) => {
+    const lines = measureLines(text, size, maxW)
+    y -= lines * lineHeightFor(size) + 3
+  }
+
+  const drawWrapped = (
+    text: string,
+    opts: {
+      x?: number
+      size?: number
+      bold?: boolean
+      color?: ReturnType<typeof rgb>
+      maxWidth?: number
+    } = {}
+  ) => {
+    if (!text.trim()) return
+    const size = opts.size ?? 10
+    const maxW = opts.maxWidth ?? contentWidth
+    const x = opts.x ?? marginX
+    const usedFont = opts.bold ? fontBold : font
+    page.drawText(text, {
+      x,
+      y,
+      size,
+      font: usedFont,
+      color: opts.color ?? textColor,
+      maxWidth: maxW,
+      lineHeight: lineHeightFor(size),
+    })
+    advanceY(text, size, maxW)
+  }
+
+  const drawRule = () => {
+    y -= 6
+    page.drawLine({
+      start: { x: marginX, y },
+      end: { x: marginRight, y },
+      thickness: 0.5,
+      color: ruleColor,
+    })
+    y -= 10
+  }
+
+  const patientName = prescription.patientSnapshot?.fullName?.trim() || "Patient"
+  const patientPhone = prescription.patientSnapshot?.phoneNumber?.trim()
+  const patientAge = prescription.patientSnapshot?.ageYears
+  const patientGender = prescription.patientSnapshot?.gender?.trim()
+  const doctorName = prescription.doctorSnapshot?.fullName?.trim() || "Doctor"
+  const doctorSpec = prescription.doctorSnapshot?.specialization?.trim()
+
+  const patientMeta: string[] = []
+  if (patientAge != null && patientAge !== "") patientMeta.push(`${patientAge} yrs`)
+  if (patientGender) patientMeta.push(patientGender)
+  if (patientPhone) patientMeta.push(patientPhone)
+
+  const colMid = marginX + contentWidth * 0.52
+  const colWidth = contentWidth * 0.48 - 8
+
+  page.drawText("Patient", {
+    x: marginX,
+    y,
+    size: 8,
+    font: fontBold,
+    color: labelColor,
+  })
+  page.drawText("Doctor", {
+    x: colMid,
+    y,
+    size: 8,
+    font: fontBold,
+    color: labelColor,
+  })
+  y -= 14
+
+  page.drawText(patientName, {
+    x: marginX,
+    y,
+    size: 11,
+    font: fontBold,
+    color: textColor,
+    maxWidth: colWidth,
+    lineHeight: 14,
+  })
+  page.drawText(doctorName, {
+    x: colMid,
+    y,
+    size: 11,
+    font: fontBold,
+    color: textColor,
+    maxWidth: colWidth,
+    lineHeight: 14,
+  })
+  y -= 16
+
+  if (patientMeta.length) {
+    const metaLine = patientMeta.join("  •  ")
+    page.drawText(metaLine, {
+      x: marginX,
+      y,
+      size: 9,
+      font,
+      color: textColor,
+      maxWidth: colWidth,
+      lineHeight: 12,
+    })
+  }
+  if (doctorSpec) {
+    page.drawText(doctorSpec, {
+      x: colMid,
+      y,
+      size: 9,
+      font,
+      color: textColor,
+      maxWidth: colWidth,
+      lineHeight: 12,
+    })
+  }
+  y -= patientMeta.length || doctorSpec ? 14 : 0
+
+  const dateLine = formatDateShort(prescription.issuedAt)
+  const followLine = formatDateShort(prescription.followUpAt)
+  if (dateLine) {
+    drawWrapped(`Date: ${dateLine}`, { size: 9, color: labelColor })
+  }
+  if (followLine) {
+    drawWrapped(`Next visit: ${followLine}`, { size: 9, color: labelColor })
+  }
+
+  gap()
+  drawRule()
+
+  if (prescription.diagnosis?.trim()) {
+    drawWrapped(`Diagnosis: ${prescription.diagnosis.trim()}`, { size: 10, bold: true })
+    gap()
+  }
+
+  const medicines = prescription.medicines || []
+  if (medicines.length > 0) {
+    drawWrapped("Medicines", { size: 10, bold: true, color: labelColor })
+    gap(0.5)
+
+    for (let index = 0; index < medicines.length; index += 1) {
+      if (y < bottomSafe + 40) break
+
+      const medicine = medicines[index]
+      const schedule = formatMedicineSchedule(medicine)
+
+      drawWrapped(`${index + 1}. ${medicine.medicineName}`, { size: 11, bold: true })
+
+      if (schedule) {
+        drawWrapped(`   ${schedule}`, { size: 9.5 })
+      }
+
+      if (medicine.instructions?.trim()) {
+        drawWrapped(`   Note: ${medicine.instructions.trim()}`, { size: 9, color: labelColor })
+      }
+
+      gap(0.75)
+    }
+  }
+
+  if (prescription.notes?.trim() && y > bottomSafe + 24) {
+    drawRule()
+    drawWrapped("Advice / Notes", { size: 9, bold: true, color: labelColor })
+    drawWrapped(prescription.notes.trim(), { size: 9.5 })
+  }
+}
+
+/** Build PDF blob URL for in-app preview (caller must revoke URL when done). */
+export async function createPrescriptionPdfBlobUrl(
+  prescription: PrescriptionPdfData,
+  template: PrescriptionTemplate = 'classic',
+  backgroundPdfUrl?: string,
+  backgroundOptions?: PrescriptionBackgroundPdfOptions
+): Promise<string> {
+  if (backgroundPdfUrl) {
+    const pdfBytes = await loadBackgroundPdfBytes(backgroundPdfUrl, backgroundOptions)
     const pdfDoc = await PDFDocument.load(pdfBytes)
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-    const color = rgb(0.12, 0.12, 0.12)
-    const pages = pdfDoc.getPages()
-    let page = pages[0]
-    const { width, height } = page.getSize()
-    let y = height - 200  // Start lower to avoid header overlap
-    const lineHeight = 14
-    const maxWidth = width - 100  // More margin
+    await renderPrescriptionOnLetterhead(prescription, pdfDoc)
+    const modifiedBytes = await pdfDoc.save()
+    const blob = new Blob([new Uint8Array(modifiedBytes)], { type: 'application/pdf' })
+    return URL.createObjectURL(blob)
+  }
 
-    const drawText = (text: string, options: { size?: number; x?: number } = {}) => {
-      const size = options.size || 10
-      const x = options.x ?? 50  // More left margin
-      page.drawText(text, {
-        x,
-        y,
-        size,
-        font,
-        color,
-        maxWidth,
-        lineHeight: size * 1.3,
-      })
-      y -= estimateTextLines(text, maxWidth, size) * lineHeight + 4
-    }
+  const doc = await buildPrescriptionPdf(prescription, template)
+  const blob = doc.output('blob')
+  return URL.createObjectURL(blob)
+}
 
-    if (prescription.clinicName) {
-      drawText(`Clinic: ${prescription.clinicName}`, { size: 12 })
-    }
-    drawText(`Prescription ID: ${prescription.prescriptionId || '—'}`)
-    drawText(`Patient: ${prescription.patientSnapshot?.fullName || prescription.patientId || '—'}`)
-    drawText(`Doctor: ${prescription.doctorSnapshot?.fullName || prescription.doctorId || '—'}`)
-    if (prescription.diagnosis) {
-      drawText(`Diagnosis: ${prescription.diagnosis}`, { size: 10 })
-    }
-    if (prescription.issuedAt) {
-      drawText(`Issued At: ${formatDate(prescription.issuedAt)}`)
-    }
-    if (prescription.followUpAt) {
-      drawText(`Follow-up: ${formatDate(prescription.followUpAt)}`)
-    }
-
-    const medicines = prescription.medicines || []
-    if (medicines.length > 0) {
-      drawText('Medicines:', { size: 11 })
-      medicines.forEach((medicine, index) => {
-        const medicineText = `${index + 1}. ${medicine.medicineName}${medicine.dosage ? ` • ${medicine.dosage}` : ''}${medicine.frequency ? ` • ${medicine.frequency}` : ''}${medicine.durationDays ? ` • ${medicine.durationDays}d` : ''}${medicine.quantity ? ` • qty ${medicine.quantity}` : ''}`
-        drawText(medicineText)
-        if (medicine.instructions) {
-          drawText(`Instructions: ${medicine.instructions}`, { size: 9 })
-        }
-        if (y < 80) {
-          // stop if page is full; further pages can be added later
-          return
-        }
-      })
-    }
-
-    if (prescription.notes && y > 80) {
-      drawText(`Notes: ${prescription.notes}`, { size: 9 })
-    }
+export async function openPrescriptionPdfWithBackground(
+  prescription: PrescriptionPdfData,
+  backgroundPdfUrl: string,
+  autoPrint = false,
+  options?: PrescriptionBackgroundPdfOptions
+) {
+  try {
+    const pdfBytes = await loadBackgroundPdfBytes(backgroundPdfUrl, options)
+    const pdfDoc = await PDFDocument.load(pdfBytes)
+    await renderPrescriptionOnLetterhead(prescription, pdfDoc)
 
     const modifiedBytes = await pdfDoc.save()
     const blob = new Blob([new Uint8Array(modifiedBytes)], { type: 'application/pdf' })
     const url = URL.createObjectURL(blob)
     const pdfWindow = window.open(url, '_blank')
     if (!pdfWindow) {
+      URL.revokeObjectURL(url)
       throw new Error('Could not open PDF. Please allow pop-ups.')
     }
     if (autoPrint) {
-      pdfWindow.onload = () => {
-        pdfWindow.print()
+      const triggerPrint = () => {
+        try {
+          pdfWindow.focus()
+          pdfWindow.print()
+        } catch {
+          /* wait for PDF render */
+        }
       }
+      pdfWindow.addEventListener('load', triggerPrint)
+      setTimeout(triggerPrint, 900)
     }
   } catch (error) {
     console.error('Failed to overlay prescription on PDF:', error)
@@ -653,11 +893,31 @@ export async function openPrescriptionPdfWithBackground(prescription: Prescripti
   }
 }
 
-export async function openPrescriptionPdf(prescription: PrescriptionPdfData, template: PrescriptionTemplate = 'classic') {
+export async function openPrescriptionPdf(
+  prescription: PrescriptionPdfData,
+  template: PrescriptionTemplate = 'classic',
+  autoPrint = false
+) {
   const doc = await buildPrescriptionPdf(prescription, template)
   const blob = doc.output("blob")
   const url = URL.createObjectURL(blob)
-  window.open(url, "_blank")
+  const pdfWindow = window.open(url, "_blank")
+  if (!pdfWindow) {
+    URL.revokeObjectURL(url)
+    throw new Error("Could not open PDF. Please allow pop-ups for this site.")
+  }
+  if (autoPrint) {
+    const triggerPrint = () => {
+      try {
+        pdfWindow.focus()
+        pdfWindow.print()
+      } catch {
+        /* print may fail until PDF loads */
+      }
+    }
+    pdfWindow.addEventListener("load", triggerPrint)
+    setTimeout(triggerPrint, 800)
+  }
 }
 
 export async function downloadPrescriptionPdf(prescription: PrescriptionPdfData, template: PrescriptionTemplate = 'classic') {

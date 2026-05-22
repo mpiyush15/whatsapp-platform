@@ -96,7 +96,7 @@ export default function PrescriptionFormModal({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-            <p className="text-sm text-slate-500">Create a doctor-issued prescription record.</p>
+            <p className="text-sm text-slate-500">Add medicines and notes for this visit.</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
             <X className="h-4 w-4" />

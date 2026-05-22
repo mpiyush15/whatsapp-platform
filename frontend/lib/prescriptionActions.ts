@@ -1,4 +1,4 @@
-import { openPrescriptionPdf, openPrescriptionPdfWithBackground, PrescriptionTemplate } from './prescriptionPdf'
+import { createPrescriptionPdfBlobUrl, openPrescriptionPdf, openPrescriptionPdfWithBackground, PrescriptionTemplate } from './prescriptionPdf'
 
 export interface PrescriptionViewConfig {
   prescription: any
@@ -15,78 +15,95 @@ export interface PrescriptionViewConfig {
     footerTextColor?: string
     footerFontWeight?: string
   }
-  action: 'view' | 'print'
+  action?: 'view' | 'print'
+  /** Required to load uploaded letterhead via API (no S3 CORS issues). */
+  projectId?: string
 }
 
-/**
- * Unified function to handle prescription view and print
- * Uses the clinic's selected template and custom branding settings
- * Respects design toggle: uses generated PDF if enabled, uploaded PDF if disabled
- */
+function clinicUsesGeneratedPrescriptionDesign(clinic: PrescriptionViewConfig['clinic']): boolean {
+  const flag = clinic.enablePrescriptionDesign as boolean | string | undefined
+  if (flag === false || flag === 'false') return false
+  return true
+}
+
+function buildPdfConfig(prescription: PrescriptionViewConfig['prescription'], clinic: PrescriptionViewConfig['clinic']) {
+  return {
+    ...prescription,
+    clinicName: clinic.name,
+    clinicLogoUrl: clinic.logoUrl,
+    headerColor: clinic.headerColor,
+    headerTextColor: clinic.headerTextColor,
+    headerFontWeight: clinic.headerFontWeight,
+    footerColor: clinic.footerColor,
+    footerTextColor: clinic.footerTextColor,
+    footerFontWeight: clinic.footerFontWeight,
+  }
+}
+
+function prescriptionBlankPdfProxyPath(projectId: string) {
+  return `/healthcare/clinic/${encodeURIComponent(projectId)}/prescription-blank-pdf`
+}
+
+/** Returns blob URL for drawer preview. Revoke with URL.revokeObjectURL when closing. */
+export async function getPrescriptionPdfBlobUrl(config: PrescriptionViewConfig): Promise<string> {
+  const { prescription, clinic, projectId } = config
+  const pdfConfig = buildPdfConfig(prescription, clinic)
+  const template = (clinic.prescriptionTemplate || 'classic') as PrescriptionTemplate
+  const blankUrl = clinic.prescriptionBlankPdfUrl?.trim()
+
+  if (blankUrl) {
+    const sources: Array<{ url: string; authenticated: boolean }> = []
+    if (projectId) {
+      sources.push({ url: prescriptionBlankPdfProxyPath(projectId), authenticated: true })
+    }
+    sources.push({ url: blankUrl, authenticated: false })
+
+    for (const source of sources) {
+      try {
+        return await createPrescriptionPdfBlobUrl(pdfConfig, template, source.url, {
+          authenticated: source.authenticated,
+        })
+      } catch (blankErr) {
+        console.warn('Letterhead PDF load failed, trying next source:', blankErr)
+      }
+    }
+  }
+
+  return createPrescriptionPdfBlobUrl(pdfConfig, template)
+}
+
+export async function printPrescriptionPdf(config: PrescriptionViewConfig): Promise<void> {
+  const url = await getPrescriptionPdfBlobUrl(config)
+  const pdfWindow = window.open(url, '_blank')
+  if (!pdfWindow) {
+    URL.revokeObjectURL(url)
+    throw new Error('Could not open print window. Please allow pop-ups for this site.')
+  }
+  const triggerPrint = () => {
+    try {
+      pdfWindow.focus()
+      pdfWindow.print()
+    } catch {
+      /* wait for PDF */
+    }
+  }
+  pdfWindow.addEventListener('load', triggerPrint)
+  setTimeout(triggerPrint, 900)
+}
+
+/** Opens PDF in new tab (legacy). Prefer drawer + getPrescriptionPdfBlobUrl. */
 export const handlePrescriptionAction = async (config: PrescriptionViewConfig) => {
-  const { prescription, clinic, action } = config
+  const { action = 'view' } = config
 
-  try {
-    console.log('📋 handlePrescriptionAction called:', {
-      clinicName: clinic.name,
-      clinicLogoUrl: clinic.logoUrl,
-      enablePrescriptionDesign: clinic.enablePrescriptionDesign,
-      headerColor: clinic.headerColor,
-      footerColor: clinic.footerColor,
-      action
-    })
+  if (action === 'print') {
+    await printPrescriptionPdf(config)
+    return
+  }
 
-    // Design is enabled - use generated PDF template with clinic's custom settings
-    if (clinic.enablePrescriptionDesign !== false) {
-      const pdfConfig = {
-        ...prescription,
-        clinicName: clinic.name,
-        clinicLogoUrl: clinic.logoUrl,
-        headerColor: clinic.headerColor,
-        headerTextColor: clinic.headerTextColor,
-        headerFontWeight: clinic.headerFontWeight,
-        footerColor: clinic.footerColor,
-        footerTextColor: clinic.footerTextColor,
-        footerFontWeight: clinic.footerFontWeight,
-      }
-      const template = clinic.prescriptionTemplate || 'classic'
-      
-      console.log('📋 PDF Config:', {
-        clinicName: pdfConfig.clinicName,
-        clinicLogoUrl: pdfConfig.clinicLogoUrl,
-        headerColor: pdfConfig.headerColor,
-        template,
-      })
-
-      if (action === 'view' || action === 'print') {
-        await openPrescriptionPdf(pdfConfig, template)
-      }
-    }
-    // Design is disabled - overlay prescription data on uploaded blank PDF
-    else if (clinic.prescriptionBlankPdfUrl) {
-      const pdfConfig = {
-        ...prescription,
-        clinicName: clinic.name,
-        clinicLogoUrl: clinic.logoUrl,
-        headerColor: clinic.headerColor,
-        headerTextColor: clinic.headerTextColor,
-        headerFontWeight: clinic.headerFontWeight,
-        footerColor: clinic.footerColor,
-        footerTextColor: clinic.footerTextColor,
-        footerFontWeight: clinic.footerFontWeight,
-      }
-
-      if (action === 'view') {
-        await openPrescriptionPdfWithBackground(pdfConfig, clinic.prescriptionBlankPdfUrl, false)
-      } else if (action === 'print') {
-        await openPrescriptionPdfWithBackground(pdfConfig, clinic.prescriptionBlankPdfUrl, true)
-      }
-    } else {
-      throw new Error('No prescription template configured. Please set up in clinic settings.')
-    }
-  } catch (err) {
-    console.error(`Failed to ${action} prescription:`, err)
-    alert(`Failed to ${action} prescription. ${err instanceof Error ? err.message : 'Please try again.'}`)
-    throw err
+  const url = await getPrescriptionPdfBlobUrl(config)
+  const pdfWindow = window.open(url, '_blank')
+  if (!pdfWindow) {
+    URL.revokeObjectURL(url)
+    throw new Error('Could not open PDF. Please allow pop-ups for this site.')
   }
 }

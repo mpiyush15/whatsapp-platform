@@ -2,9 +2,34 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Loader2, ArrowLeft, FileText, Receipt, Save, X, Plus, Eye, Calendar, Pencil } from "lucide-react"
+import { Loader2, ArrowLeft, FileText, Receipt, Save, X, Plus, Eye, Calendar, Pencil, MessageCircle } from "lucide-react"
 import { apiGet, apiPost, apiPut } from "@/lib/api-client"
-import { handlePrescriptionAction } from "@/lib/prescriptionActions"
+import { authService } from "@/lib/auth"
+import { getPrescriptionPdfBlobUrl, printPrescriptionPdf } from "@/lib/prescriptionActions"
+import DataTable from "@/components/DataTable"
+import { PrescriptionViewDrawer } from "@/components/healthcare/patient/PrescriptionViewDrawer"
+import { computeAgeYears } from "@/lib/prescriptionPdf"
+import { BookVisitModal, type BookVisitDoctorOption } from "@/components/healthcare/patient/BookVisitModal"
+import { PatientClinicalNotes } from "@/components/healthcare/patient/PatientClinicalNotes"
+import { PatientTabNav } from "@/components/healthcare/patient/PatientTabNav"
+import {
+  PatientPastActivitySection,
+  type PatientVisitHistoryPrescription,
+  type PatientVisitHistoryRow,
+} from "@/components/healthcare/patient/PatientPastActivitySection"
+import { PatientTodayVisitsTable } from "@/components/healthcare/patient/PatientTodayVisitsTable"
+import {
+  PATIENT_TABS,
+  canBookVisit,
+  canEditPatientNotes,
+  canFinishVisitWithFee,
+  canViewCompletedTodayVisits,
+  canWritePrescription,
+  defaultTabForRole,
+  resolveClinicStaffRole,
+  tabsForStaffRole,
+  type PatientTabId,
+} from "@/lib/healthcarePatientUi"
 import PrescriptionFormModal, {
   initialPrescriptionForm,
   PrescriptionFormState,
@@ -30,6 +55,10 @@ interface AppointmentRecord {
   scheduledAt: string
   status?: string
   reason?: string | null
+  updatedAt?: string | null
+  frontdesk?: {
+    completedAt?: string | null
+  } | null
   patientSnapshot?: {
     fullName?: string | null
     phoneNumber?: string | null
@@ -58,6 +87,12 @@ interface PrescriptionRecord {
     quantity?: number
     instructions?: string
   }>
+  patientSnapshot?: {
+    fullName?: string | null
+    phoneNumber?: string | null
+    ageYears?: number | string | null
+    gender?: string | null
+  } | null
   doctorSnapshot?: {
     fullName?: string | null
     specialization?: string | null
@@ -78,6 +113,17 @@ interface PatientInvoiceRecord {
   issuedAt?: string | null
   dueAt?: string | null
   items?: Array<{ description: string; quantity: number; unitPrice: number; total?: number }>
+}
+
+interface PatientPaymentRecord {
+  patientPaymentId: string
+  patientId: string
+  patientInvoiceId?: string | null
+  amount: number
+  method?: string | null
+  status?: string | null
+  paidAt?: string | null
+  referenceNumber?: string | null
 }
 
 interface FollowUpRecord {
@@ -169,6 +215,7 @@ interface PatientHistoryResponse {
       }>
     }
     timeline: HistoryEvent[]
+    visits?: PatientVisitHistoryRow[]
   }
 }
 
@@ -254,10 +301,6 @@ function InfoGroup({ title, items }: { title: string; items: Array<[string, stri
       </dl>
     </div>
   )
-}
-
-function scrollToSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
 }
 
 function formatList(values?: string[] | null) {
@@ -355,6 +398,8 @@ export default function OptimizedHealthcarePatientWorkspace() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editForm, setEditForm] = useState<PatientEditForm>(emptyEditForm)
   const [payload, setPayload] = useState<PatientHistoryResponse["data"] | null>(null)
+  const [visitHistory, setVisitHistory] = useState<PatientVisitHistoryRow[]>([])
+  const [visitHistoryLoading, setVisitHistoryLoading] = useState(false)
 
   const [patientAppointments, setPatientAppointments] = useState<AppointmentRecord[]>([])
   const [appointmentsLoading, setAppointmentsLoading] = useState(false)
@@ -365,6 +410,8 @@ export default function OptimizedHealthcarePatientWorkspace() {
   const [patientInvoices, setPatientInvoices] = useState<PatientInvoiceRecord[]>([])
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [invoicesError, setInvoicesError] = useState("")
+  const [patientPayments, setPatientPayments] = useState<PatientPaymentRecord[]>([])
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
   const [patientFollowUps, setPatientFollowUps] = useState<FollowUpRecord[]>([])
   const [followUpsLoading, setFollowUpsLoading] = useState(false)
   const [followUpsError, setFollowUpsError] = useState("")
@@ -380,12 +427,30 @@ export default function OptimizedHealthcarePatientWorkspace() {
   const [followUpError, setFollowUpError] = useState("")
   const [followUpSuccessMessage, setFollowUpSuccessMessage] = useState("")
   const [workflowBusyId, setWorkflowBusyId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<PatientTabId>("today")
+  const [sessionUser, setSessionUser] = useState<ReturnType<typeof authService.getCurrentUser>>(null)
+  const [completeVisitModal, setCompleteVisitModal] = useState<{
+    appointment: AppointmentRecord
+    fee: string
+  } | null>(null)
+  const [showBookVisitModal, setShowBookVisitModal] = useState(false)
+  const [bookVisitDefaults, setBookVisitDefaults] = useState({ visitType: "consultation", title: "Book visit" })
+  const [visitDoctors, setVisitDoctors] = useState<BookVisitDoctorOption[]>([])
   const [clinic, setClinic] = useState<any>(null)
   const [prescriptionForm, setPrescriptionForm] = useState<PrescriptionFormState>(initialPrescriptionForm)
+  const [prescriptionLinkedAppointmentId, setPrescriptionLinkedAppointmentId] = useState<string | null>(null)
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false)
   const [prescriptionSubmitting, setPrescriptionSubmitting] = useState(false)
   const [prescriptionError, setPrescriptionError] = useState("")
   const [prescriptionSuccessMessage, setPrescriptionSuccessMessage] = useState("")
+  const [lastSavedPrescription, setLastSavedPrescription] = useState<PrescriptionRecord | null>(null)
+  const [prescriptionActionBusyId, setPrescriptionActionBusyId] = useState<string | null>(null)
+  const [rxDrawerOpen, setRxDrawerOpen] = useState(false)
+  const [rxDrawerRx, setRxDrawerRx] = useState<PrescriptionRecord | null>(null)
+  const [rxDrawerPdfUrl, setRxDrawerPdfUrl] = useState<string | null>(null)
+  const [rxDrawerLoading, setRxDrawerLoading] = useState(false)
+  const [rxDrawerPrinting, setRxDrawerPrinting] = useState(false)
+  const [rxDrawerError, setRxDrawerError] = useState("")
   const [prescriptionDoctors, setPrescriptionDoctors] = useState<PrescriptionDoctorOption[]>([])
   const [prescriptionMedicineCatalog, setPrescriptionMedicineCatalog] = useState<PrescriptionProductOption[]>([])
   const pharmacyEnabled = Array.isArray(clinic?.enabledModules) && clinic.enabledModules.includes("pharmacy")
@@ -397,6 +462,63 @@ export default function OptimizedHealthcarePatientWorkspace() {
     (clinic?.billingSettings?.pharmacyBillingEnabled === true ||
       (clinic?.billingSettings?.pharmacyBillingEnabled == null && clinic?.clinicType !== "consultation"))
 
+  const staffRole = useMemo(
+    () => resolveClinicStaffRole(sessionUser, projectId),
+    [sessionUser, projectId]
+  )
+  const visibleTabIds = useMemo(
+    () => tabsForStaffRole(staffRole, billingEnabled),
+    [staffRole, billingEnabled]
+  )
+  const visibleTabs = useMemo(
+    () => PATIENT_TABS.filter((tab) => visibleTabIds.includes(tab.id)),
+    [visibleTabIds]
+  )
+  const showWritePrescription = canWritePrescription(staffRole)
+  const showFinishWithFee = canFinishVisitWithFee(staffRole)
+  const showEditNotes = canEditPatientNotes(staffRole)
+  const showBookVisit = canBookVisit(staffRole)
+  const showCompletedTodayVisits = canViewCompletedTodayVisits(staffRole)
+  const linkedDoctorId =
+    sessionUser?.healthcareStaffProfileByProject?.[projectId]?.linkedDoctorId || null
+
+  const openBookVisitModal = useCallback(
+    async (options?: { visitType?: string; title?: string }) => {
+      try {
+        if (visitDoctors.length === 0) {
+          const doctorsPayload = await apiGet<{ success: boolean; data?: { doctors: BookVisitDoctorOption[] } }>(
+            `/healthcare/doctors?projectId=${encodeURIComponent(projectId)}&limit=200`
+          )
+          setVisitDoctors(doctorsPayload?.data?.doctors || [])
+        }
+        setBookVisitDefaults({
+          visitType: options?.visitType || "consultation",
+          title: options?.title || "Book visit",
+        })
+        setShowBookVisitModal(true)
+      } catch (err) {
+        setAppointmentsError(err instanceof Error ? err.message : "Could not open booking form")
+      }
+    },
+    [projectId, visitDoctors.length]
+  )
+
+  useEffect(() => {
+    setSessionUser(authService.getCurrentUser())
+  }, [])
+
+  const [tabInitialized, setTabInitialized] = useState(false)
+  useEffect(() => {
+    if (!sessionUser || tabInitialized) return
+    const preferred = defaultTabForRole(staffRole)
+    if (visibleTabIds.includes(preferred)) {
+      setActiveTab(preferred)
+    } else if (visibleTabIds[0]) {
+      setActiveTab(visibleTabIds[0])
+    }
+    setTabInitialized(true)
+  }, [sessionUser, staffRole, visibleTabIds, tabInitialized])
+
   const loadHistory = useCallback(async () => {
     try {
       setLoading(true)
@@ -404,11 +526,30 @@ export default function OptimizedHealthcarePatientWorkspace() {
       setSuccessMessage("")
       const response = await apiGet<PatientHistoryResponse>(`/healthcare/clinical/patients/${encodeURIComponent(patientId)}/history?projectId=${encodeURIComponent(projectId)}`)
       setPayload(response?.data || null)
+      setVisitHistory(response?.data?.visits || [])
       setEditForm(buildEditForm(response?.data?.patient || null))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load patient history")
     } finally {
       setLoading(false)
+    }
+  }, [projectId, patientId])
+
+  const loadVisitHistory = useCallback(async () => {
+    try {
+      setVisitHistoryLoading(true)
+      const response = await apiGet<PatientHistoryResponse>(
+        `/healthcare/clinical/patients/${encodeURIComponent(patientId)}/history?projectId=${encodeURIComponent(projectId)}`
+      )
+      const data = response?.data || null
+      if (data) {
+        setPayload((current) => (current ? { ...current, ...data } : data))
+        setVisitHistory(data.visits || [])
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load visit history")
+    } finally {
+      setVisitHistoryLoading(false)
     }
   }, [projectId, patientId])
 
@@ -434,24 +575,44 @@ export default function OptimizedHealthcarePatientWorkspace() {
     }
   }, [projectId])
 
-  const openPrescriptionModal = useCallback(async () => {
-    if (!payload?.patient) {
-      return
-    }
-
-    try {
-      setPrescriptionError("")
-      setPrescriptionSuccessMessage("")
-      if (prescriptionDoctors.length === 0 || prescriptionMedicineCatalog.length === 0) {
-        await loadPrescriptionFormReferences()
+  const openPrescriptionModal = useCallback(
+    async (appointment?: AppointmentRecord | null) => {
+      if (!payload?.patient) {
+        return
       }
-      setPrescriptionForm((prev) => ({ ...initialPrescriptionForm, patientId, doctorId: prev.doctorId }))
-      setShowPrescriptionModal(true)
-    } catch (err) {
-      console.error('Failed to open prescription modal:', err)
-      setPrescriptionError(err instanceof Error ? err.message : 'Failed to open prescription form')
-    }
-  }, [payload?.patient, patientId, prescriptionDoctors.length, prescriptionMedicineCatalog.length, loadPrescriptionFormReferences])
+
+      try {
+        setPrescriptionError("")
+        setPrescriptionSuccessMessage("")
+        if (prescriptionDoctors.length === 0 || prescriptionMedicineCatalog.length === 0) {
+          await loadPrescriptionFormReferences()
+        }
+        const doctorId =
+          appointment?.doctorId ||
+          prescriptionDoctors[0]?.doctorId ||
+          ""
+        setPrescriptionLinkedAppointmentId(appointment?.appointmentId || null)
+        setPrescriptionForm({
+          ...initialPrescriptionForm,
+          patientId,
+          doctorId,
+          diagnosis: appointment?.reason || "",
+        })
+        setShowPrescriptionModal(true)
+      } catch (err) {
+        console.error("Failed to open prescription modal:", err)
+        setPrescriptionError(err instanceof Error ? err.message : "Failed to open prescription form")
+      }
+    },
+    [
+      payload?.patient,
+      patientId,
+      prescriptionDoctors,
+      prescriptionDoctors.length,
+      prescriptionMedicineCatalog.length,
+      loadPrescriptionFormReferences,
+    ]
+  )
 
   const handleCreatePrescription = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -461,11 +622,18 @@ export default function OptimizedHealthcarePatientWorkspace() {
       setPrescriptionError("")
       setPrescriptionSuccessMessage("")
 
-      const payload = await apiPost<{ data?: { prescription: PrescriptionRecord } }>("/healthcare/prescriptions", {
+      const payload = await apiPost<{
+        data?: { prescription: PrescriptionRecord; invoice?: PatientInvoiceRecord }
+      }>("/healthcare/prescriptions", {
         projectId,
         patientId: prescriptionForm.patientId,
         doctorId: prescriptionForm.doctorId,
-        appointmentId: patientAppointments.find((appointment) => ["checked-in", "confirmed", "scheduled"].includes(String(appointment.status || "")))?.appointmentId || null,
+        appointmentId:
+          prescriptionLinkedAppointmentId ||
+          patientAppointments.find((appointment) =>
+            ["checked-in", "confirmed", "scheduled"].includes(String(appointment.status || ""))
+          )?.appointmentId ||
+          null,
         diagnosis: prescriptionForm.diagnosis,
         status: prescriptionForm.status,
         followUpAt: prescriptionForm.followUpAt ? new Date(prescriptionForm.followUpAt).toISOString() : null,
@@ -483,14 +651,30 @@ export default function OptimizedHealthcarePatientWorkspace() {
       })
 
       if (payload?.data?.prescription) {
-        setPatientPrescriptions((current) => [payload.data!.prescription, ...current])
-        if (pharmacyRxInvoicingEnabled) {
-          await createInvoiceFromPrescription(payload.data.prescription, { silent: true })
+        const saved = payload.data.prescription
+        const autoInvoice = payload.data.invoice
+        setPatientPrescriptions((current) => [saved, ...current])
+        setLastSavedPrescription(saved)
+        if (autoInvoice) {
+          setPatientInvoices((current) => [
+            autoInvoice,
+            ...current.filter((inv) => inv.patientInvoiceId !== autoInvoice.patientInvoiceId),
+          ])
+          setPrescriptionSuccessMessage(
+            `Prescription saved. Bill ${autoInvoice.invoiceNumber || ""} created — reception can record payment.`
+          )
+        } else if (billingEnabled) {
+          setPrescriptionSuccessMessage("Prescription saved. Bill will appear when billing is enabled.")
+        } else {
+          setPrescriptionSuccessMessage("Prescription saved.")
         }
-        setPrescriptionSuccessMessage("Prescription created successfully")
+        await loadPatientInvoices()
+        await loadPatientPayments()
+        void openPrescriptionDrawer(saved)
       }
 
       setPrescriptionForm(initialPrescriptionForm)
+      setPrescriptionLinkedAppointmentId(null)
       setShowPrescriptionModal(false)
       await loadHistory()
       await loadPatientPrescriptions()
@@ -547,6 +731,21 @@ export default function OptimizedHealthcarePatientWorkspace() {
       setInvoicesError(err instanceof Error ? err.message : "Failed to load invoices")
     } finally {
       setInvoicesLoading(false)
+    }
+  }, [projectId, patientId])
+
+  const loadPatientPayments = useCallback(async () => {
+    try {
+      setPaymentsLoading(true)
+      const response = await apiGet<{ success: boolean; data?: { payments: PatientPaymentRecord[] } }>(
+        `/healthcare/payments?projectId=${encodeURIComponent(projectId)}&patientId=${encodeURIComponent(patientId)}&limit=100`
+      )
+      setPatientPayments(response?.data?.payments || [])
+    } catch (err) {
+      console.error("Failed to load patient payments:", err)
+      setPatientPayments([])
+    } finally {
+      setPaymentsLoading(false)
     }
   }, [projectId, patientId])
 
@@ -638,91 +837,207 @@ export default function OptimizedHealthcarePatientWorkspace() {
 
     if (!options?.silent) {
       setSuccessMessage(`Medicine invoice ${invoice?.invoiceNumber || ""} created`)
-      scrollToSection("section-billing")
+      setActiveTab("billing")
     }
     return invoice
   }, [createInvoice, pharmacyEnabled, billingEnabled, pharmacyRxInvoicingEnabled, prescriptionMedicineCatalog])
 
-  const completeAppointmentAndCreateInvoice = useCallback(async (appointment: AppointmentRecord) => {
-    const feeValue = window.prompt("Consultation fee amount", "500")
-    if (feeValue === null) return
-    const fee = Number(feeValue || 0)
-    if (Number.isNaN(fee) || fee < 0) {
-      setAppointmentsError("Invalid consultation fee")
-      return
+  const confirmFinishVisit = useCallback(
+    async (appointment: AppointmentRecord, fee: number) => {
+      try {
+        setWorkflowBusyId(appointment.appointmentId)
+        setAppointmentsError("")
+        setSuccessMessage("")
+
+        await apiPut(
+          `/healthcare/appointments/${encodeURIComponent(appointment.appointmentId)}?projectId=${encodeURIComponent(projectId)}`,
+          {
+            projectId,
+            patientId,
+            doctorId: appointment.doctorId || null,
+            scheduledAt: appointment.scheduledAt,
+            reason: appointment.reason || "",
+            status: "completed",
+          }
+        )
+
+        if (billingEnabled && fee > 0 && showFinishWithFee) {
+          await createInvoice({
+            appointmentId: appointment.appointmentId,
+            items: [
+              {
+                description: `Visit charge${appointment.doctorSnapshot?.fullName ? ` - ${appointment.doctorSnapshot.fullName}` : ""}`,
+                quantity: 1,
+                unitPrice: fee,
+                total: fee,
+              },
+            ],
+            notes: `After visit ${appointment.appointmentId}`,
+          })
+        }
+
+        setSuccessMessage("Visit marked as finished")
+        setCompleteVisitModal(null)
+        await loadPatientAppointments()
+        await loadPatientInvoices()
+        await loadHistory()
+
+        if (showWritePrescription) {
+          setActiveTab("prescription")
+          await openPrescriptionModal()
+        }
+      } catch (err) {
+        setAppointmentsError(err instanceof Error ? err.message : "Could not finish visit")
+      } finally {
+        setWorkflowBusyId(null)
+      }
+    },
+    [
+      projectId,
+      patientId,
+      billingEnabled,
+      showFinishWithFee,
+      showWritePrescription,
+      createInvoice,
+      loadPatientAppointments,
+      loadPatientInvoices,
+      loadHistory,
+      openPrescriptionModal,
+    ]
+  )
+
+  const requestFinishVisit = useCallback(
+    (appointment: AppointmentRecord) => {
+      if (showFinishWithFee && billingEnabled) {
+        setCompleteVisitModal({ appointment, fee: "500" })
+        return
+      }
+      void confirmFinishVisit(appointment, 0)
+    },
+    [showFinishWithFee, billingEnabled, confirmFinishVisit]
+  )
+
+  const resolvePrescriptionForPdf = useCallback(
+    async (prescription: PrescriptionRecord): Promise<PrescriptionRecord> => {
+      let rx = prescription
+      const needsFetch = Boolean(rx.prescriptionId) && !rx.medicines?.length
+
+      if (needsFetch && rx.prescriptionId) {
+        const detail = await apiGet<{ success?: boolean; data?: { prescription: PrescriptionRecord } }>(
+          `/healthcare/prescriptions/${encodeURIComponent(rx.prescriptionId)}?projectId=${encodeURIComponent(projectId)}`
+        )
+        if (detail?.data?.prescription) {
+          rx = detail.data.prescription
+        }
+      }
+
+      const doctorFromList = prescriptionDoctors.find((d) => d.doctorId === rx.doctorId)
+      const patientRecord = payload?.patient
+      const ageYears =
+        patientRecord?.dateOfBirth != null ? computeAgeYears(patientRecord.dateOfBirth) : null
+      return {
+        ...rx,
+        patientSnapshot: {
+          fullName: rx.patientSnapshot?.fullName || patientRecord?.fullName || "Patient",
+          phoneNumber: rx.patientSnapshot?.phoneNumber || patientRecord?.phoneNumber || null,
+          ageYears: ageYears ?? undefined,
+          gender: patientRecord?.gender || undefined,
+        },
+        doctorSnapshot: {
+          fullName: rx.doctorSnapshot?.fullName || doctorFromList?.fullName || "Doctor",
+          specialization: rx.doctorSnapshot?.specialization || doctorFromList?.specialization || null,
+        },
+        medicines: rx.medicines?.length
+          ? rx.medicines
+          : prescription.medicines?.length
+            ? prescription.medicines
+            : [],
+      }
+    },
+    [projectId, payload?.patient, prescriptionDoctors]
+  )
+
+  const closePrescriptionDrawer = useCallback(() => {
+    if (rxDrawerPdfUrl) URL.revokeObjectURL(rxDrawerPdfUrl)
+    setRxDrawerPdfUrl(null)
+    setRxDrawerRx(null)
+    setRxDrawerOpen(false)
+    setRxDrawerLoading(false)
+    setRxDrawerPrinting(false)
+    setRxDrawerError("")
+    setPrescriptionActionBusyId(null)
+  }, [rxDrawerPdfUrl])
+
+  const buildClinicPdfConfig = useCallback(() => {
+    if (!clinic) return null
+    return {
+      ...clinic,
+      name: clinic.name,
+      prescriptionBlankPdfUrl: clinic.prescriptionBlankPdfUrl,
+      enablePrescriptionDesign: clinic.enablePrescriptionDesign,
     }
+  }, [clinic])
 
-    try {
-      setWorkflowBusyId(appointment.appointmentId)
-      setAppointmentsError("")
-      setSuccessMessage("")
+  const openPrescriptionDrawer = useCallback(
+    async (prescription: PrescriptionRecord) => {
+      const clinicConfig = buildClinicPdfConfig()
+      if (!clinicConfig) {
+        setPrescriptionError("Clinic settings still loading. Wait a moment and try again.")
+        return
+      }
 
-      await apiPut(`/healthcare/appointments/${encodeURIComponent(appointment.appointmentId)}?projectId=${encodeURIComponent(projectId)}`, {
-        projectId,
-        patientId,
-        doctorId: appointment.doctorId || null,
-        scheduledAt: appointment.scheduledAt,
-        reason: appointment.reason || "",
-        status: "completed",
-      })
+      if (rxDrawerPdfUrl) URL.revokeObjectURL(rxDrawerPdfUrl)
+      setRxDrawerPdfUrl(null)
+      setRxDrawerRx(prescription)
+      setRxDrawerOpen(true)
+      setRxDrawerLoading(true)
+      setRxDrawerError("")
+      setPrescriptionError("")
+      setPrescriptionActionBusyId(prescription.prescriptionId)
 
-      if (billingEnabled && fee > 0) {
-        await createInvoice({
-          appointmentId: appointment.appointmentId,
-          items: [
-            {
-              description: `Consultation fee${appointment.doctorSnapshot?.fullName ? ` - ${appointment.doctorSnapshot.fullName}` : ""}`,
-              quantity: 1,
-              unitPrice: fee,
-              total: fee,
-            },
-          ],
-          notes: `Auto-created after appointment completion ${appointment.appointmentId}`,
+      try {
+        const rx = await resolvePrescriptionForPdf(prescription)
+        if (!rx.medicines?.length) {
+          setRxDrawerError("No medicines on this prescription.")
+          return
+        }
+        setRxDrawerRx(rx)
+        const url = await getPrescriptionPdfBlobUrl({
+          prescription: rx,
+          clinic: clinicConfig,
+          projectId,
         })
+        setRxDrawerPdfUrl(url)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Could not load prescription"
+        setRxDrawerError(message)
+        console.error("Failed to load prescription preview:", err)
+      } finally {
+        setRxDrawerLoading(false)
+        setPrescriptionActionBusyId(null)
       }
+    },
+    [buildClinicPdfConfig, projectId, resolvePrescriptionForPdf, rxDrawerPdfUrl]
+  )
 
-      setSuccessMessage("Appointment completed and billing updated")
-      await loadPatientAppointments()
-      await loadPatientInvoices()
-      scrollToSection("section-billing")
+  const printFromPrescriptionDrawer = useCallback(async () => {
+    const clinicConfig = buildClinicPdfConfig()
+    if (!rxDrawerRx || !clinicConfig) return
+    try {
+      setRxDrawerPrinting(true)
+      setRxDrawerError("")
+      const rx = await resolvePrescriptionForPdf(rxDrawerRx)
+      await printPrescriptionPdf({
+        prescription: rx,
+        clinic: clinicConfig,
+        projectId,
+      })
     } catch (err) {
-      setAppointmentsError(err instanceof Error ? err.message : "Failed to complete appointment workflow")
+      setRxDrawerError(err instanceof Error ? err.message : "Could not print")
     } finally {
-      setWorkflowBusyId(null)
+      setRxDrawerPrinting(false)
     }
-  }, [projectId, patientId, billingEnabled, createInvoice, loadPatientAppointments, loadPatientInvoices])
-
-  const viewPrescription = async (prescription: PrescriptionRecord) => {
-    try {
-      if (!clinic) {
-        alert('Clinic settings not loaded yet. Please wait...')
-        return
-      }
-      await handlePrescriptionAction({
-        prescription,
-        clinic,
-        action: 'view'
-      })
-    } catch (err) {
-      console.error('Failed to view prescription:', err)
-    }
-  }
-
-  const printPrescription = async (prescription: PrescriptionRecord) => {
-    try {
-      if (!clinic) {
-        alert('Clinic settings not loaded yet. Please wait...')
-        return
-      }
-      await handlePrescriptionAction({
-        prescription,
-        clinic,
-        action: 'print'
-      })
-    } catch (err) {
-      console.error('Failed to print prescription:', err)
-    }
-  }
+  }, [buildClinicPdfConfig, projectId, resolvePrescriptionForPdf, rxDrawerRx])
 
   const handleCreateFollowUp = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -745,7 +1060,8 @@ export default function OptimizedHealthcarePatientWorkspace() {
 
       if (response?.data?.followUp) {
         setPatientFollowUps((current) => [response.data!.followUp, ...current])
-        setFollowUpSuccessMessage("Follow-up scheduled successfully")
+        setFollowUpSuccessMessage("Return visit booked")
+        setActiveTab("followup")
         setShowFollowUpModal(false)
         setFollowUpForm({
           diagnosis: "",
@@ -770,29 +1086,146 @@ export default function OptimizedHealthcarePatientWorkspace() {
     loadPatientAppointments()
     loadPatientPrescriptions()
     loadPatientInvoices()
+    loadPatientPayments()
     loadPatientFollowUps()
-  }, [loadHistory, loadClinic, loadPatientAppointments, loadPatientPrescriptions, loadPatientInvoices, loadPatientFollowUps])
+  }, [loadHistory, loadClinic, loadPatientAppointments, loadPatientPrescriptions, loadPatientInvoices, loadPatientPayments, loadPatientFollowUps])
 
   const timeline = useMemo(() => payload?.timeline || [], [payload?.timeline])
   const patient = payload?.patient
   const communicationPreferences = patient?.communicationPreferences
   const consentSummary = patient?.consentSummary
 
-  const activityTimeline = useMemo(() => {
-    return timeline.slice(0, 20).map((item) => ({
-      title: item.title,
-      subtitle: item.subtitle || "",
-      type: item.eventType.charAt(0).toUpperCase() + item.eventType.slice(1),
-      date: new Date(item.eventAt).toLocaleDateString("en-IN"),
-      id: item.eventId,
-    }))
-  }, [timeline])
+  const invoiceNumberById = useMemo(
+    () => new Map(patientInvoices.map((inv) => [inv.patientInvoiceId, inv.invoiceNumber])),
+    [patientInvoices]
+  )
+
+  const historyPrescriptionToRecord = useCallback(
+    (rx: PatientVisitHistoryPrescription): PrescriptionRecord => ({
+      prescriptionId: rx.prescriptionId,
+      patientId,
+      issuedAt: rx.issuedAt,
+      diagnosis: rx.diagnosis,
+      followUpAt: rx.followUpAt,
+      notes: rx.notes,
+      medicines: rx.medicines,
+      doctorSnapshot: rx.doctorSnapshot,
+    }),
+    [patientId]
+  )
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      void loadVisitHistory()
+    }
+  }, [activeTab, loadVisitHistory])
 
   const isUnderConsultation = useMemo(() => {
     if (!patientAppointments.length) return false
     const today = new Date().toDateString()
-    return patientAppointments.some(apt => ['scheduled', 'confirmed', 'checked-in'].includes(String(apt.status || '')) && new Date(apt.scheduledAt).toDateString() === today)
+    return patientAppointments.some(
+      (apt) =>
+        ["scheduled", "confirmed", "checked-in"].includes(String(apt.status || "")) &&
+        new Date(apt.scheduledAt).toDateString() === today
+    )
   }, [patientAppointments])
+
+  const todayAppointments = useMemo(() => {
+    const today = new Date().toDateString()
+    return patientAppointments
+      .filter((apt) => new Date(apt.scheduledAt).toDateString() === today)
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+  }, [patientAppointments])
+
+  const patchTodayAppointment = useCallback(
+    async (
+      appointment: AppointmentRecord,
+      updates: { status?: string; scheduledAt?: string },
+      successMsg: string
+    ) => {
+      try {
+        setWorkflowBusyId(appointment.appointmentId)
+        setAppointmentsError("")
+        await apiPut(
+          `/healthcare/appointments/${encodeURIComponent(appointment.appointmentId)}?projectId=${encodeURIComponent(projectId)}`,
+          {
+            projectId,
+            patientId,
+            doctorId: appointment.doctorId || null,
+            scheduledAt: updates.scheduledAt ?? appointment.scheduledAt,
+            reason: appointment.reason || "",
+            status: updates.status ?? appointment.status ?? "scheduled",
+          }
+        )
+        setSuccessMessage(successMsg)
+        await loadPatientAppointments()
+        await loadHistory()
+      } catch (err) {
+        setAppointmentsError(err instanceof Error ? err.message : "Could not update visit")
+      } finally {
+        setWorkflowBusyId(null)
+      }
+    },
+    [projectId, patientId, loadPatientAppointments, loadHistory]
+  )
+
+  const handleCancelTodayVisit = useCallback(
+    (appointment: AppointmentRecord) => {
+      if (!window.confirm("Cancel this visit? It will be removed from today's list.")) return
+      void patchTodayAppointment(appointment, { status: "cancelled" }, "Visit cancelled")
+    },
+    [patchTodayAppointment]
+  )
+
+  const handleNoShowTodayVisit = useCallback(
+    (appointment: AppointmentRecord) => {
+      void patchTodayAppointment(appointment, { status: "no-show" }, "Marked as did not come")
+    },
+    [patchTodayAppointment]
+  )
+
+  const handleDelayTodayVisit = useCallback(
+    (appointment: AppointmentRecord) => {
+      const next = new Date(appointment.scheduledAt)
+      next.setMinutes(next.getMinutes() + 30)
+      void patchTodayAppointment(
+        appointment,
+        { scheduledAt: next.toISOString() },
+        `Visit delayed to ${next.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`
+      )
+    },
+    [patchTodayAppointment]
+  )
+
+  const handleCheckInTodayVisit = useCallback(
+    (appointment: AppointmentRecord) => {
+      void patchTodayAppointment(appointment, { status: "checked-in" }, "Patient checked in")
+    },
+    [patchTodayAppointment]
+  )
+
+  const handleOpenCompletedTodayVisit = useCallback(
+    async (appointment: AppointmentRecord) => {
+      const linkedRx = patientPrescriptions.find(
+        (rx) => rx.appointmentId && rx.appointmentId === appointment.appointmentId
+      )
+
+      setActiveTab("prescription")
+
+      if (linkedRx) {
+        void openPrescriptionDrawer(linkedRx)
+        return
+      }
+
+      if (showWritePrescription) {
+        await openPrescriptionModal(appointment)
+        return
+      }
+
+      setPrescriptionError("No prescription linked to this visit yet.")
+    },
+    [patientPrescriptions, showWritePrescription, openPrescriptionModal, openPrescriptionDrawer]
+  )
 
   const handleSavePatient = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -857,19 +1290,39 @@ export default function OptimizedHealthcarePatientWorkspace() {
   }
 
   return (
-    <div className="min-h-full w-full bg-white pb-16 pt-1 text-slate-800">
-      <div className="mx-auto w-full max-w-[min(100%,1600px)] space-y-8 px-4 py-6 sm:px-6 lg:px-10">
+    <div className="min-h-full w-full pb-16 pt-1 text-slate-800">
+      <div className="mx-auto w-full max-w-[min(100%,1600px)] space-y-6 px-4 py-6 sm:px-6 lg:px-10">
         <button
           type="button"
           onClick={() => router.push(`/projects/${projectId}/healthcare/patients`)}
-          className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900"
+          className="inline-flex items-center gap-2 text-sm font-medium text-teal-800 hover:text-teal-950"
         >
           <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
-          Patients
+          Back to patients
         </button>
 
-        {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
-        {successMessage ? <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{successMessage}</div> : null}
+        {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
+        {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{successMessage}</div> : null}
+        {prescriptionSuccessMessage ? (
+          <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+            <p>{prescriptionSuccessMessage}</p>
+            {lastSavedPrescription ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => void openPrescriptionDrawer(lastSavedPrescription)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  Open prescription
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {prescriptionError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{prescriptionError}</div>
+        ) : null}
 
         {loading && !patient ? (
           <div className="flex justify-center py-16 text-slate-500">
@@ -877,152 +1330,153 @@ export default function OptimizedHealthcarePatientWorkspace() {
           </div>
         ) : (
           <>
-            <header className="border-b border-slate-200 pb-6">
+            <header className="hc-patient-card border-l-4 border-l-teal-500 p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900 lg:text-3xl">{patient?.fullName ?? "Patient"}</h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {patient?.medicalRecordNumber ? `MRN ${patient.medicalRecordNumber} · ` : ""}
-                    {patient?.patientId || "—"} · {getAge(patient?.dateOfBirth)} yrs · <span className="capitalize">{patient?.gender || "—"}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-2xl font-semibold tracking-tight text-slate-900 lg:text-3xl">{patient?.fullName ?? "Patient"}</h1>
+                    {isUnderConsultation ? (
+                      <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-semibold text-teal-800">In clinic today</span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {patient?.medicalRecordNumber ? `File no. ${patient.medicalRecordNumber} · ` : ""}
+                    {getAge(patient?.dateOfBirth)} yrs · <span className="capitalize">{patient?.gender || "—"}</span>
                     {patient?.bloodGroup ? ` · ${patient.bloodGroup}` : ""}
-                    <span className="text-slate-300"> · </span>
-                    <span className={patient?.status === "active" ? "text-emerald-700" : "text-slate-600"}>
-                      {patient?.status ? `${patient.status.charAt(0).toUpperCase()}${patient.status.slice(1)}` : "Active"}
-                    </span>
+                    {patient?.phoneNumber ? ` · ${patient.phoneNumber}` : ""}
                   </p>
-                  <p className="mt-2 text-xs text-slate-400">
+                  <p className="mt-2 text-xs text-slate-500">
                     {payload?.summary.appointments ?? 0} visits · {payload?.summary.prescriptions ?? 0} prescriptions
-                    {billingEnabled
-                      ? ` · ₹${Math.max(Number(payload?.summary.totalBilled || 0) - Number(payload?.summary.totalCollected || 0), 0).toLocaleString("en-IN")} outstanding`
+                    {billingEnabled && visibleTabIds.includes("billing")
+                      ? ` · ₹${Math.max(Number(payload?.summary.totalBilled || 0) - Number(payload?.summary.totalCollected || 0), 0).toLocaleString("en-IN")} due`
                       : ""}
-                    {typeof payload?.followUps?.upcoming === "number" ? ` · ${payload.followUps.upcoming} follow-up(s)` : ""}
+                    {typeof payload?.followUps?.upcoming === "number" && payload.followUps.upcoming > 0
+                      ? ` · ${payload.followUps.upcoming} return visit(s)`
+                      : ""}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void openPrescriptionModal()}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
-                  >
-                    <FileText className="h-4 w-4 shrink-0" aria-hidden />
-                    Rx
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowFollowUpModal(true)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    <Calendar className="h-4 w-4 shrink-0" aria-hidden />
-                    Follow-up
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => router.push(`/projects/${projectId}/healthcare/appointments?patientId=${encodeURIComponent(patientId)}`)}
-                    className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    Schedule
-                  </button>
-                  {billingEnabled ? (
+                  {showWritePrescription ? (
                     <button
                       type="button"
-                      onClick={() => scrollToSection("section-billing")}
-                      className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                      onClick={() => void openPrescriptionModal()}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"
                     >
-                      Billing
+                      <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                      Write prescription
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => router.push(`/projects/${projectId}/contacts?patientId=${encodeURIComponent(patientId)}`)}
-                    className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    WhatsApp
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowEditModal(true)}
-                    className="rounded-md border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50"
-                    aria-label="Edit patient"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
+                  {(staffRole === "doctor" || staffRole === "head_doctor" || staffRole === "owner" || staffRole === "receptionist") ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("followup")
+                        setShowFollowUpModal(true)
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      <Calendar className="h-4 w-4 shrink-0" aria-hidden />
+                      Book return visit
+                    </button>
+                  ) : null}
+                  {visibleTabIds.includes("messages") ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/projects/${projectId}/live-chat-v2`)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm font-medium text-green-900 hover:bg-green-100"
+                    >
+                      <MessageCircle className="h-4 w-4 shrink-0" aria-hidden />
+                      WhatsApp
+                    </button>
+                  ) : null}
+                  {(staffRole === "owner" || staffRole === "admin" || staffRole === "receptionist") ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowEditModal(true)}
+                      className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                      aria-label="Edit patient"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </header>
 
-            <nav
-              aria-label="Sections"
-              className="sticky top-0 z-10 -mx-4 flex flex-wrap gap-1 border-b border-slate-200 bg-white/95 px-4 py-2 text-xs font-medium text-slate-500 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10"
-            >
-              {(
-                [
-                  ["section-clinical", "Clinical"],
-                  ["section-visit", "Visits"],
-                  ["section-rx", "Rx"],
-                  ["section-followups", "Follow-ups"],
-                  ...(billingEnabled ? ([["section-billing", "Billing"]] as const) : []),
-                  ["section-record", "Contact"],
-                  ["section-history", "Activity"],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => scrollToSection(id)}
-                  className="rounded-md px-2 py-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                >
-                  {label}
-                </button>
-              ))}
-            </nav>
+            <PatientTabNav tabs={visibleTabs} activeTab={activeTab} onChange={setActiveTab} />
 
-            <div className="space-y-10">
-            <section id="section-clinical" className="scroll-mt-24 space-y-2">
-              <h2 className="text-xs font-medium uppercase tracking-wide text-slate-400">Clinical</h2>
-              <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-                <p className="text-sm text-slate-600">
-                  <span className="font-medium text-slate-800">Today: </span>
-                  {isUnderConsultation ? "Active visit scheduled for today." : "No active visit flagged for today."}
-                </p>
-                {patient?.allergies?.length || patient?.chronicConditions?.length ? (
-                  <div className="space-y-2 border-t border-slate-100 pt-3 text-sm">
-                    {patient?.allergies?.length ? (
-                      <p>
-                        <span className="font-medium text-amber-900">Allergies: </span>
-                        {formatList(patient.allergies)}
-                      </p>
-                    ) : null}
-                    {patient?.chronicConditions?.length ? (
-                      <p>
-                        <span className="font-medium text-slate-800">Chronic: </span>
-                        {formatList(patient.chronicConditions)}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="border-t border-slate-100 pt-3 text-sm text-slate-500">No allergies or chronic conditions on file.</p>
-                )}
-                {patient?.notes ? (
-                  <p className="border-t border-slate-100 pt-3 text-sm text-slate-600">
-                    <span className="font-medium text-slate-800">Notes: </span>
-                    {patient.notes}
+            <div className="space-y-6">
+            {activeTab === "today" ? (
+            <div className="space-y-4">
+              <PatientTodayVisitsTable
+                appointments={todayAppointments}
+                loading={appointmentsLoading}
+                error={appointmentsError}
+                workflowBusyId={workflowBusyId}
+                canWritePrescription={showWritePrescription}
+                canBookVisit={showBookVisit}
+                includeCompleted={showCompletedTodayVisits}
+                onComplete={requestFinishVisit}
+                onOpenCompleted={handleOpenCompletedTodayVisit}
+                onCancel={handleCancelTodayVisit}
+                onDelay={handleDelayTodayVisit}
+                onNoShow={handleNoShowTodayVisit}
+                onCheckIn={handleCheckInTodayVisit}
+                onBookVisit={() => void openBookVisitModal({ visitType: "consultation", title: "Book visit" })}
+                onWritePrescription={() => void openPrescriptionModal()}
+                onBookReturnVisit={() => {
+                  void openBookVisitModal({ visitType: "follow-up", title: "Book return visit" })
+                }}
+              />
+            {(patient?.allergies?.length || patient?.chronicConditions?.length) ? (
+              <section className="hc-patient-card border-amber-200 bg-amber-50/50 p-4 text-sm">
+                {patient?.allergies?.length ? (
+                  <p>
+                    <span className="font-semibold text-amber-900">Allergies: </span>
+                    {formatList(patient.allergies)}
                   </p>
                 ) : null}
-              </div>
-            </section>
+                {patient?.chronicConditions?.length ? (
+                  <p className={patient?.allergies?.length ? "mt-2" : ""}>
+                    <span className="font-semibold text-slate-800">Long-term conditions: </span>
+                    {formatList(patient.chronicConditions)}
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
+            </div>
+            ) : null}
 
-            <section id="section-visit" className="scroll-mt-24 space-y-2">
+            {activeTab === "notes" ? (
+              <PatientClinicalNotes
+                projectId={projectId}
+                patientId={patientId}
+                initialNotes={patient?.notes}
+                canEdit={showEditNotes}
+                onSaved={(notes) => {
+                  setPayload((current) =>
+                    current?.patient ? { ...current, patient: { ...current.patient, notes } } : current
+                  )
+                  setSuccessMessage("Internal notes saved")
+                }}
+              />
+            ) : null}
+
+            {activeTab === "visits" ? (
+            <section className="hc-patient-card hc-tab-panel border-blue-500 space-y-3 p-4">
               <div className="flex flex-wrap items-end justify-between gap-2">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-slate-400">Visits</h2>
-                <button
-                  type="button"
-                  onClick={() => router.push(`/projects/${projectId}/healthcare/appointments?patientId=${encodeURIComponent(patientId)}`)}
-                  className="text-sm text-emerald-700 hover:text-emerald-800"
-                >
-                  Open calendar
-                </button>
+                <h2 className="text-sm font-semibold text-blue-900">All visits</h2>
+                {showBookVisit ? (
+                  <button
+                    type="button"
+                    onClick={() => void openBookVisitModal({ visitType: "consultation", title: "Book next visit" })}
+                    className="text-sm font-medium text-blue-700 hover:text-blue-900"
+                  >
+                    Book next visit
+                  </button>
+                ) : null}
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
                 {appointmentsError ? (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{appointmentsError}</div>
                 ) : appointmentsLoading ? (
@@ -1031,7 +1485,7 @@ export default function OptimizedHealthcarePatientWorkspace() {
                     <span className="text-sm">Loading…</span>
                   </div>
                 ) : patientAppointments.length === 0 ? (
-                  <p className="text-sm text-slate-500">No appointments yet. Use Schedule to book.</p>
+                  <p className="text-sm text-slate-500">No visits yet. Tap Book new visit.</p>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-slate-100">
                     <table className="min-w-full divide-y divide-slate-100 text-sm">
@@ -1057,14 +1511,12 @@ export default function OptimizedHealthcarePatientWorkspace() {
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    void completeAppointmentAndCreateInvoice(appointment)
-                                  }}
+                                  onClick={() => requestFinishVisit(appointment)}
                                   disabled={workflowBusyId === appointment.appointmentId}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                                  className="inline-flex items-center gap-1 rounded-lg bg-teal-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-50"
                                 >
                                   {workflowBusyId === appointment.appointmentId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Receipt className="h-3 w-3" />}
-                                  Complete
+                                  Finish visit
                                 </button>
                               )}
                             </td>
@@ -1076,93 +1528,113 @@ export default function OptimizedHealthcarePatientWorkspace() {
                 )}
               </div>
             </section>
+            ) : null}
 
-            <section id="section-rx" className="scroll-mt-24 space-y-2">
+            {activeTab === "prescription" && showWritePrescription ? (
+            <section className="hc-patient-card hc-tab-panel border-violet-500 space-y-3 p-4">
               <div className="flex flex-wrap items-end justify-between gap-2">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-slate-400">Prescriptions</h2>
-                <button type="button" onClick={() => void openPrescriptionModal()} className="text-sm text-emerald-700 hover:text-emerald-800">
-                  New prescription
+                <div>
+                  <h2 className="text-sm font-semibold text-violet-900">Prescriptions</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">Tap a row to open preview on the right</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void openPrescriptionModal()}
+                  className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700"
+                >
+                  Write new
                 </button>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                {prescriptionsError ? (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{prescriptionsError}</div>
-                ) : prescriptionsLoading ? (
-                  <div className="flex items-center gap-2 text-slate-500">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span className="text-sm">Loading…</span>
-                  </div>
-                ) : patientPrescriptions.length === 0 ? (
-                  <p className="text-sm text-slate-500">No prescriptions yet.</p>
-                ) : (
-                  <div className="overflow-x-auto rounded-lg border border-slate-100">
-                    <table className="min-w-full divide-y divide-slate-100 text-sm">
-                      <thead>
-                        <tr className="text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                          <th className="px-3 py-2">Date</th>
-                          <th className="px-3 py-2">Doctor</th>
-                          <th className="px-3 py-2">Diagnosis</th>
-                          <th className="px-3 py-2"> </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-50">
-                        {patientPrescriptions.map((prescription) => (
-                          <tr key={prescription.prescriptionId}>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">
-                              {prescription.issuedAt ? new Date(prescription.issuedAt).toLocaleDateString() : "—"}
-                            </td>
-                            <td className="px-3 py-2.5 text-slate-700">{prescription.doctorSnapshot?.fullName || prescription.doctorId || "—"}</td>
-                            <td className="min-w-0 max-w-lg px-3 py-2.5 text-slate-600">{prescription.diagnosis || "—"}</td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex flex-wrap gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void viewPrescription(prescription)
-                                  }}
-                                  className="inline-flex items-center gap-0.5 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                                >
-                                  <Eye className="h-3 w-3" /> View
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void printPrescription(prescription)
-                                  }}
-                                  className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                                >
-                                  Print
-                                </button>
-                                {pharmacyRxInvoicingEnabled ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void createInvoiceFromPrescription(prescription)
-                                    }}
-                                    className="inline-flex items-center gap-0.5 rounded-md bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700"
-                                  >
-                                    <Receipt className="h-3 w-3" /> Invoice
-                                  </button>
-                                ) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+              {prescriptionsError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{prescriptionsError}</div>
+              ) : null}
+              <DataTable
+                wide
+                columns={[
+                  {
+                    key: "issuedAt",
+                    label: "Date",
+                    render: (value: string) =>
+                      value ? new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—",
+                  },
+                  {
+                    key: "doctor",
+                    label: "Doctor",
+                    render: (_: unknown, row: PrescriptionRecord) =>
+                      row.doctorSnapshot?.fullName || row.doctorId || "—",
+                  },
+                  {
+                    key: "diagnosis",
+                    label: "Diagnosis",
+                    render: (value: string) => value || "—",
+                  },
+                  {
+                    key: "medicines",
+                    label: "Medicines",
+                    render: (_: unknown, row: PrescriptionRecord) => {
+                      const n = row.medicines?.length || 0
+                      return n ? `${n} item${n > 1 ? "s" : ""}` : "—"
+                    },
+                  },
+                  {
+                    key: "open",
+                    label: "",
+                    minWidth: "5rem",
+                    render: (_: unknown, row: PrescriptionRecord) => (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void openPrescriptionDrawer(row)
+                        }}
+                        disabled={prescriptionActionBusyId === row.prescriptionId}
+                        className="inline-flex items-center gap-1 rounded-md bg-violet-100 px-2.5 py-1 text-xs font-semibold text-violet-900 hover:bg-violet-200 disabled:opacity-60"
+                      >
+                        {prescriptionActionBusyId === row.prescriptionId ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Eye className="h-3 w-3" />
+                        )}
+                        Open
+                      </button>
+                    ),
+                  },
+                ]}
+                data={patientPrescriptions.map((rx) => ({
+                  ...rx,
+                  issuedAt: rx.issuedAt || "",
+                  diagnosis: rx.diagnosis || "",
+                  doctor: rx.doctorSnapshot?.fullName || "",
+                }))}
+                loading={prescriptionsLoading}
+                error={null}
+                emptyMessage="No prescriptions yet. Write one for this patient."
+                rowClassName="cursor-pointer hover:bg-violet-50/50"
+                onRowClick={(row) => void openPrescriptionDrawer(row as PrescriptionRecord)}
+              />
             </section>
+            ) : activeTab === "prescription" ? (
+              <p className="text-sm text-slate-500">Prescription access is not enabled for your login.</p>
+            ) : null}
 
-            <section id="section-followups" className="scroll-mt-24 space-y-2">
+            {activeTab === "followup" ? (
+            <section className="hc-patient-card hc-tab-panel border-amber-500 space-y-3 p-4">
               <div className="flex flex-wrap items-end justify-between gap-2">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-slate-400">Follow-ups</h2>
-                <button type="button" onClick={() => setShowFollowUpModal(true)} className="text-sm text-emerald-700 hover:text-emerald-800">
-                  Schedule
+                <h2 className="text-sm font-semibold text-amber-900">Come back later</h2>
+                {showBookVisit ? (
+                  <button
+                    type="button"
+                    onClick={() => void openBookVisitModal({ visitType: "follow-up", title: "Book return visit" })}
+                    className="text-sm font-medium text-amber-800 hover:text-amber-950"
+                  >
+                    Book return visit
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => setShowFollowUpModal(true)} className="text-sm font-medium text-slate-600 hover:text-slate-900">
+                  Quick reminder only
                 </button>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
                 {followUpsError ? (
                   <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{followUpsError}</div>
                 ) : null}
@@ -1172,7 +1644,7 @@ export default function OptimizedHealthcarePatientWorkspace() {
                     <span className="text-sm">Loading…</span>
                   </div>
                 ) : patientFollowUps.length === 0 ? (
-                  <p className="text-sm text-slate-500">No follow-ups scheduled.</p>
+                  <p className="text-sm text-slate-500">No return visits booked yet.</p>
                 ) : (
                   <ul className="space-y-2">
                     {patientFollowUps.map((followUp) => {
@@ -1209,11 +1681,12 @@ export default function OptimizedHealthcarePatientWorkspace() {
                 )}
               </div>
             </section>
+            ) : null}
 
-            {billingEnabled ? (
-              <section id="section-billing" className="scroll-mt-24 space-y-2">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-slate-400">Billing</h2>
-                <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+            {activeTab === "billing" && billingEnabled ? (
+              <section className="hc-patient-card hc-tab-panel border-rose-500 space-y-3 p-4">
+                <h2 className="text-sm font-semibold text-rose-900">Payment</h2>
+                <div className="space-y-4 rounded-lg border border-slate-100 bg-slate-50/50 p-4">
                   <div className="flex flex-wrap gap-4 text-sm">
                     <div>
                       <span className="text-slate-500">Billed </span>
@@ -1271,8 +1744,33 @@ export default function OptimizedHealthcarePatientWorkspace() {
               </section>
             ) : null}
 
-            <section id="section-record" className="scroll-mt-24 space-y-2">
-              <h2 className="text-xs font-medium uppercase tracking-wide text-slate-400">Contact</h2>
+            {activeTab === "messages" ? (
+              <section className="hc-patient-card hc-tab-panel border-green-500 space-y-3 p-4">
+                <h2 className="text-sm font-semibold text-green-900">WhatsApp</h2>
+                <p className="text-sm text-slate-600">
+                  Send reminders or reply to this patient on WhatsApp from your clinic inbox.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/projects/${projectId}/live-chat-v2`)}
+                    className="hc-action-btn inline-flex items-center gap-2 bg-green-600 px-4 text-sm text-white hover:bg-green-700"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Open messages
+                  </button>
+                  {patient?.whatsappNumber || patient?.phoneNumber ? (
+                    <p className="w-full text-xs text-slate-500">
+                      Number on file: {patient?.whatsappNumber || patient?.phoneNumber}
+                    </p>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "details" ? (
+            <section className="hc-patient-card hc-tab-panel border-slate-400 space-y-3 p-4">
+              <h2 className="text-sm font-semibold text-slate-800">Patient info</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <InfoGroup
                   title="Contact"
@@ -1293,32 +1791,59 @@ export default function OptimizedHealthcarePatientWorkspace() {
                 />
               </div>
             </section>
+            ) : null}
 
-            <section id="section-history" className="scroll-mt-24 space-y-2">
-              <h2 className="text-xs font-medium uppercase tracking-wide text-slate-400">Activity</h2>
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                {activityTimeline.length === 0 ? (
-                  <p className="text-sm text-slate-500">No events yet.</p>
-                ) : (
-                  <ul className="space-y-3">
-                    {activityTimeline.map((item) => (
-                      <li key={item.id} className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="font-medium text-slate-900">{item.title}</p>
-                          <time className="shrink-0 text-xs text-slate-400">{item.date}</time>
-                        </div>
-                        {item.subtitle ? <p className="mt-1 text-sm text-slate-600">{item.subtitle}</p> : null}
-                        <span className="mt-2 inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{item.type}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </section>
+            {activeTab === "history" ? (
+              <PatientPastActivitySection
+                visits={visitHistory}
+                loading={visitHistoryLoading}
+                onOpenPrescription={(rx) => void openPrescriptionDrawer(historyPrescriptionToRecord(rx))}
+              />
+            ) : null}
             </div>
           </>
         )}
       </div>
+
+      {completeVisitModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <h2 className="text-lg font-semibold text-slate-900">Finish visit</h2>
+            <p className="mt-1 text-sm text-slate-600">Add visit charge (optional). Reception can collect payment later.</p>
+            <label className="mt-4 block text-sm font-medium text-slate-700">Visit charge (₹)</label>
+            <input
+              type="number"
+              min={0}
+              value={completeVisitModal.fee}
+              onChange={(e) => setCompleteVisitModal((c) => (c ? { ...c, fee: e.target.value } : c))}
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCompleteVisitModal(null)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fee = Number(completeVisitModal.fee || 0)
+                  if (Number.isNaN(fee) || fee < 0) {
+                    setAppointmentsError("Enter a valid amount")
+                    return
+                  }
+                  void confirmFinishVisit(completeVisitModal.appointment, fee)
+                }}
+                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+              >
+                Finish visit
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showEditModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
@@ -1477,8 +2002,8 @@ export default function OptimizedHealthcarePatientWorkspace() {
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Schedule Follow-up</h2>
-                <p className="text-sm text-slate-600">Follow-ups have lower consultation fees and help maintain continuity of care.</p>
+                <h2 className="text-lg font-semibold text-slate-900">Book return visit</h2>
+                <p className="text-sm text-slate-600">Pick when the patient should come back to the clinic.</p>
               </div>
               <button
                 type="button"
@@ -1576,7 +2101,7 @@ export default function OptimizedHealthcarePatientWorkspace() {
                   className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {followUpSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  {followUpSubmitting ? "Scheduling..." : "Schedule Follow-up"}
+                  {followUpSubmitting ? "Saving..." : "Book return visit"}
                 </button>
               </div>
             </form>
@@ -1584,9 +2109,31 @@ export default function OptimizedHealthcarePatientWorkspace() {
         </div>
       ) : null}
 
+      <BookVisitModal
+        show={showBookVisitModal}
+        onClose={() => setShowBookVisitModal(false)}
+        projectId={projectId}
+        patientId={patientId}
+        patientName={patient?.fullName || "Patient"}
+        doctors={visitDoctors}
+        defaultDoctorId={linkedDoctorId || ""}
+        defaultVisitType={bookVisitDefaults.visitType}
+        title={bookVisitDefaults.title}
+        onCreated={(appointment) => {
+          setPatientAppointments((current) => [appointment as AppointmentRecord, ...current])
+          setSuccessMessage("Visit booked")
+          setActiveTab("visits")
+          void loadPatientAppointments()
+          void loadHistory()
+        }}
+      />
+
       <PrescriptionFormModal
         show={showPrescriptionModal}
-        onClose={() => setShowPrescriptionModal(false)}
+        onClose={() => {
+          setShowPrescriptionModal(false)
+          setPrescriptionLinkedAppointmentId(null)
+        }}
         form={prescriptionForm}
         setForm={setPrescriptionForm}
         onSubmit={handleCreatePrescription}
@@ -1596,6 +2143,18 @@ export default function OptimizedHealthcarePatientWorkspace() {
         patients={patient ? [{ patientId: patient.patientId, fullName: patient.fullName }] : []}
         doctors={prescriptionDoctors}
         medicineCatalog={prescriptionMedicineCatalog}
+        title="Write prescription"
+      />
+
+      <PrescriptionViewDrawer
+        isOpen={rxDrawerOpen}
+        onClose={closePrescriptionDrawer}
+        prescription={rxDrawerRx}
+        pdfUrl={rxDrawerPdfUrl}
+        loading={rxDrawerLoading}
+        error={rxDrawerError || null}
+        printing={rxDrawerPrinting}
+        onPrint={() => void printFromPrescriptionDrawer()}
       />
     </div>
   )

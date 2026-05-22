@@ -13,13 +13,13 @@ const MODES: Array<{
 }> = [
   {
     id: "consultation",
-    title: "Consultation only",
-    description: "Visits, prescriptions, and consultation billing. Medicine catalog for prescribing; no stock-linked dispensary by default.",
+    title: "Doctor clinic only",
+    description: "Visits, prescriptions, and payment. Best for most small clinics.",
   },
   {
     id: "clinic_pharmacy",
-    title: "Integrated dispensary",
-    description: "Same as consultation plus inventory and pharmacy billing tied to stock—full in-clinic counter workflow.",
+    title: "Clinic + medicine counter",
+    description: "Also track medicine stock and sell from your counter.",
   },
 ]
 
@@ -28,8 +28,8 @@ export default function ClinicTypeSelector({ settings, onUpdate }: Props) {
 
   return (
     <SectionCard
-      title="Clinic type"
-      subtitle="Consultation-only vs integrated dispensary. Change anytime—Save updates the clinic record."
+      title="What kind of clinic is this?"
+      subtitle="Pick one — you can change later and press Save."
     >
       <div className="grid gap-3 sm:grid-cols-2">
         {MODES.map((mode) => {

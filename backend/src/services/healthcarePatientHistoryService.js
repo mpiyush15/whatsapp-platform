@@ -84,6 +84,190 @@ function timelineFromPayments(items = []) {
   }));
 }
 
+function prescriptionIdFromInvoiceNotes(notes) {
+  const match = String(notes || '').match(/prescription\s+([a-zA-Z0-9-]+)/i);
+  return match?.[1] || null;
+}
+
+const VISIT_MERGE_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+function eventTimestamp(value) {
+  const t = new Date(value || 0).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function findNearestAppointment(appointments, eventAt) {
+  const eventTs = eventTimestamp(eventAt);
+  if (eventTs == null) return null;
+
+  let best = null;
+  let bestDelta = Infinity;
+  for (const apt of appointments) {
+    const aptTs = eventTimestamp(apt.scheduledAt || apt.createdAt);
+    if (aptTs == null) continue;
+    const delta = Math.abs(eventTs - aptTs);
+    if (delta <= VISIT_MERGE_WINDOW_MS && delta < bestDelta) {
+      bestDelta = delta;
+      best = apt;
+    }
+  }
+  return best;
+}
+
+function uniqueInvoices(list) {
+  const seen = new Set();
+  return list.filter((inv) => {
+    if (seen.has(inv.patientInvoiceId)) return false;
+    seen.add(inv.patientInvoiceId);
+    return true;
+  });
+}
+
+function mapInvoiceSummary(inv) {
+  return {
+    patientInvoiceId: inv.patientInvoiceId,
+    status: inv.status,
+    total: Number(inv.total || 0),
+    balanceDue: Number(inv.balanceDue || 0),
+  };
+}
+
+function computePaymentStatus(invList = []) {
+  if (!invList.length) return 'none';
+  const due = invList.reduce((sum, inv) => sum + Number(inv.balanceDue || 0), 0);
+  if (due > 0.01) return 'due';
+  return 'paid';
+}
+
+function buildVisitBucket(apt, rxList, invList) {
+  const sortedRx = [...rxList].sort(
+    (a, b) => eventTimestamp(b.issuedAt || b.createdAt) - eventTimestamp(a.issuedAt || a.createdAt)
+  );
+  const primaryRx = sortedRx[0] || null;
+  const invoices = uniqueInvoices(invList);
+
+  return {
+    visitId: apt.appointmentId,
+    kind: 'visit',
+    visitDate: toSafeIso(apt.scheduledAt) || toSafeIso(apt.createdAt),
+    visitStatus: apt.status || null,
+    visitReason: apt.reason || apt.visitType || null,
+    doctorName: apt.doctorSnapshot?.fullName || null,
+    appointmentId: apt.appointmentId,
+    prescription: primaryRx,
+    prescriptions: sortedRx,
+    diagnosis: primaryRx?.diagnosis || apt.reason || null,
+    medicines: Array.isArray(primaryRx?.medicines) ? primaryRx.medicines : [],
+    followUpAt: toSafeIso(primaryRx?.followUpAt),
+    notes: primaryRx?.notes || null,
+    invoices: invoices.map(mapInvoiceSummary),
+    paymentStatus: computePaymentStatus(invoices),
+  };
+}
+
+function buildVisitHistory(appointments = [], prescriptions = [], invoices = [], _payments = []) {
+  const visitMap = new Map();
+  for (const apt of appointments) {
+    visitMap.set(apt.appointmentId, { apt, rxList: [], invList: [] });
+  }
+
+  const unmatchedRx = [];
+  for (const rx of prescriptions) {
+    let apptId = rx.appointmentId && visitMap.has(rx.appointmentId) ? rx.appointmentId : null;
+    if (!apptId) {
+      apptId = findNearestAppointment(appointments, rx.issuedAt || rx.createdAt)?.appointmentId || null;
+    }
+    if (apptId && visitMap.has(apptId)) {
+      visitMap.get(apptId).rxList.push(rx);
+    } else {
+      unmatchedRx.push(rx);
+    }
+  }
+
+  for (const rx of unmatchedRx) {
+    const apptId = findNearestAppointment(appointments, rx.issuedAt || rx.createdAt)?.appointmentId || null;
+    if (apptId && visitMap.has(apptId)) {
+      visitMap.get(apptId).rxList.push(rx);
+    }
+  }
+
+  const unmatchedInv = [];
+  for (const inv of invoices) {
+    let bucket = null;
+
+    if (inv.appointmentId && visitMap.has(inv.appointmentId)) {
+      bucket = visitMap.get(inv.appointmentId);
+    }
+
+    if (!bucket) {
+      const rxId = prescriptionIdFromInvoiceNotes(inv.notes);
+      if (rxId) {
+        for (const entry of visitMap.values()) {
+          if (entry.rxList.some((rx) => rx.prescriptionId === rxId)) {
+            bucket = entry;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!bucket) {
+      const near = findNearestAppointment(appointments, inv.issuedAt || inv.createdAt);
+      if (near) bucket = visitMap.get(near.appointmentId);
+    }
+
+    if (bucket) {
+      bucket.invList.push(inv);
+    } else {
+      unmatchedInv.push(inv);
+    }
+  }
+
+  for (const inv of unmatchedInv) {
+    const near = findNearestAppointment(appointments, inv.issuedAt || inv.createdAt);
+    if (near) visitMap.get(near.appointmentId).invList.push(inv);
+  }
+
+  const rows = [];
+  for (const { apt, rxList, invList } of visitMap.values()) {
+    rows.push(buildVisitBucket(apt, rxList, invList));
+  }
+
+  const assignedRx = new Set(rows.flatMap((row) => row.prescriptions.map((rx) => rx.prescriptionId)));
+  const assignedInv = new Set(rows.flatMap((row) => row.invoices.map((inv) => inv.patientInvoiceId)));
+
+  for (const rx of prescriptions) {
+    if (assignedRx.has(rx.prescriptionId)) continue;
+    const invList = invoices.filter(
+      (inv) =>
+        !assignedInv.has(inv.patientInvoiceId) &&
+        prescriptionIdFromInvoiceNotes(inv.notes) === rx.prescriptionId
+    );
+    invList.forEach((inv) => assignedInv.add(inv.patientInvoiceId));
+    rows.push({
+      visitId: rx.prescriptionId,
+      kind: 'prescription',
+      visitDate: toSafeIso(rx.issuedAt) || toSafeIso(rx.createdAt),
+      visitStatus: rx.status || 'issued',
+      visitReason: rx.diagnosis || 'Prescription',
+      doctorName: rx.doctorSnapshot?.fullName || null,
+      appointmentId: null,
+      prescription: rx,
+      prescriptions: [rx],
+      diagnosis: rx.diagnosis || null,
+      medicines: Array.isArray(rx.medicines) ? rx.medicines : [],
+      followUpAt: toSafeIso(rx.followUpAt),
+      notes: rx.notes || null,
+      invoices: uniqueInvoices(invList).map(mapInvoiceSummary),
+      paymentStatus: computePaymentStatus(invList),
+    });
+  }
+
+  return rows
+    .filter((row) => row.visitDate)
+    .sort((a, b) => new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime());
+}
+
 function buildFollowUps(prescriptions = []) {
   const now = Date.now();
   const followUps = prescriptions
@@ -146,6 +330,7 @@ async function getPatientHistory(scope, patientId) {
     summary,
     followUps: buildFollowUps(prescriptions),
     timeline,
+    visits: buildVisitHistory(appointments, prescriptions, invoices, payments),
   };
 }
 

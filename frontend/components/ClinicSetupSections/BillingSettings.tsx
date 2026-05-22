@@ -15,27 +15,27 @@ interface Props {
 export default function BillingSettings({ settings, onUpdate }: Props) {
   return (
     <SectionCard
-      title="Billing & Pharmacy"
-      subtitle="Manage consultation billing and medicine workflow"
+      title="Payments & tax"
+      subtitle="Turn on what you need for your clinic"
     >
       <div className="space-y-4">
         <ToggleRow
-          title="Enable Billing"
-          description="Generate consultation invoices"
+          title="Visit charges & invoices"
+          description="Bill patients after consultation"
           enabled={settings.enableBilling}
           onChange={(value) => onUpdate({ enableBilling: value })}
         />
 
         <ToggleRow
-          title="Enable Pharmacy Billing"
-          description="Sell medicines inside clinic"
+          title="Sell medicines at counter"
+          description="Add medicine prices to bills (needs medicine stock)"
           enabled={settings.enablePharmacyBilling}
           onChange={(value) => onUpdate({ enablePharmacyBilling: value })}
         />
 
         <ToggleRow
-          title="Enable GST"
-          description="Apply tax calculations on invoices"
+          title="GST on bills"
+          description="Add tax on invoices"
           enabled={settings.enableGST}
           onChange={(value) => onUpdate({ enableGST: value })}
         />

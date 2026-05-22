@@ -24,6 +24,8 @@ import frontdeskRoutes from './healthcare/frontdeskRoutes.js';
 import staffRoutes from './healthcare/staffRoutes.js';
 import patientHistoryRoutes from './healthcare/patientHistoryRoutes.js';
 import * as clinicController from '../controllers/healthcareClinicController.js';
+import { createInvoiceForPrescription } from '../services/healthcarePrescriptionInvoiceService.js';
+import healthcareAnalyticsService from '../services/healthcareAnalyticsService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +65,7 @@ router.use('/clinical', patientHistoryRoutes);
 
 // Clinic routes
 router.get('/clinic/:projectId', clinicController.getClinic);
+router.get('/clinic/:projectId/prescription-blank-pdf', clinicController.getPrescriptionBlankPdf);
 router.post('/clinic/:projectId', clinicController.upsertClinic);
 router.patch('/clinic/:projectId/logo', clinicLogoUpload.single('logoFile'), handleMulterError, clinicController.updateClinicLogo);
 router.patch('/clinic/:projectId/prescription-design', prescriptionPdfUpload.single('pdfFile'), handleMulterError, clinicController.updatePrescriptionDesign);
@@ -1018,6 +1021,16 @@ async function syncInvoicePaymentSummary(scope, patientInvoiceId) {
   );
 }
 
+router.get('/analytics', async (req, res) => {
+  try {
+    const scope = await resolveScope(req);
+    const payload = await healthcareAnalyticsService.getHealthcareAnalytics(scope, req.query?.period);
+    return sendSuccess(res, payload, 'Healthcare analytics retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'healthcareAnalytics');
+  }
+});
+
 router.get('/overview', async (req, res) => {
   try {
     const scope = await resolveScope(req);
@@ -1449,7 +1462,7 @@ router.put('/appointments/:appointmentId', async (req, res) => {
     const existing = await findAppointment(scope, req.params.appointmentId);
     const payload = await normalizeAppointmentPayload(scope, req.body, existing);
 
-    const appointment = await Appointment.findOneAndUpdate(
+    let appointment = await Appointment.findOneAndUpdate(
       { ...buildScopeFilter(scope), appointmentId: req.params.appointmentId },
       { ...payload, updatedBy: getActor(req) },
       { new: true, runValidators: true }
@@ -1459,6 +1472,30 @@ router.put('/appointments/:appointmentId', async (req, res) => {
     const afterScheduledAt = appointment?.scheduledAt ? new Date(appointment.scheduledAt).getTime() : null;
     const wasRescheduled = beforeScheduledAt && afterScheduledAt && beforeScheduledAt !== afterScheduledAt;
     const becameCancelled = String(existing?.status || '') !== 'cancelled' && String(appointment?.status || '') === 'cancelled';
+    const becameCompleted = String(existing?.status || '') !== 'completed' && String(appointment?.status || '') === 'completed';
+
+    if (becameCompleted) {
+      const finishedAt = new Date();
+      appointment = await Appointment.findOneAndUpdate(
+        { ...buildScopeFilter(scope), appointmentId: req.params.appointmentId },
+        {
+          $set: {
+            'frontdesk.completedAt': finishedAt,
+            'frontdesk.lastStatusChangedAt': finishedAt,
+            'frontdesk.lastStatusChangedBy': getActor(req),
+          },
+          $push: {
+            statusHistory: {
+              status: 'completed',
+              changedAt: finishedAt,
+              changedBy: getActor(req),
+              source: 'clinic',
+            },
+          },
+        },
+        { new: true, runValidators: true }
+      );
+    }
 
     if (wasRescheduled) {
       fireHealthcareWhatsAppTrigger(scope.accountId, scope.projectId, 'appointment_rescheduled', {
@@ -1568,7 +1605,17 @@ router.post('/prescriptions', async (req, res) => {
       medicineSummary: prescription.medicines?.[0]?.medicineName,
     });
 
-    return sendSuccess(res, { prescription }, 'Prescription created', 201);
+    let invoice = null;
+    try {
+      const invoiceResult = await createInvoiceForPrescription(scope, prescription.toObject?.() || prescription, {
+        actor: getActor(req),
+      });
+      invoice = invoiceResult?.invoice || null;
+    } catch (invoiceErr) {
+      console.warn('Auto invoice from prescription failed:', invoiceErr?.message || invoiceErr);
+    }
+
+    return sendSuccess(res, { prescription, invoice }, invoice ? 'Prescription and bill created' : 'Prescription created', 201);
   } catch (error) {
     if (error instanceof ValidationError) {
       return sendValidationError(res, error.message);

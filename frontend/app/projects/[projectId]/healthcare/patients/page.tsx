@@ -147,8 +147,8 @@ export default function HealthcarePatientsPage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Patients</h2>
-            <p className="text-sm text-slate-600">Clinic-grade patient registry with quick actions.</p>
+            <h2 className="text-lg font-semibold text-teal-900">Patients</h2>
+            <p className="text-sm text-slate-600">Tap a patient to finish today&apos;s visit, write a prescription, or book a return visit.</p>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -157,7 +157,7 @@ export default function HealthcarePatientsPage() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search by name, MRN, phone"
+                placeholder="Search name, file no., phone"
                 className="w-full border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
               />
             </div>
@@ -229,9 +229,9 @@ export default function HealthcarePatientsPage() {
                         <div className="flex items-center gap-2">
                           <Link
                             href={`/projects/${projectId}/healthcare/patients/${patient.patientId}`}
-                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                            className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
                           >
-                            View
+                            Open patient
                           </Link>
                         </div>
                       </td>

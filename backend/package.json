@@ -9,7 +9,8 @@
     "test": "node --test src/services/__tests__/*.test.js",
     "smoke:support": "node scripts/smoke-test-support.mjs",
     "migrate:pharmacy-billing-flag": "node scripts/migrate-pharmacy-billing-flag.js",
-    "fix:users-accountid-index": "node scripts/fix-users-accountid-index.js"
+    "fix:users-accountid-index": "node scripts/fix-users-accountid-index.js",
+    "seed:healthcare-demo": "node scripts/seed-healthcare-demo.js proj_hc_1777808469748 --clear"
   },
   "keywords": [],
   "author": "",

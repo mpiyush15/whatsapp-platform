@@ -5,6 +5,11 @@ import { useParams, useSearchParams } from "next/navigation"
 import { Loader2, Plus, RefreshCw, Wallet, X } from "lucide-react"
 import { apiGet, apiPost } from "@/lib/api-client"
 import DataTable from "@/components/DataTable"
+import {
+  formatInvoiceStatus,
+  formatPaymentMethod,
+  formatPaymentStatus,
+} from "@/lib/healthcareBillingUi"
 
 interface PatientRecord {
   patientId: string
@@ -192,29 +197,79 @@ export default function HealthcareBillingPage() {
       collected: invoices.reduce((sum, invoice) => sum + Number(invoice.amountPaid || 0), 0),
       outstanding: invoices.reduce((sum, invoice) => sum + Number(invoice.balanceDue || 0), 0),
       paidCount: invoices.filter((invoice) => invoice.status === "paid").length,
+      waitingCount: invoices.filter((inv) => Number(inv.balanceDue || 0) > 0).length,
     }
   }, [invoices])
 
+  const openPaymentForInvoice = useCallback(
+    (invoice: PatientInvoiceRecord) => {
+      setPaymentForm({
+        ...initialPaymentForm,
+        patientId: invoice.patientId,
+        patientInvoiceId: invoice.patientInvoiceId,
+        amount: String(invoice.balanceDue || invoice.total || ""),
+        paidAt: "",
+      })
+      setShowPaymentModal(true)
+      setError("")
+      setSuccessMessage("")
+    },
+    []
+  )
+
   const invoiceColumns = useMemo(
     () => [
-      { key: "invoiceNumber", label: "Invoice #" },
+      { key: "invoiceNumber", label: "Bill no." },
       { key: "patientId", label: "Patient", render: (value: string) => patientNameMap.get(value) || value },
-      { key: "total", label: "Total", render: (value: number) => `₹${Number(value || 0).toLocaleString("en-IN")}` },
-      { key: "amountPaid", label: "Paid", render: (value: number) => `₹${Number(value || 0).toLocaleString("en-IN")}` },
-      { key: "balanceDue", label: "Balance", render: (value: number) => <span className="text-rose-600">₹{Number(value || 0).toLocaleString("en-IN")}</span> },
+      { key: "total", label: "Total bill", render: (value: number) => `₹${Number(value || 0).toLocaleString("en-IN")}` },
+      { key: "amountPaid", label: "Received", render: (value: number) => `₹${Number(value || 0).toLocaleString("en-IN")}` },
+      {
+        key: "balanceDue",
+        label: "Still due",
+        render: (value: number) => {
+          const due = Number(value || 0)
+          return (
+            <span className={due > 0 ? "font-semibold text-rose-700" : "text-emerald-700"}>
+              ₹{due.toLocaleString("en-IN")}
+            </span>
+          )
+        },
+      },
       {
         key: "status",
         label: "Status",
         render: (value: string) => (
-          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${invoiceStatusClass[value || ""] || "bg-slate-100 text-slate-600"}`}>
-            {value || "draft"}
+          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${invoiceStatusClass[value || ""] || "bg-slate-100 text-slate-600"}`}>
+            {formatInvoiceStatus(value)}
           </span>
         ),
       },
-      { key: "issuedAt", label: "Issued", render: (value: string) => (value ? new Date(value).toLocaleDateString() : "—") },
-      { key: "dueAt", label: "Due", render: (value: string) => (value ? new Date(value).toLocaleDateString() : "—") },
+      { key: "issuedAt", label: "Date", render: (value: string) => (value ? new Date(value).toLocaleDateString("en-IN") : "—") },
+      {
+        key: "collect",
+        label: "Action",
+        minWidth: "8rem",
+        render: (_: unknown, row: PatientInvoiceRecord) => {
+          const due = Number(row.balanceDue || 0)
+          if (due <= 0) {
+            return <span className="text-xs text-emerald-700">Paid</span>
+          }
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openPaymentForInvoice(row)
+              }}
+              className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+            >
+              Record payment
+            </button>
+          )
+        },
+      },
     ],
-    [patientNameMap]
+    [patientNameMap, openPaymentForInvoice]
   )
 
   const paymentColumns = useMemo(
@@ -222,13 +277,13 @@ export default function HealthcareBillingPage() {
       { key: "amount", label: "Amount", render: (value: number) => <span className="font-semibold text-emerald-700">₹{Number(value || 0).toLocaleString("en-IN")}</span> },
       { key: "patientId", label: "Patient", render: (value: string) => patientNameMap.get(value) || value },
       { key: "patientInvoiceId", label: "Invoice", render: (value: string) => (value ? invoiceNumberMap.get(value) || value : "—") },
-      { key: "method", label: "Method", render: (value: string) => <span className="capitalize">{value || "cash"}</span> },
+      { key: "method", label: "How paid", render: (value: string) => formatPaymentMethod(value) },
       {
         key: "status",
         label: "Status",
         render: (value: string) => (
-          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${paymentStatusClass[value || ""] || "bg-slate-100 text-slate-600"}`}>
-            {value || "completed"}
+          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${paymentStatusClass[value || ""] || "bg-slate-100 text-slate-600"}`}>
+            {formatPaymentStatus(value)}
           </span>
         ),
       },
@@ -314,42 +369,50 @@ export default function HealthcareBillingPage() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Stats */}
+      <header className="rounded-2xl border border-rose-100 bg-gradient-to-r from-rose-50 to-white p-5">
+        <h1 className="text-xl font-semibold text-slate-900">Payments desk</h1>
+        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+          When a doctor saves a prescription, a bill is created here automatically. Your job: tap{" "}
+          <span className="font-medium text-emerald-800">Record payment</span> when the patient pays (cash, UPI, card).
+        </p>
+      </header>
+
       <div className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm">
+          <p className="text-sm font-medium text-amber-900">Waiting for payment</p>
+          <p className="mt-2 text-3xl font-semibold text-amber-950">{metrics.waitingCount}</p>
+          <p className="mt-1 text-xs text-amber-800">bills with money still due</p>
+        </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-slate-500">Invoices</p>
+          <p className="text-sm text-slate-600">Total bills today</p>
           <p className="mt-2 text-3xl font-semibold text-slate-900">{total}</p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-slate-500">Total billed</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-900">₹{metrics.totalBilled.toLocaleString("en-IN")}</p>
+          <p className="text-sm text-slate-600">Money collected</p>
+          <p className="mt-2 text-3xl font-semibold text-emerald-800">₹{metrics.collected.toLocaleString("en-IN")}</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-slate-500">Collected</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-900">₹{metrics.collected.toLocaleString("en-IN")}</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-slate-500">Outstanding</p>
-          <p className="mt-2 text-3xl font-semibold text-slate-900 text-rose-600">₹{metrics.outstanding.toLocaleString("en-IN")}</p>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-4 shadow-sm">
+          <p className="text-sm text-rose-800">Still to collect</p>
+          <p className="mt-2 text-3xl font-semibold text-rose-700">₹{metrics.outstanding.toLocaleString("en-IN")}</p>
         </div>
       </div>
 
-      {/* Invoices table */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-5 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Invoices</h2>
-            <p className="text-sm text-slate-500">Issue date, balances, and payment status</p>
+            <h2 className="text-base font-semibold text-slate-900">Patient bills</h2>
+            <p className="text-sm text-slate-500">From prescriptions and visit charges — record payment on each row</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => { loadPatients(); loadInvoices(); loadPayments() }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               <RefreshCw className="h-4 w-4" />
+              Refresh
             </button>
-            <button type="button" onClick={() => { setShowInvoiceModal(true); setError(""); setSuccessMessage("") }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700">
-              <Plus className="h-4 w-4" /> New invoice
+            <button type="button" onClick={() => { setShowPaymentModal(true); setError(""); setSuccessMessage("") }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700">
+              <Wallet className="h-4 w-4" /> Record payment
             </button>
-            <button type="button" onClick={() => { setShowPaymentModal(true); setError(""); setSuccessMessage("") }} className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
-              <Wallet className="h-4 w-4" /> Log payment
+            <button type="button" onClick={() => { setShowInvoiceModal(true); setError(""); setSuccessMessage("") }} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50">
+              <Plus className="h-4 w-4" /> Manual bill
             </button>
           </div>
         </div>
@@ -362,7 +425,7 @@ export default function HealthcareBillingPage() {
           data={invoices as any[]}
           loading={loading}
           error={null}
-          emptyMessage="No invoices yet."
+          emptyMessage="No bills yet. They appear here when a doctor saves a prescription."
           rowClassName="hover:bg-slate-50"
         />
       </div>
@@ -371,8 +434,8 @@ export default function HealthcareBillingPage() {
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-5">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Recent payments</h2>
-            <p className="text-sm text-slate-500">Patient collections and linked invoice references</p>
+            <h2 className="text-base font-semibold text-slate-900">Payments received</h2>
+            <p className="text-sm text-slate-500">Cash, UPI, and card entries logged by reception</p>
           </div>
           <span className="rounded-xl bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">Paid: {metrics.paidCount}</span>
         </div>
@@ -392,8 +455,8 @@ export default function HealthcareBillingPage() {
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">New invoice</h3>
-                <p className="text-sm text-slate-500">Create a patient billing invoice.</p>
+                <h3 className="text-lg font-semibold text-slate-900">Manual bill</h3>
+                <p className="text-sm text-slate-500">Only if there is no bill from prescription — e.g. extra charge.</p>
               </div>
               <button type="button" onClick={() => setShowInvoiceModal(false)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><X className="h-4 w-4" /></button>
             </div>
@@ -407,8 +470,8 @@ export default function HealthcareBillingPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-                <input required value={invoiceForm.description} onChange={(e) => setInvoiceForm((c) => ({ ...c, description: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-400" placeholder="Consultation fee" />
+                <label className="mb-1 block text-sm font-medium text-slate-700">What is this charge for?</label>
+                <input required value={invoiceForm.description} onChange={(e) => setInvoiceForm((c) => ({ ...c, description: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-400" placeholder="e.g. Visit fee, injection" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -463,8 +526,8 @@ export default function HealthcareBillingPage() {
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-slate-900">Log payment</h3>
-                <p className="text-sm text-slate-500">Record a payment received from a patient.</p>
+                <h3 className="text-lg font-semibold text-slate-900">Record payment</h3>
+                <p className="text-sm text-slate-500">Patient paid — link to their bill and enter amount (cash / UPI / card).</p>
               </div>
               <button type="button" onClick={() => setShowPaymentModal(false)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><X className="h-4 w-4" /></button>
             </div>
@@ -478,11 +541,13 @@ export default function HealthcareBillingPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Invoice (optional)</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Which bill? (pick from list)</label>
                 <select value={paymentForm.patientInvoiceId} onChange={(e) => setPaymentForm((c) => ({ ...c, patientInvoiceId: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-emerald-400">
-                  <option value="">No linked invoice</option>
+                  <option value="">— Select bill —</option>
                   {invoices.filter((inv) => !paymentForm.patientId || inv.patientId === paymentForm.patientId).map((inv) => (
-                    <option key={inv.patientInvoiceId} value={inv.patientInvoiceId}>{inv.invoiceNumber} • ₹{Number(inv.balanceDue || inv.total || 0).toLocaleString("en-IN")}</option>
+                    <option key={inv.patientInvoiceId} value={inv.patientInvoiceId}>
+                      {inv.invoiceNumber} · due ₹{Number(inv.balanceDue || inv.total || 0).toLocaleString("en-IN")}
+                    </option>
                   ))}
                 </select>
               </div>
