@@ -15,6 +15,8 @@ import {
   type BillingCycle,
   type PublicPricingPlan,
 } from '@/lib/pricing/publicPlans'
+import { confirmSubscriptionPayment, createSubscriptionOrder } from '@/lib/payments/subscriptionOrder'
+import { openCashfreeCheckout } from '@/lib/payments/cashfreeCheckout'
 
 function CheckoutPage() {
   const router = useRouter()
@@ -119,77 +121,33 @@ function CheckoutPage() {
 
     try {
       const token = localStorage.getItem('token')
-      console.log('📝 Creating order with plan:', selectedPlan.name, 'cycle:', billingCycle)
-      
-      const res = await fetch(`${API_URL}/subscriptions/create-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          plan: selectedPlan.name,
-          billingCycle
-        })
-      })
+      if (!token) throw new Error('Please log in again')
 
-      const orderData = await res.json()
-      console.log('📦 Order response:', orderData)
-      
-      if (!res.ok) throw new Error(orderData.message || 'Order failed')
-
-      if (!orderData.data?.paymentSessionId) {
-        throw new Error('No payment session ID in response: ' + JSON.stringify(orderData))
+      const order = await createSubscriptionOrder(
+        { plan: selectedPlan.name, billingCycle },
+        token
+      )
+      if (!order.ok || !order.paymentSessionId) {
+        throw new Error(order.message || 'Order failed')
       }
 
-      // Load Cashfree SDK
-      console.log('⏳ Loading Cashfree SDK...')
-      if (!(window as any).Cashfree) {
-        const script = document.createElement('script')
-        script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js'
-        script.onerror = () => {
-          throw new Error('Failed to load Cashfree SDK')
-        }
-        document.body.appendChild(script)
-        
-        // Wait for SDK to load
-        await new Promise((resolve, reject) => {
-          const checkCashfree = () => {
-            if ((window as any).Cashfree) {
-              console.log('✅ Cashfree SDK loaded')
-              resolve(true)
-            } else {
-              setTimeout(checkCashfree, 100)
-            }
-          }
-          checkCashfree()
-          setTimeout(() => reject(new Error('Cashfree SDK timeout')), 5000)
-        })
+      const payResult = await openCashfreeCheckout(order.paymentSessionId)
+      if (!payResult.paid) {
+        throw new Error(payResult.error || 'Payment was not completed')
       }
 
-      console.log('🔄 Opening Cashfree checkout with sessionId:', orderData.data.paymentSessionId)
-      const mode = process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
-      console.log('🎯 Using Cashfree mode:', mode)
-      const cashfree = await (window as any).Cashfree({ mode })
-      const result = await cashfree.checkout({
-        paymentSessionId: orderData.data.paymentSessionId,
-        redirectTarget: '_modal'
-      })
-      console.log('✅ Cashfree checkout result:', result)
-      
-      // Payment completed - redirect to dashboard
-      if (result?.paymentDetails) {
-        console.log('💳 Payment successful:', result.paymentDetails)
-        setError('')
-        setProcessing(false)
-        // Wait 2 seconds then redirect to dashboard
-        setTimeout(() => {
-          router.push('/projects?setup=1')
-        }, 1500)
-      } else {
-        // Modal closed without payment
-        console.log('⚠️ Checkout modal closed')
+      if (!order.orderId) {
+        throw new Error('Payment succeeded but order id missing')
       }
+
+      const activation = await confirmSubscriptionPayment(order.orderId, token)
+      if (!activation.ok) {
+        throw new Error(activation.message || 'Payment received — activation still processing')
+      }
+
+      setError('')
+      setProcessing(false)
+      router.push(activation.redirectTo || '/projects?setup=1')
     } catch (err) {
       console.error('❌ Payment error:', err)
       setError(err instanceof Error ? err.message : 'Payment failed')

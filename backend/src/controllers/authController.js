@@ -88,8 +88,8 @@ export const login = async (req, res) => {
     const authEntity = account || user;
     console.log('🔐 Password in DB?:', !!authEntity?.password);
     
-    if (account && account.status !== 'active') {
-      return sendUnauthorized(res, 'Account is not active');
+    if (account && !['active', 'pending'].includes(account.status)) {
+      return sendUnauthorized(res, 'Account is not active. Contact support if you need help.');
     }
     
     // ✅ VERIFY PASSWORD WITH BCRYPT
@@ -217,11 +217,14 @@ export const signup = async (req, res) => {
       return sendValidationError(res, 'Please select a plan');
     }
 
-    const validCycles = ['monthly', 'quarterly', 'annual'];
-    const cycle = (billingCycle || 'monthly').toLowerCase();
-    if (!validCycles.includes(cycle)) {
+    const validCycles = ['monthly', 'quarterly', 'annual', 'yearly'];
+    const cycleRaw = (billingCycle || 'monthly').toLowerCase();
+    if (!validCycles.includes(cycleRaw)) {
       return sendValidationError(res, 'Invalid billing cycle. Choose: monthly, quarterly, annual');
     }
+    /** Stored on Account as yearly; Payment/Subscription APIs accept annual */
+    const cycle = cycleRaw === 'annual' ? 'yearly' : cycleRaw;
+    const cycleForPayment = cycleRaw === 'yearly' ? 'annual' : cycleRaw;
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -392,7 +395,7 @@ export const signup = async (req, res) => {
         });
         
         if (pricingPlan) {
-          if (cycle === 'annual') {
+          if (cycleForPayment === 'annual' || cycle === 'yearly') {
             planAmount = pricingPlan.yearlyPrice || 0;
           } else if (cycle === 'quarterly') {
             planAmount = Math.round((pricingPlan.monthlyPrice || 0) * 3);

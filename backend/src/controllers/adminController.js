@@ -41,11 +41,29 @@ export const getOrganizations = async (req, res) => {
       let subscription = null;
       let invoice = null;
 
-      if (org.subscriptionId) {
-        subscription = await Subscription.findById(org.subscriptionId).select('subscriptionId status startDate endDate planName');
+      const subId = org.subscriptionId;
+      if (subId) {
+        subscription = await Subscription.findById(subId).select('status startDate endDate planName billingCycle amount');
         if (subscription) {
-          invoice = await Invoice.findOne({ subscriptionId: org.subscriptionId }).select('invoiceId invoiceNumber amount status');
+          invoice = await Invoice.findOne({ subscriptionId: String(subId) })
+            .sort({ createdAt: -1 })
+            .select('invoiceNumber amount status paidDate');
         }
+      }
+      if (!subscription) {
+        subscription = await Subscription.findOne({ accountId: org.accountId })
+          .sort({ createdAt: -1 })
+          .select('status startDate endDate planName billingCycle amount');
+        if (subscription) {
+          invoice = await Invoice.findOne({ subscriptionId: String(subscription._id) })
+            .sort({ createdAt: -1 })
+            .select('invoiceNumber amount status paidDate');
+        }
+      }
+      if (!invoice) {
+        invoice = await Invoice.findOne({ accountId: org.accountId })
+          .sort({ createdAt: -1 })
+          .select('invoiceNumber amount status paidDate');
       }
 
       const stats = statsMap.get(org.accountId) || {};

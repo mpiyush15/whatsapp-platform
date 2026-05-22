@@ -1,6 +1,7 @@
 import express from 'express';
 import agentController from '../controllers/agentController.js';
 import { requireJWT } from '../middlewares/jwtAuth.js';
+import { checkPlanLimit } from '../middlewares/checkPlanLimit.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -18,7 +19,7 @@ const router = express.Router();
  * Create new agent and send invitation email
  * Requires: manager or higher role
  */
-router.post('/', requireJWT, agentController.createAgent);
+router.post('/', requireJWT, checkPlanLimit('user'), agentController.createAgent);
 
 /**
  * ACCEPT INVITATION & CREATE ACCOUNT

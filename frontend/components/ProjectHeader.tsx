@@ -8,6 +8,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { ChevronDown, LogOut, Settings, Search, RefreshCw, Plus, Menu } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { authService } from '@/lib/auth'
+import CreditBalanceTopbar from '@/components/CreditBalanceTopbar'
 
 interface ProjectHeaderProps {
   projectId: string
@@ -85,6 +86,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
 
   const isFlowPage = pathname.includes('/flow')
   const flowBuilder = useFlowBuilderOptional()
+  const creditTopbar = <CreditBalanceTopbar projectId={projectId} />
   
   // Use context for live chat search/filter
   let search = ''
@@ -188,8 +190,8 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
             <h2 className="text-lg font-semibold text-gray-700">{tabTitle}</h2>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex items-center gap-2">
+            {creditTopbar}
             {showSyncButton && (
               <button
                 onClick={onSyncClick}
@@ -214,9 +216,8 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
       )
     }
 
-    // Fallback if context not available
     return (
-      <header className="bg-white border-b border-gray-200 h-16 flex items-center px-6">
+      <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6">
         <div className="flex items-center gap-2">
           <button
             onClick={onMenuClick}
@@ -227,6 +228,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
           </button>
           <h2 className="text-lg font-semibold text-gray-900">Settings</h2>
         </div>
+        {creditTopbar}
       </header>
     )
   }
@@ -257,6 +259,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
           </div>
 
           <div className="flex items-center gap-2">
+            {creditTopbar}
             {showSyncButton && (
               <button
                 onClick={onSyncClick}
@@ -282,7 +285,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
     }
 
     return (
-      <header className="bg-white border-b border-gray-200 h-16 flex items-center px-6">
+      <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6">
         <div className="flex items-center gap-2">
           <button
             onClick={onMenuClick}
@@ -293,6 +296,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
           </button>
           <h2 className="text-lg font-semibold text-gray-900">Templates</h2>
         </div>
+        {creditTopbar}
       </header>
     )
   }
@@ -300,7 +304,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
   // Show topbar with campaigns heading
   if (isCampaignsPage) {
     return (
-      <header className="bg-white border-b border-gray-200 h-16 flex items-center px-6">
+      <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6">
         <div className="flex items-center gap-2">
           <button
             onClick={onMenuClick}
@@ -311,6 +315,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
           </button>
           <h2 className="text-lg font-semibold text-gray-900">Campaigns</h2>
         </div>
+        {creditTopbar}
       </header>
     )
   }
@@ -328,7 +333,6 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
             <Menu size={20} />
           </button>
 
-          {/* Left: Search */}
           <div className="flex-1 max-w-md">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
@@ -341,6 +345,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
               />
             </div>
           </div>
+          {creditTopbar}
         </div>
       </div>
     )
@@ -363,7 +368,8 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
             <p className="text-sm text-gray-500 hidden lg:block">Manage your WhatsApp contacts</p>
           </div>
 
-          <div className="flex items-center gap-3 text-sm text-gray-700">
+          <div className="flex items-center gap-3 text-sm text-gray-700 flex-wrap justify-end">
+            {creditTopbar}
             {contactsHeaderLoading ? (
               <span className="text-gray-400 text-xs">Loading metrics…</span>
             ) : contactMetrics ? (
@@ -457,16 +463,19 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
             <p className="text-xs text-gray-500 truncate">{routeHeader.subtitle}</p>
           </div>
         </div>
-        {flowStatus ? (
-          <p
-            className={`max-w-md truncate text-sm font-medium ${
-              flowStatus.type === 'error' ? 'text-red-600' : 'text-green-700'
-            }`}
-            title={flowStatus.message}
-          >
-            {flowStatus.message}
-          </p>
-        ) : null}
+        <div className="flex items-center gap-3 shrink-0">
+          {creditTopbar}
+          {flowStatus ? (
+            <p
+              className={`max-w-md truncate text-sm font-medium ${
+                flowStatus.type === 'error' ? 'text-red-600' : 'text-green-700'
+              }`}
+              title={flowStatus.message}
+            >
+              {flowStatus.message}
+            </p>
+          ) : null}
+        </div>
       </header>
     )
   }
@@ -509,8 +518,9 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
         </div>
       </div>
 
-      {/* Right: User Menu */}
-      <div className="relative">
+      <div className="flex items-center gap-3">
+        {creditTopbar}
+        <div className="relative">
         <button
           onClick={() => setShowMenu(!showMenu)}
           className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition"
@@ -556,6 +566,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
             </button>
           </div>
         )}
+        </div>
       </div>
     </header>
   )

@@ -1,12 +1,14 @@
 import Account from '../models/Account.js';
 import Template from '../models/Template.js';
 import creditLedgerService from './creditLedgerService.js';
+import planLimitService from './planLimitService.js';
 import { classifyOutboundMessage, creditsForCategory } from '../utils/messageCategory.js';
 import logger from '../utils/logger.js';
 
 /**
  * Debit Replysys credits after a billable outbound message is sent.
- * Idempotent per message _id. Skips internal accounts and zero-cost categories.
+ * Included plan messages (within monthly quota) are free.
+ * Beyond quota, each billable message debits credits.
  */
 export async function debitCreditsForOutboundMessage({
   accountId,
@@ -21,6 +23,14 @@ export async function debitCreditsForOutboundMessage({
       if (account?.isInternal) {
         return { skipped: true, reason: 'internal_account' };
       }
+    }
+
+    const billing = await planLimitService.getMessageBillingMode(
+      accountId,
+      message.projectId || null
+    );
+    if (billing.mode === 'included') {
+      return { skipped: true, reason: 'included_in_plan_quota', billingMode: 'included' };
     }
 
     let templateCategoryByName = new Map();
@@ -39,7 +49,7 @@ export async function debitCreditsForOutboundMessage({
     const category = classifyOutboundMessage(message, templateCategoryByName);
     const creditAmount = creditsForCategory(category);
     if (creditAmount <= 0) {
-      return { skipped: true, reason: 'zero_cost_category', category };
+      return { skipped: true, reason: 'zero_cost_category', category, billingMode: 'credits' };
     }
 
     const messageId = String(message._id);
@@ -51,10 +61,11 @@ export async function debitCreditsForOutboundMessage({
       referenceType: 'usage',
       referenceId: messageId,
       idempotencyKey: `usage:message:${messageId}`,
-      note: `Message usage (${category})`,
+      note: `Message usage (${category}) — over plan quota`,
       metadata: {
         messageId,
         category,
+        billingMode: 'credits',
         campaign: message.campaign || null,
         messageType: message.messageType,
         projectId: message.projectId || null,
@@ -66,10 +77,15 @@ export async function debitCreditsForOutboundMessage({
       debited: true,
       category,
       creditAmount,
+      billingMode: 'credits',
       isDuplicate: Boolean(result?.isDuplicate),
       balanceAfter: result?.balanceAfter,
     };
   } catch (error) {
+    if (error.message === 'INSUFFICIENT_CREDITS') {
+      logger.warn('Message sent but credit debit failed — insufficient balance', { accountId });
+      return { debited: false, error: 'INSUFFICIENT_CREDITS' };
+    }
     logger.error('debitCreditsForOutboundMessage failed:', error.message);
     return { debited: false, error: error.message };
   }

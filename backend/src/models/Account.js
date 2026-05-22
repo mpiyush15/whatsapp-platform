@@ -15,10 +15,20 @@ const accountSchema = new mongoose.Schema({
   whatsappAccessToken: { type: String, default: null, select: false },
   whatsappConfig: { type: Object, default: {} },
   
-  // Subscription
-  plan: { type: String, enum: ['free', 'starter', 'pro', 'enterprise'], default: 'free' },
-  billingCycle: { type: String, enum: ['monthly', 'quarterly', 'yearly'], default: 'monthly' },
-  status: { type: String, enum: ['active', 'inactive', 'suspended'], default: 'active', index: true },
+  // Subscription (plan slug from PricingPlan.name, e.g. starter, growth)
+  plan: { type: String, default: 'free', trim: true, lowercase: true },
+  subscriptionId: { type: String, default: null, index: true },
+  billingCycle: {
+    type: String,
+    enum: ['monthly', 'quarterly', 'yearly', 'annual'],
+    default: 'monthly',
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'suspended', 'pending'],
+    default: 'active',
+    index: true,
+  },
   
   limits: {
     phoneNumbers: { type: Number, default: 1 },

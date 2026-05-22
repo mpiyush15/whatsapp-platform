@@ -31,14 +31,48 @@ export const startPaymentStatusPoller = () => {
         try {
           // Query Cashfree for current payment status
           const orderId = payment.orderId;
-          const cfOrderId = payment.cfOrderId;
+          const orderStatusResult = await cashfreeService.getOrderStatus(orderId);
 
-          if (!cfOrderId) {
-            logger.warn(`⚠️ No Cashfree order ID for payment ${orderId}, skipping`);
+          if (!orderStatusResult.success) {
+            logger.warn(`⚠️ Could not fetch order status for ${orderId}`);
             continue;
           }
 
-          // Get order details from Cashfree
+          const gatewayStatus = orderStatusResult.paymentStatus || orderStatusResult.status;
+          const isPaid = ['SUCCESS', 'PAID', 'completed', 'success'].includes(
+            String(gatewayStatus || '').toUpperCase()
+          ) || ['completed', 'success'].includes(String(gatewayStatus || '').toLowerCase());
+
+          if (isPaid && payment.status !== 'completed') {
+            logger.info(`✅ PAYMENT COMPLETED: ${orderId} - Triggering billing lifecycle`);
+
+            const mockReq = {
+              body: {
+                order_id: orderId,
+                order_status: gatewayStatus,
+                payment: {
+                  payment_status: gatewayStatus,
+                  cf_payment_id: orderStatusResult.paymentId,
+                },
+              },
+              headers: {},
+            };
+
+            const mockRes = {
+              json: (data) => logger.info('✅ Auto-lifecycle result:', data),
+              status: () => mockRes,
+              send: () => mockRes,
+            };
+
+            await handleCashfreeWebhook(mockReq, mockRes);
+            continue;
+          }
+
+          const cfOrderId = payment.gatewayOrderId;
+          if (!cfOrderId) {
+            continue;
+          }
+
           const orderDetails = await cashfreeService.getOrderDetails(cfOrderId);
           
           if (!orderDetails) {

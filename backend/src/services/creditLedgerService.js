@@ -78,13 +78,46 @@ class CreditLedgerService {
       resumeProcessing = !wasInserted && existingDoc?.status === 'processing';
     }
 
-    const account = resumeProcessing
+    const isDebit = signedAmount < 0;
+    let account = resumeProcessing
       ? await Account.findOne({ accountId })
-      : await Account.findOneAndUpdate(
+      : null;
+
+    if (!account) {
+      if (isDebit) {
+        account = await Account.findOne({ accountId });
+        if (!account) {
+          if (claimedLedger?._id) {
+            await AccountCreditLedger.updateOne(
+              { _id: claimedLedger._id },
+              { $set: { status: 'failed', error: 'ACCOUNT_NOT_FOUND' } }
+            );
+          }
+          throw new Error('ACCOUNT_NOT_FOUND');
+        }
+        const currentBalance = Number(account.creditBalance || 0);
+        if (currentBalance + signedAmount < 0) {
+          if (claimedLedger?._id) {
+            await AccountCreditLedger.updateOne(
+              { _id: claimedLedger._id },
+              { $set: { status: 'failed', error: 'INSUFFICIENT_CREDITS' } }
+            );
+          }
+          throw new Error('INSUFFICIENT_CREDITS');
+        }
+        account = await Account.findOneAndUpdate(
           { accountId },
           { $inc: { creditBalance: signedAmount } },
           { new: true }
         );
+      } else {
+        account = await Account.findOneAndUpdate(
+          { accountId },
+          { $inc: { creditBalance: signedAmount } },
+          { new: true }
+        );
+      }
+    }
 
     if (!account) {
       if (claimedLedger?._id) {

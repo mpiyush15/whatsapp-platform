@@ -26,6 +26,7 @@ import patientHistoryRoutes from './healthcare/patientHistoryRoutes.js';
 import * as clinicController from '../controllers/healthcareClinicController.js';
 import { createInvoiceForPrescription } from '../services/healthcarePrescriptionInvoiceService.js';
 import healthcareAnalyticsService from '../services/healthcareAnalyticsService.js';
+import { checkPlanLimit } from '../middlewares/checkPlanLimit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1155,7 +1156,7 @@ router.get('/patients', async (req, res) => {
   }
 });
 
-router.post('/patients', async (req, res) => {
+router.post('/patients', checkPlanLimit('patient'), async (req, res) => {
   try {
     const scope = await resolveScope(req, { requireProject: true });
     const actor = getActor(req);
@@ -1279,7 +1280,7 @@ router.get('/doctors', async (req, res) => {
   }
 });
 
-router.post('/doctors', async (req, res) => {
+router.post('/doctors', checkPlanLimit('doctor'), async (req, res) => {
   try {
     const scope = await resolveScope(req, { requireProject: true });
     const doctor = await Doctor.create({
@@ -1410,7 +1411,7 @@ router.get('/appointments', async (req, res) => {
   }
 });
 
-router.post('/appointments', async (req, res) => {
+router.post('/appointments', checkPlanLimit('appointment'), async (req, res) => {
   try {
     const scope = await resolveScope(req, { requireProject: true });
     const appointment = await Appointment.create({
@@ -1587,7 +1588,7 @@ router.get('/prescriptions', async (req, res) => {
   }
 });
 
-router.post('/prescriptions', async (req, res) => {
+router.post('/prescriptions', checkPlanLimit('prescription'), async (req, res) => {
   try {
     const scope = await resolveScope(req, { requireProject: true });
     const prescription = await Prescription.create({

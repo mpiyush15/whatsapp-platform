@@ -252,8 +252,20 @@ class BillingLifecycleService {
         };
       }
 
-      const planName = this.resolvePlanName(orderId, payment);
-      const plan = planName ? await PricingPlan.findOne({ name: planName }) : null;
+      let planName = this.resolvePlanName(orderId, payment);
+      let plan = null;
+
+      if (payment?.planId) {
+        plan = await PricingPlan.findById(payment.planId);
+        if (plan) planName = plan.name;
+      }
+
+      if (!plan && planName) {
+        plan = await PricingPlan.findOne({
+          name: { $regex: new RegExp(`^${String(planName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          isActive: true,
+        });
+      }
 
       if (!account || !planName || !plan) {
         throw new Error('ACCOUNT_OR_PLAN_MISSING');
@@ -321,11 +333,23 @@ class BillingLifecycleService {
       account.plan = String(planName || account.plan || 'starter').toLowerCase();
       account.billingCycle = billingCycle;
       account.status = 'active';
+      account.subscriptionId = String(subscription._id);
       account.limits = {
         ...(account.limits || {}),
         phoneNumbers: resolvedPhoneNumbersLimit,
         messagesPerDay: resolvedMessagesLimit,
+        messages: resolvedMessagesLimit,
         contacts: resolvedContactsLimit,
+        campaigns: Number(planLimits.campaigns) || account.limits?.campaigns || 0,
+        templates: Number(planLimits.templates) || account.limits?.templates || 0,
+        users: Number(planLimits.users) || account.limits?.users || 0,
+        apiCalls: Number(planLimits.apiCalls) || account.limits?.apiCalls || 0,
+        storageGB: Number(planLimits.storageGB) || account.limits?.storageGB || 0,
+        patients: Number(planLimits.patients) || account.limits?.patients || 0,
+        appointments: Number(planLimits.appointments) || account.limits?.appointments || 0,
+        prescriptions: Number(planLimits.prescriptions) || account.limits?.prescriptions || 0,
+        doctors: Number(planLimits.doctors) || account.limits?.doctors || 0,
+        healthcareUsers: Number(planLimits.healthcareUsers) || account.limits?.healthcareUsers || 0,
       };
       account.nextBillingDate = renewalDate;
       account.lastPaymentDate = new Date();

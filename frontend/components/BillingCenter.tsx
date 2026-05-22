@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, CreditCard, FileText, IndianRupee, RefreshCw, Wallet } from "lucide-react";
 import { BuyCreditModal } from "@/components/BuyCreditModal";
+import { emitCreditsRefresh } from "@/lib/hooks/useCreditBalance";
 
 type Subscription = {
   _id: string;
@@ -56,8 +57,12 @@ type UsageMetric = {
 
 type UsagePayload = {
   isInternal: boolean;
+  creditBalance?: number | null;
+  messagesQuotaExhausted?: boolean;
+  billingHint?: string | null;
   metrics: {
     messagesPerDay: UsageMetric;
+    messagesPerMonth?: UsageMetric;
     contacts: UsageMetric;
     phoneNumbers: UsageMetric;
   };
@@ -108,6 +113,8 @@ export default function BillingCenter({ projectId }: Props) {
   const checkoutHref = projectId ? `/checkout?projectId=${projectId}` : "/checkout";
   const subscriptionHref = projectId ? `/projects/${projectId}/subscriptions` : "/dashboard/features/subscriptions";
   const isInternal = usage?.isInternal === true;
+  const messagesMetric = usage?.metrics?.messagesPerMonth || usage?.metrics?.messagesPerDay;
+  const messagesQuotaExhausted = usage?.messagesQuotaExhausted === true || messagesMetric?.exceeded === true;
 
   const invoices = useMemo(() => {
     return payments
@@ -265,7 +272,7 @@ export default function BillingCenter({ projectId }: Props) {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {[
-                { label: "Messages / day", data: usage.metrics.messagesPerDay },
+                { label: "Messages / month (included)", data: messagesMetric || usage.metrics.messagesPerDay },
                 { label: "Contacts", data: usage.metrics.contacts },
                 { label: "Phone numbers", data: usage.metrics.phoneNumbers },
               ].map(({ label, data }) => (
@@ -292,16 +299,16 @@ export default function BillingCenter({ projectId }: Props) {
               ))}
             </div>
 
-            {(usage.metrics.messagesPerDay.nearLimit || usage.metrics.contacts.nearLimit || usage.metrics.phoneNumbers.nearLimit) ? (
+            {(messagesMetric?.nearLimit || usage.metrics.contacts.nearLimit || usage.metrics.phoneNumbers.nearLimit) && !messagesQuotaExhausted ? (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 You are nearing one or more plan limits. 
                 <Link href={usage.cta?.upgrade || '/dashboard/features/billing'} className="ml-1 font-semibold underline">
                   Upgrade plan
                 </Link>
                 <span className="mx-1">or</span>
-                <Link href={usage.cta?.topup || '/dashboard/features/billing'} className="font-semibold underline">
+                <button type="button" onClick={() => setBuyCreditModalOpen(true)} className="font-semibold underline">
                   top up credits
-                </Link>
+                </button>
                 .
               </div>
             ) : null}
@@ -431,9 +438,10 @@ export default function BillingCenter({ projectId }: Props) {
           currentCredits={credits.creditBalance}
           projectId={projectId}
           onSuccess={() => {
-            // Webhook can take a moment; refresh instantly + delayed refresh
+            emitCreditsRefresh();
             loadBillingData();
             setTimeout(() => {
+              emitCreditsRefresh();
               loadBillingData();
             }, 3000);
           }}

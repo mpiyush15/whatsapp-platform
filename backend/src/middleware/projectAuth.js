@@ -1,6 +1,6 @@
 import Project from '../models/Project.js';
 import Account from '../models/Account.js';
-import PhoneNumber from '../models/PhoneNumber.js';
+import planLimitService, { resolveQuotaResource } from '../services/planLimitService.js';
 
 /**
  * Project Authorization Middleware
@@ -121,132 +121,77 @@ export async function optionalProjectAccess(req, res, next) {
  * Used before creating new items (messages, contacts, campaigns, etc.)
  */
 export function checkProjectQuota(resourceType) {
+  const catalogKey = resolveQuotaResource(resourceType);
+
   return async (req, res, next) => {
     try {
-      const { projectId } = req;
+      const projectId = req.projectId;
       const accountId = req.user?.accountId || req.account?.accountId;
 
-      if (!projectId) {
-        // No project context, skip quota check
+      if (!projectId || !accountId) {
         next();
         return;
       }
 
       if (req.account?.isInternal === true) {
-        // Internal org accounts are exempt from billing/quota enforcement
         next();
         return;
       }
 
-      // Import models
-      const Message = (await import('../models/Message.js')).default;
-      const Contact = (await import('../models/Contact.js')).default;
-      const Subscription = (await import('../models/Subscription.js')).default;
-
-      // Get project and subscription
       const project = await Project.findOne({ projectId, accountId });
-      const subscription = await Subscription.findOne({ accountId });
-      const account = req.account?._id
-        ? await Account.findById(req.account._id).select('limits isInternal')
-        : await Account.findOne({ accountId }).select('limits isInternal');
-
-      if ((!subscription || subscription.status !== 'active') && account?.isInternal !== true) {
-        return res.status(403).json({
-          success: false,
-          error: 'Active subscription required'
-        });
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
-      const resolvedLimits = {
-        messagesPerDay: Number(subscription?.features?.messagesPerDay ?? account?.limits?.messagesPerDay ?? 0),
-        contacts: Number(subscription?.features?.contacts ?? account?.limits?.contacts ?? 0),
-        phoneNumbers: Number(subscription?.features?.phoneNumbers ?? account?.limits?.phoneNumbers ?? 0),
-      };
+      const account = req.account?._id
+        ? await Account.findById(req.account._id).select('isInternal').lean()
+        : await Account.findOne({ accountId }).select('isInternal').lean();
 
-      const sendQuotaExceeded = ({ resource, limit, used, message }) => {
+      if (account?.isInternal) {
+        next();
+        return;
+      }
+
+      if (catalogKey === 'messages') {
+        const sendCheck = await planLimitService.canSendMessageWithCredits(accountId, projectId);
+        if (!sendCheck.allowed) {
+          return res.status(429).json({
+            success: false,
+            code: 'QUOTA_EXCEEDED',
+            resource: 'messages',
+            error: sendCheck.billingMode === 'credits'
+              ? 'Monthly message quota used. Buy credits to continue sending.'
+              : 'Monthly message limit reached',
+            limit: sendCheck.limit,
+            used: sendCheck.used,
+            billingMode: sendCheck.billingMode,
+            creditBalance: sendCheck.creditBalance ?? 0,
+            creditsRequired: sendCheck.creditsRequired ?? planLimitService.minimumBillableCreditCost(),
+            upgradeCta: '/dashboard/features/billing',
+            topupCta: '/dashboard/features/billing',
+          });
+        }
+        req.planLimitCheck = sendCheck;
+        req.messageBillingMode = sendCheck.billingMode;
+        next();
+        return;
+      }
+
+      const check = await planLimitService.checkLimit(accountId, catalogKey, projectId);
+      if (!check.allowed && !check.unlimited) {
         return res.status(429).json({
           success: false,
           code: 'QUOTA_EXCEEDED',
-          resource,
-          error: message,
-          limit,
-          used,
+          resource: check.resource,
+          error: `${check.resource} limit reached`,
+          limit: check.limit,
+          used: check.used,
           upgradeCta: '/dashboard/features/billing',
           topupCta: '/dashboard/features/billing',
         });
-      };
-
-      // Check limits based on resource type
-      switch (resourceType) {
-        case 'message':
-          if (!Number.isFinite(resolvedLimits.messagesPerDay) || resolvedLimits.messagesPerDay <= 0) {
-            break;
-          }
-
-          // Check daily message limit
-          const messageCount = await Message.countDocuments({
-            projectId,
-            accountId,
-            createdAt: {
-              $gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
-            }
-          });
-
-          if (messageCount >= resolvedLimits.messagesPerDay) {
-            return sendQuotaExceeded({
-              resource: 'messagesPerDay',
-              limit: resolvedLimits.messagesPerDay,
-              used: messageCount,
-              message: 'Daily message limit reached',
-            });
-          }
-          break;
-
-        case 'contact':
-          if (!Number.isFinite(resolvedLimits.contacts) || resolvedLimits.contacts <= 0) {
-            break;
-          }
-
-          // Check contact limit
-          const contactCount = await Contact.countDocuments({
-            projectId,
-            accountId
-          });
-
-          if (contactCount >= resolvedLimits.contacts) {
-            return sendQuotaExceeded({
-              resource: 'contacts',
-              limit: resolvedLimits.contacts,
-              used: contactCount,
-              message: 'Contact limit reached',
-            });
-          }
-          break;
-
-        case 'phoneNumber':
-          if (!Number.isFinite(resolvedLimits.phoneNumbers) || resolvedLimits.phoneNumbers <= 0) {
-            break;
-          }
-
-          // Check phone number limit
-          const phoneCount = await PhoneNumber.countDocuments({
-            accountId
-          });
-
-          if (phoneCount >= resolvedLimits.phoneNumbers) {
-            return sendQuotaExceeded({
-              resource: 'phoneNumbers',
-              limit: resolvedLimits.phoneNumbers,
-              used: phoneCount,
-              message: 'Phone number limit reached',
-            });
-          }
-          break;
-
-        default:
-          break;
       }
 
+      req.planLimitCheck = check;
       next();
     } catch (error) {
       console.error('Quota check error:', error);

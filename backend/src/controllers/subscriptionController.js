@@ -14,6 +14,7 @@ import CreditPackSettings from '../models/CreditPackSettings.js';
 import { cashfreeService } from '../services/cashfreeService.js';
 import paymentPersistenceService from '../services/paymentPersistenceService.js';
 import creditLedgerService from '../services/creditLedgerService.js';
+import billingLifecycleService from '../services/billingLifecycleService.js';
 import mongoose from 'mongoose';
 
 export const createSubscription = async (req, res) => {
@@ -97,8 +98,11 @@ export const createOrder = async (req, res) => {
       amount = pricingPlan.yearlyPrice;
     }
 
-    // Generate order ID
-    const orderId = `ORDER_${plan.toUpperCase()}_${Date.now()}`;
+    const orderSlug = String(pricingPlan.planId || pricingPlan.name)
+      .replace(/[^a-zA-Z0-9]/gi, '_')
+      .toUpperCase()
+      .slice(0, 32);
+    const orderId = `ORDER_${orderSlug}_${Date.now()}`;
 
     logger.info('📝 Creating payment order:', {
       accountId,
@@ -131,6 +135,7 @@ export const createOrder = async (req, res) => {
       currency: 'INR',
       gateway: 'cashfree',
       planId: pricingPlan._id,
+      planName: pricingPlan.name,
       billingCycle,
       pricingSnapshot: {
         planName: pricingPlan.name,
@@ -168,8 +173,81 @@ export const createOrder = async (req, res) => {
 
 export const verifyPayment = async (req, res) => {
   try {
-    const { orderId, paymentId } = req.body;
-    return sendSuccess(res, { orderId, paymentId, status: 'verified' }, 'Payment verified');
+    const accountId = req.account?.accountId;
+    const { orderId } = req.body;
+
+    if (!accountId || !orderId) {
+      return sendValidationError(res, 'orderId is required');
+    }
+
+    const payment = await Payment.findOne({ orderId, accountId });
+    if (!payment) {
+      return sendNotFound(res, 'Payment order not found');
+    }
+
+    if (payment.lifecycleState === 'completed' || payment.status === 'completed') {
+      const account = await Account.findOne({ accountId });
+      return sendSuccess(res, {
+        processed: true,
+        alreadyCompleted: true,
+        orderId,
+        accountStatus: account?.status || 'active',
+        subscriptionId: payment.subscriptionId || null,
+        invoiceId: payment.invoiceId || null,
+        redirectTo: '/projects?setup=1',
+      }, 'Payment already processed');
+    }
+
+    const cfStatus = await cashfreeService.getOrderStatus(orderId);
+    if (!cfStatus.success) {
+      return sendError(
+        res,
+        cfStatus.error || 'Could not verify payment with Cashfree',
+        502
+      );
+    }
+
+    const gatewayStatus = cfStatus.paymentStatus || cfStatus.status;
+    const lifecycleResult = await billingLifecycleService.processPaymentLifecycle({
+      body: {
+        order_id: orderId,
+        order_status: gatewayStatus,
+        payment: {
+          payment_status: gatewayStatus,
+          cf_payment_id: cfStatus.paymentId,
+        },
+      },
+      source: 'client_verify_payment',
+      requestId: `verify-${orderId}-${Date.now()}`,
+    });
+
+    if (
+      !lifecycleResult.processed
+      && !lifecycleResult.isDuplicate
+      && !lifecycleResult.skipped
+    ) {
+      const stillPending = !billingLifecycleService.isSuccessfulPaymentStatus(gatewayStatus);
+      return sendError(
+        res,
+        stillPending
+          ? 'Payment not completed yet. Finish payment in Cashfree or try again in a moment.'
+          : lifecycleResult.message || 'Could not activate subscription',
+        stillPending ? 402 : 500
+      );
+    }
+
+    const account = await Account.findOne({ accountId });
+    const refreshedPayment = await Payment.findOne({ orderId, accountId }).lean();
+
+    return sendSuccess(res, {
+      ...lifecycleResult,
+      orderId,
+      accountStatus: account?.status || 'pending',
+      subscriptionId: refreshedPayment?.subscriptionId || lifecycleResult.subscriptionId || null,
+      invoiceId: refreshedPayment?.invoiceId || lifecycleResult.invoiceId || null,
+      invoiceNumber: lifecycleResult.invoiceNumber || null,
+      redirectTo: '/projects?setup=1',
+    }, lifecycleResult.message || 'Payment verified and account activated');
   } catch (error) {
     return handleControllerError(res, error, 'verifyPayment');
   }
@@ -592,30 +670,13 @@ export const getUsageStats = async (req, res) => {
       return sendValidationError(res, 'Account ID required');
     }
 
-    const [account, subscription] = await Promise.all([
-      Account.findOne({ accountId }).select('limits isInternal'),
-      Subscription.findOne({ accountId, status: 'active' }).select('features'),
+    const { getResolvedLimits, countUsage, LIMIT_RESOURCE_KEYS } = await import('../services/planLimitService.js');
+    const [resolved, accountRow] = await Promise.all([
+      getResolvedLimits(accountId),
+      Account.findOne({ accountId }).select('creditBalance').lean(),
     ]);
-
-    const isInternal = account?.isInternal === true;
-    const limits = {
-      messagesPerDay: isInternal
-        ? null
-        : Number(subscription?.features?.messagesPerDay ?? account?.limits?.messagesPerDay ?? 0) || 0,
-      contacts: isInternal
-        ? null
-        : Number(subscription?.features?.contacts ?? account?.limits?.contacts ?? 0) || 0,
-      phoneNumbers: isInternal
-        ? null
-        : Number(subscription?.features?.phoneNumbers ?? account?.limits?.phoneNumbers ?? 0) || 0,
-    };
-
-    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [messagesUsed, contactsUsed, phoneNumbersUsed] = await Promise.all([
-      Message.countDocuments({ accountId, createdAt: { $gte: since24h } }),
-      Contact.countDocuments({ accountId }),
-      PhoneNumber.countDocuments({ accountId }),
-    ]);
+    const isInternal = resolved.isInternal === true;
+    const creditBalance = isInternal ? null : Number(accountRow?.creditBalance || 0);
 
     const buildMetric = (resource, used, limit) => {
       if (limit === null) {
@@ -646,13 +707,35 @@ export const getUsageStats = async (req, res) => {
       };
     };
 
+    const trackedKeys = ['messages', 'contacts', 'phoneNumbers', 'campaigns', 'templates', 'users'];
+    const metrics = {};
+
+    for (const key of trackedKeys) {
+      const limit = isInternal ? null : (resolved.limits[key] || 0);
+      const used = isInternal ? 0 : await countUsage(accountId, key);
+      const metricKey = key === 'messages' ? 'messagesPerMonth' : key;
+      metrics[metricKey] = buildMetric(metricKey, used, isInternal ? null : limit);
+      // Legacy billing UI field
+      if (key === 'messages') {
+        metrics.messagesPerDay = metrics.messagesPerMonth;
+      }
+    }
+
+    const messagesMetric = metrics.messagesPerMonth || metrics.messagesPerDay;
+    const messagesQuotaExhausted = Boolean(
+      messagesMetric?.limit > 0 && messagesMetric?.exceeded
+    );
+
     return sendSuccess(res, {
       isInternal,
-      metrics: {
-        messagesPerDay: buildMetric('messagesPerDay', messagesUsed, limits.messagesPerDay),
-        contacts: buildMetric('contacts', contactsUsed, limits.contacts),
-        phoneNumbers: buildMetric('phoneNumbers', phoneNumbersUsed, limits.phoneNumbers),
-      },
+      creditBalance,
+      messagesQuotaExhausted,
+      billingHint: messagesQuotaExhausted
+        ? 'Monthly message quota used. Additional sends bill from your credit balance.'
+        : null,
+      limits: isInternal ? null : resolved.limits,
+      catalogKeys: LIMIT_RESOURCE_KEYS,
+      metrics,
       cta: {
         upgrade: '/dashboard/features/billing',
         topup: '/dashboard/features/billing',

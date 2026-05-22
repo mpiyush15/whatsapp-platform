@@ -231,7 +231,7 @@ class PlatformOtpService {
       tokenType = orgAccount?.type === 'client' ? 'client' : 'internal';
     }
 
-    if (account && account.status !== 'active') {
+    if (account && !['active', 'pending'].includes(account.status)) {
       return {
         ok: false,
         error: 'Account is not active. Complete payment or contact support.',

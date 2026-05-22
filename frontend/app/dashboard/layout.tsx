@@ -16,6 +16,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { authService, User as UserType, UserRole } from "@/lib/auth"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { canAccessRoute } from "@/lib/rbac"
+import CreditBalanceTopbar from "@/components/CreditBalanceTopbar"
 
 function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -572,6 +573,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              {user && user.type !== 'internal' && (
+                <CreditBalanceTopbar />
+              )}
               <div className="relative">
                 <button 
                   onClick={() => setNotificationsOpen(!notificationsOpen)}

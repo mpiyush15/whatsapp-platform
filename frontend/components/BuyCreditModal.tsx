@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { X, Zap, AlertCircle, Loader2 } from "lucide-react"
 import { API_URL } from "@/lib/config/api"
+import { confirmSubscriptionPayment } from "@/lib/payments/subscriptionOrder"
+import { emitCreditsRefresh } from "@/lib/hooks/useCreditBalance"
 
 interface CreditPack {
   _id: string
@@ -188,7 +190,25 @@ export function BuyCreditModal({
       }
 
       if (result?.paymentDetails) {
-        onSuccess?.(Number(data?.data?.credits || 0))
+        const orderId = data?.data?.orderId
+        if (!orderId) {
+          throw new Error('Missing order id after payment')
+        }
+
+        const confirmed = await confirmSubscriptionPayment(orderId, token, {
+          maxAttempts: 12,
+          delayMs: 1500,
+        })
+
+        if (!confirmed.ok) {
+          throw new Error(
+            confirmed.message ||
+              'Payment received but credits are still processing. Refresh billing in a moment.'
+          )
+        }
+
+        emitCreditsRefresh()
+        onSuccess?.(Number(confirmed.creditsGranted || data?.data?.credits || 0))
         onClose()
         return
       }

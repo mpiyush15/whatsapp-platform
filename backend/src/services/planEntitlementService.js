@@ -72,11 +72,32 @@ export function hasEntitlement(plan, key) {
   return included.includes(key);
 }
 
+function subscriptionHasEntitlement(subscription, key) {
+  if (!subscription) return false;
+  const ent = mapToObject(subscription.entitlements);
+  if (ent[key] === true) return true;
+  const included = subscription.features?.included;
+  if (Array.isArray(included) && included.includes(key)) return true;
+  return false;
+}
+
 export async function checkEntitlement(accountId, key, productLine = 'whatsapp') {
   const account = await Account.findOne({ accountId }).lean();
   if (!account) return { allowed: false, reason: 'ACCOUNT_NOT_FOUND' };
   if (account.isInternal || account.type === 'internal') {
     return { allowed: true, reason: 'INTERNAL' };
+  }
+
+  const subscription = await Subscription.findOne({
+    accountId,
+    status: 'active',
+    $or: [{ productLine }, { productLine: { $exists: false } }],
+  })
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  if (subscriptionHasEntitlement(subscription, key)) {
+    return { allowed: true, planName: subscription.planName, productLine };
   }
 
   const plan = await resolvePricingPlanForAccount(accountId, productLine);

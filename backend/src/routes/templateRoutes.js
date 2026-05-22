@@ -7,6 +7,7 @@ import templateController from '../controllers/templateController.js';
 import { templateLimiter } from '../middlewares/rateLimiter.js';
 import validators from '../middlewares/validators.js';
 import handleMulterError from '../middlewares/multerErrorHandler.js';
+import { checkPlanLimit } from '../middlewares/checkPlanLimit.js';
 import logger from '../utils/logger.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
@@ -56,7 +57,7 @@ const upload = multer({
 
 router.get('/', templateController.getTemplates);
 router.get('/:id', validators.validateObjectId, templateController.getTemplate);
-router.post('/', templateLimiter, upload.single('mediaFile'), handleMulterError, validators.validateCreateTemplate, templateController.createTemplate);
+router.post('/', checkPlanLimit('template'), templateLimiter, upload.single('mediaFile'), handleMulterError, validators.validateCreateTemplate, templateController.createTemplate);
 router.post('/sync', templateLimiter, templateController.syncTemplates);
 router.post('/:id/submit', templateLimiter, validators.validateObjectId, templateController.submitTemplateToMeta);
 router.put('/:id', validators.validateObjectId, templateController.updateTemplate);

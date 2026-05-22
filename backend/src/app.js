@@ -357,7 +357,7 @@ app.use('/api/phone-numbers', requireAdminDomain, requireJWT, settingsRoutes);
 
 // Mount dashboard routes (JWT AUTH + SUBSCRIPTION REQUIRED - for logged-in dashboard users)
 app.use('/api/templates', requireJWT, requireSubscription, templateRoutes);
-app.use('/api/chatbots', requireJWT, requireSubscription, chatbotRoutes);
+app.use('/api/chatbots', requireJWT, requireSubscription, requirePlanFeature('chatbot'), chatbotRoutes);
 app.use('/api/messages', requireJWT, requireSubscription, messageRoutes);
 app.use('/api/conversations', requireJWT, requireSubscription, conversationRoutes);
 app.use('/api/contacts', requireJWT, requireSubscription, contactRoutes);
@@ -370,8 +370,8 @@ app.use(
 );
 app.use('/api/clinic', requireJWT, requireSubscription, clinicRoutes);
 app.use('/api/segments', requireJWT, requireSubscription, segmentRoutes);
-app.use('/api/broadcasts', requireJWT, requireSubscription, broadcastRoutes);
-app.use('/api/campaigns', requireJWT, requireSubscription, campaignRoutes);
+app.use('/api/broadcasts', requireJWT, requireSubscription, requirePlanFeature('broadcasts'), broadcastRoutes);
+app.use('/api/campaigns', requireJWT, requireSubscription, requirePlanFeature('campaigns'), campaignRoutes);
 app.use('/api/notifications', requireJWT, notificationRoutes); // Notifications accessible without subscription
 
 // Mount pricing routes (PUBLIC for public plans, JWT AUTH for admin)
@@ -396,8 +396,8 @@ app.use('/api/dashboard', requireJWT, dashboardRoutes);
 app.use('/api/crm', requireJWT, requireSubscription, crmRoutes);
 
 // Mount live chat routes (APP DOMAIN ONLY - client WhatsApp chat interface)
-app.use('/api/live-chat/conversations', requireAppDomain, requireJWT, requireSubscription, liveChatConversationRoutes);
-app.use('/api/live-chat/messages', requireAppDomain, requireJWT, requireSubscription, liveChatMessageRoutes);
+app.use('/api/live-chat/conversations', requireAppDomain, requireJWT, requireSubscription, requirePlanFeature('live_chat'), liveChatConversationRoutes);
+app.use('/api/live-chat/messages', requireAppDomain, requireJWT, requireSubscription, requirePlanFeature('live_chat'), liveChatMessageRoutes);
 app.use('/api/live-chat/tags', requireJWT, requireSubscription, liveChatTagRoutes);
 
 // Mount support routes (SUPPORT DOMAIN ONLY - support inbox and ticket workflows)

@@ -1,6 +1,6 @@
 import express from 'express';
 import * as campaignController from '../controllers/campaignController.js';
-import logger from '../utils/logger.js';
+import { checkPlanLimit } from '../middlewares/checkPlanLimit.js';
 
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 const router = express.Router();
@@ -22,7 +22,8 @@ router.get('/segments',
  * POST /api/campaigns
  * Create new campaign
  */
-router.post('/', 
+router.post('/',
+  checkPlanLimit('campaign'),
   campaignController.createCampaign
 );
 

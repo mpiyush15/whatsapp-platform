@@ -34,7 +34,7 @@ import {
   type PublicPricingPlan,
 } from '@/lib/pricing/publicPlans';
 import { openCashfreeCheckout } from '@/lib/payments/cashfreeCheckout';
-import { createSubscriptionOrder } from '@/lib/payments/subscriptionOrder';
+import { confirmSubscriptionPayment, createSubscriptionOrder } from '@/lib/payments/subscriptionOrder';
 import { WhatsAppIcon } from '@/components/marketing/WhatsAppIcon';
 import WhatsAppOtpBlock from '@/components/auth/WhatsAppOtpBlock';
 
@@ -349,8 +349,19 @@ export default function RegisterPage() {
         return;
       }
 
+      if (!order.orderId) {
+        setError('Payment succeeded but order id missing. Contact support.');
+        return;
+      }
+
+      const activation = await confirmSubscriptionPayment(order.orderId, token);
+      if (!activation.ok) {
+        setError(activation.message || 'Payment received — activation pending. Try logging in again shortly.');
+        return;
+      }
+
       setSuccess(true);
-      setTimeout(() => router.push('/projects?setup=1'), 800);
+      setTimeout(() => router.push(activation.redirectTo || '/projects?setup=1'), 800);
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
