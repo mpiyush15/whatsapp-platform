@@ -1187,6 +1187,13 @@ router.post('/:conversationId/send-template', async (req, res) => {
     }
 
     const Template = (await import('../models/Template.js')).default;
+    if (templateId && !mongoose.Types.ObjectId.isValid(String(templateId))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid template ID',
+      });
+    }
+
     const template = templateId
       ? await Template.findOne({ _id: templateId, accountId })
       : await Template.findOne({ accountId, name: templateName });
@@ -1201,7 +1208,10 @@ router.post('/:conversationId/send-template', async (req, res) => {
       conversation.userPhone,
       template.name,
       Array.isArray(variables) ? variables : [],
-      { conversationId: conversation.conversationId }
+      {
+        conversationId: conversation.conversationId,
+        projectId: conversation.projectId || null,
+      }
     );
 
     return res.status(200).json({

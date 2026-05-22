@@ -1,4 +1,5 @@
 import { sendSuccess, sendValidationError, sendNotFound } from '../utils/responseHandler.js';
+import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import Campaign from '../models/Campaign.js';
@@ -12,6 +13,17 @@ import Contact from '../models/Contact.js';
 import whatsappService from '../services/whatsappService.js';
 
 const getProjectId = (req) => req.query?.projectId || req.body?.projectId || null;
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(String(id || ''));
+
+const buildCampaignQuery = (campaignId, accountId, projectId = null) => {
+  if (!isValidObjectId(campaignId)) return null;
+  return {
+    _id: campaignId,
+    accountId,
+    ...(projectId ? { projectId } : {})
+  };
+};
 
 const toPositiveInt = (value, fallback) => {
   const parsed = Number.parseInt(String(value), 10);
@@ -69,6 +81,10 @@ export const createCampaign = async (req, res) => {
 
     if (!name || !templateId) {
       return sendValidationError(res, 'Campaign name and template required');
+    }
+
+    if (!isValidObjectId(templateId)) {
+      return sendValidationError(res, 'Invalid template ID');
     }
 
     const phoneNumberId = await resolvePhoneNumberId(accountId, projectId);
@@ -222,8 +238,8 @@ export const getCampaignRecipientReport = async (req, res) => {
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
 
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const exists = await Campaign.findOne(query).select('_id');
     if (!exists) {
@@ -248,8 +264,8 @@ export const getCampaignById = async (req, res) => {
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
 
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     let campaign = await Campaign.findOne(query);
     if (!campaign) {
@@ -271,8 +287,8 @@ export const updateCampaign = async (req, res) => {
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
 
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const campaign = await Campaign.findOne(query);
     if (!campaign) {
@@ -298,8 +314,8 @@ export const deleteCampaign = async (req, res) => {
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
 
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const deleted = await Campaign.findOneAndDelete(query);
     if (!deleted) {
@@ -317,8 +333,8 @@ export const validateCampaign = async (req, res) => {
     const { campaignId } = req.params;
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const campaign = await Campaign.findOne(query);
     if (!campaign) return sendNotFound(res, 'Campaign');
@@ -340,8 +356,8 @@ export const pauseCampaign = async (req, res) => {
     const { campaignId } = req.params;
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const campaign = await Campaign.findOneAndUpdate(query, { status: 'paused', pausedAt: new Date() }, { new: true });
     if (!campaign) return sendNotFound(res, 'Campaign');
@@ -357,8 +373,8 @@ export const startCampaign = async (req, res) => {
     const { campaignId } = req.params;
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const campaign = await Campaign.findOne(query);
     if (!campaign) return sendNotFound(res, 'Campaign');
@@ -374,6 +390,10 @@ export const startCampaign = async (req, res) => {
 
     let templateName = campaign.message?.templateName;
     if (!templateName && campaign.message?.templateId) {
+      if (!isValidObjectId(campaign.message.templateId)) {
+        return sendValidationError(res, 'Invalid template ID');
+      }
+
       const templateQuery = { _id: campaign.message.templateId, accountId, ...(projectId ? { projectId } : {}) };
       let template = await Template.findOne(templateQuery).select('name');
       if (!template && projectId) {
@@ -506,8 +526,8 @@ export const resumeCampaign = async (req, res) => {
     const { campaignId } = req.params;
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const campaign = await Campaign.findOneAndUpdate(
       query,
@@ -528,8 +548,8 @@ export const cancelCampaign = async (req, res) => {
     const { campaignId } = req.params;
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     // Model enum does not include "cancelled", use "failed" as terminal state.
     const campaign = await Campaign.findOneAndUpdate(query, { status: 'failed' }, { new: true });
@@ -546,8 +566,8 @@ export const duplicateCampaign = async (req, res) => {
     const { campaignId } = req.params;
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const campaign = await Campaign.findOne(query);
     if (!campaign) return sendNotFound(res, 'Campaign');
@@ -575,8 +595,8 @@ export const getCampaignStats = async (req, res) => {
     const { campaignId } = req.params;
     const accountId = req.user?.accountId;
     const projectId = getProjectId(req);
-    const query = { _id: campaignId, accountId };
-    if (projectId) query.projectId = projectId;
+    const query = buildCampaignQuery(campaignId, accountId, projectId);
+    if (!query) return sendValidationError(res, 'Invalid campaign ID');
 
     const campaign = await Campaign.findOne(query).select('stats recipients status name createdAt startedAt completedAt');
     if (!campaign) return sendNotFound(res, 'Campaign');

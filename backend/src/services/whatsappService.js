@@ -530,7 +530,6 @@ class WhatsAppService {
                 conversationId,
                 lastMessageAt: new Date(),
                 status: 'open',
-                ...(projectId ? { projectId } : {}),
               },
               ...(projectId ? { $set: { projectId } } : {}),
             },
