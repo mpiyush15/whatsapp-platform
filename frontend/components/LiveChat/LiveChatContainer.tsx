@@ -134,7 +134,7 @@ export default function LiveChatContainer({ initialPhone = null, projectId }: Li
     // Listen for message delivered status (double tick)
     newSocket.on('message_delivered', (data) => {
       console.log('✓✓ Message delivered:', data)
-      if (selectedConversation && data.conversationId === selectedConversation.conversationId) {
+      if (data.conversationId === selectedConversationIdRef.current) {
         setMessages(prev => prev.map(msg =>
           msg._id === data.messageId
             ? { ...msg, status: 'delivered' }
@@ -142,6 +142,30 @@ export default function LiveChatContainer({ initialPhone = null, projectId }: Li
         ))
       }
     })
+
+    const handleMessageStatus = (data: {
+      conversationId?: string
+      messageId?: string
+      status?: LiveChatMessage['status']
+      timestamp?: string
+    }) => {
+      if (!data?.messageId || !data.status) return
+      const activeConversationId = selectedConversationIdRef.current
+      if (data.conversationId && activeConversationId && data.conversationId !== activeConversationId) return
+
+      setMessages(prev => prev.map(msg =>
+        msg._id === data.messageId
+          ? {
+              ...msg,
+              status: data.status as LiveChatMessage['status'],
+              isRead: data.status === 'read' ? true : msg.isRead,
+            }
+          : msg
+      ))
+    }
+
+    newSocket.on('message_status_updated', handleMessageStatus)
+    newSocket.on('message_status', handleMessageStatus)
 
     // Listen for agent status changes (online/offline)
     newSocket.on('agent_status', (data) => {
@@ -175,6 +199,8 @@ export default function LiveChatContainer({ initialPhone = null, projectId }: Li
 
     return () => {
       newSocket.off('new_message', handleNewMessage)
+      newSocket.off('message_status_updated', handleMessageStatus)
+      newSocket.off('message_status', handleMessageStatus)
       newSocket.disconnect()
     }
   }, [appendMessage])

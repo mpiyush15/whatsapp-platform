@@ -1124,10 +1124,32 @@ router.get('/:conversationId/session', async (req, res) => {
     const accountId = req.account.accountId;
     const SESSION_MS = 24 * 60 * 60 * 1000;
 
-    const lastInbound = await Message.findOne({
+    const conversation = await Conversation.findOne({ conversationId, accountId })
+      .select('conversationId phoneNumberId userPhone')
+      .lean();
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found',
+      });
+    }
+
+    const userPhone = String(conversation.userPhone || '').replace(/[\s+()-]/g, '');
+    const sessionQuery = {
       accountId,
-      conversationId,
       direction: 'inbound',
+      $or: [
+        { conversationId: conversation.conversationId },
+        {
+          phoneNumberId: conversation.phoneNumberId,
+          recipientPhone: userPhone,
+        },
+      ],
+    };
+
+    const lastInbound = await Message.findOne({
+      ...sessionQuery,
     })
       .sort({ sentAt: -1 })
       .select('sentAt campaign')
@@ -1138,9 +1160,14 @@ router.get('/:conversationId/session', async (req, res) => {
     const withinSession = lastAt ? Date.now() < expiresAt.getTime() : false;
 
     let campaignName = null;
-    if (lastInbound?.campaign) {
+    const attributedCampaignId =
+      lastInbound?.campaign && mongoose.Types.ObjectId.isValid(String(lastInbound.campaign))
+        ? String(lastInbound.campaign)
+        : null;
+
+    if (attributedCampaignId) {
       const Campaign = (await import('../models/Campaign.js')).default;
-      const camp = await Campaign.findById(lastInbound.campaign).select('name').lean();
+      const camp = await Campaign.findById(attributedCampaignId).select('name').lean();
       campaignName = camp?.name || null;
     }
 
@@ -1150,7 +1177,7 @@ router.get('/:conversationId/session', async (req, res) => {
         withinSession,
         lastCustomerMessageAt: lastAt,
         expiresAt,
-        attributedCampaignId: lastInbound?.campaign || null,
+        attributedCampaignId,
         attributedCampaignName: campaignName,
       },
     });

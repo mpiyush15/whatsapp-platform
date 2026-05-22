@@ -74,7 +74,7 @@ export async function fetchSessionStatus(conversationId: string): Promise<Sessio
   });
   if (!res.ok) {
     return {
-      withinSession: true,
+      withinSession: false,
       lastCustomerMessageAt: null,
       expiresAt: null,
       attributedCampaignId: null,
