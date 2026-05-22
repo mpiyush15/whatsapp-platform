@@ -24,11 +24,22 @@ const pricingPlanSchema = new mongoose.Schema({
     index: true
   },
   
+  productLine: {
+    type: String,
+    enum: ['whatsapp', 'healthcare'],
+    default: 'whatsapp',
+    index: true,
+  },
+  sortOrder: {
+    type: Number,
+    default: 0,
+  },
+
   // Plan Info
   name: {
     type: String,
     required: true,
-    enum: ['Starter', 'Pro', 'Enterprise', 'Custom']
+    trim: true,
   },
   description: String,
   
@@ -113,17 +124,25 @@ const pricingPlanSchema = new mongoose.Schema({
     storageGB: {
       type: Number,
       default: 5
-    }
+    },
+    patients: { type: Number, default: null },
+    appointments: { type: Number, default: null },
+    prescriptions: { type: Number, default: null },
+    doctors: { type: Number, default: null },
+    healthcareUsers: { type: Number, default: null },
   },
-  
-  // Features (included and excluded lists)
+
+  /** Structured toggles keyed by planFeatureCatalog FEATURE_DEFINITIONS keys */
+  entitlements: {
+    type: Map,
+    of: mongoose.Schema.Types.Mixed,
+    default: () => new Map(),
+  },
+
+  // Legacy display list + comparison fallback
   features: {
-    included: [{
-      type: String
-    }],
-    excluded: [{
-      type: String
-    }]
+    included: [{ type: String }],
+    excluded: [{ type: String }],
   },
   
   // Billing Period
@@ -155,6 +174,14 @@ const pricingPlanSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+
+  /** Per-message Meta pass-through rates (INR) shown on public pricing */
+  messageCharges: {
+    marketing: { type: Number, default: null, min: 0 },
+    utility: { type: Number, default: null, min: 0 },
+    authentication: { type: Number, default: null, min: 0 },
+    service: { type: Number, default: null, min: 0 },
+  },
   
   // Publishing Control
   publishedToPublic: {
@@ -177,8 +204,11 @@ const pricingPlanSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Account'
   }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true,
 });
+
+pricingPlanSchema.index({ productLine: 1, isActive: 1, publishedToPublic: 1 });
+pricingPlanSchema.index({ productLine: 1, name: 1 });
 
 export default mongoose.model('PricingPlan', pricingPlanSchema);

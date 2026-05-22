@@ -1,37 +1,42 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Loader2, Minus } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { PlanAgreementModal } from '@/components/PlanAgreementModal';
 import { MarketingNavbar } from '@/components/marketing/MarketingNavbar';
+import { PlanComparisonTable } from '@/components/pricing/PlanComparisonTable';
 import {
-  checkoutUrl,
+  fetchPricingFeatureMatrix,
+  PRODUCT_LINE_LABELS,
+  type PricingFeatureMatrix,
+  type ProductLine,
+} from '@/lib/pricing/planCatalog';
+import {
+  signupUrl,
   fetchPublicPricingPlans,
   formatInr,
+  planCardHighlights,
   planDisplayPrice,
   type BillingCycle,
   type PublicPricingPlan,
 } from '@/lib/pricing/publicPlans';
 
-const LIMIT_LABELS: Record<string, string> = {
-  messages: 'WhatsApp messages / mo',
-  contacts: 'Contacts',
-  campaigns: 'Campaigns',
-  users: 'Team members',
-  phoneNumbers: 'Business numbers',
-  templates: 'Templates',
-  apiCalls: 'API calls / mo',
-  storageGB: 'Storage (GB)',
-};
-
-function formatLimit(value: number | null | undefined): string {
-  if (value === null || value === undefined) return 'Unlimited';
-  return value.toLocaleString('en-IN');
-}
+const PRODUCT_TABS: { id: ProductLine; tagline: string }[] = [
+  {
+    id: 'whatsapp',
+    tagline: 'Broadcasts, live chat, campaigns, and official WhatsApp API.',
+  },
+  {
+    id: 'healthcare',
+    tagline: 'Patients, appointments, prescriptions, billing, and clinic analytics.',
+  },
+];
 
 export function MarketingPricingPage() {
+  const [productLine, setProductLine] = useState<ProductLine>('whatsapp');
   const [plans, setPlans] = useState<PublicPricingPlan[]>([]);
+  const [matrix, setMatrix] = useState<PricingFeatureMatrix | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
@@ -44,8 +49,14 @@ export function MarketingPricingPage() {
       try {
         setLoading(true);
         setError(null);
-        const data = await fetchPublicPricingPlans();
-        if (!cancelled) setPlans(data);
+        const [planList, matrixData] = await Promise.all([
+          fetchPublicPricingPlans(productLine),
+          fetchPricingFeatureMatrix(productLine),
+        ]);
+        if (!cancelled) {
+          setPlans(planList);
+          setMatrix(matrixData);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load pricing');
@@ -57,22 +68,7 @@ export function MarketingPricingPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  const comparisonRows = useMemo(() => {
-    const featureSet = new Set<string>();
-    const limitKeys = new Set<string>();
-
-    plans.forEach((plan) => {
-      plan.featureList.forEach((f) => featureSet.add(f));
-      Object.keys(plan.limits).forEach((k) => limitKeys.add(k));
-    });
-
-    const features = Array.from(featureSet);
-    const limits = Array.from(limitKeys).filter((k) => LIMIT_LABELS[k]);
-
-    return { features, limits };
-  }, [plans]);
+  }, [productLine]);
 
   const startCheckout = useCallback((plan: PublicPricingPlan) => {
     setSelectedPlan(plan);
@@ -81,8 +77,11 @@ export function MarketingPricingPage() {
 
   const confirmCheckout = useCallback(() => {
     if (!selectedPlan) return;
-    window.location.href = checkoutUrl(selectedPlan.name, billingCycle);
+    window.location.href = signupUrl(selectedPlan, billingCycle);
   }, [selectedPlan, billingCycle]);
+
+  const billingNote =
+    billingCycle === 'annual' ? 'Prices shown as monthly equivalent (annual billing)' : 'Billed monthly';
 
   return (
     <>
@@ -92,20 +91,39 @@ export function MarketingPricingPage() {
           <div className="text-center">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#a1a1aa]">Pricing</p>
             <h1 className="marketing-hero-title mt-3 text-balance text-[#111111]">
-              <span className="block">Simple plans.</span>
-              <span className="text-gradient-marketing mt-1 block">Official WhatsApp API included.</span>
+            
+              
             </h1>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-[#6d6c6b] sm:text-lg">
-              Pick a plan, agree to Meta onboarding requirements, then pay securely via Cashfree — same flow as always,
-              now on the Replysys marketing site.
+              Pick a plan, sign up, and pay securely
             </p>
 
-            <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-black/[0.08] bg-white/90 p-1 shadow-sm">
+            <div className="mt-8 inline-flex border border-black/[0.12] bg-white">
+              {PRODUCT_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setProductLine(tab.id)}
+                  className={`border-r border-black/[0.12] px-6 py-2.5 text-sm font-semibold transition last:border-r-0 ${
+                    productLine === tab.id
+                      ? 'bg-[#128c7e] text-white'
+                      : 'bg-white text-[#52525b] hover:bg-[#fafafa]'
+                  }`}
+                >
+                  {PRODUCT_LINE_LABELS[tab.id]}
+                </button>
+              ))}
+            </div>
+            <p className="mx-auto mt-3 max-w-xl text-sm text-[#71717a]">
+              {PRODUCT_TABS.find((t) => t.id === productLine)?.tagline}
+            </p>
+
+            <div className="mt-6 inline-flex border border-black/[0.12] bg-white">
               <button
                 type="button"
                 onClick={() => setBillingCycle('monthly')}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  billingCycle === 'monthly' ? 'bg-[#111111] text-white' : 'text-[#52525b] hover:text-[#111111]'
+                className={`border-r border-black/[0.12] px-5 py-2 text-sm font-semibold transition ${
+                  billingCycle === 'monthly' ? 'bg-[#111111] text-white' : 'text-[#52525b] hover:bg-[#fafafa]'
                 }`}
               >
                 Monthly
@@ -113,8 +131,8 @@ export function MarketingPricingPage() {
               <button
                 type="button"
                 onClick={() => setBillingCycle('annual')}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                  billingCycle === 'annual' ? 'bg-[#111111] text-white' : 'text-[#52525b] hover:text-[#111111]'
+                className={`px-5 py-2 text-sm font-semibold transition ${
+                  billingCycle === 'annual' ? 'bg-[#111111] text-white' : 'text-[#52525b] hover:bg-[#fafafa]'
                 }`}
               >
                 Annual
@@ -132,18 +150,19 @@ export function MarketingPricingPage() {
           {loading ? (
             <div className="mt-16 flex flex-col items-center gap-3 text-[#6d6c6b]">
               <Loader2 className="h-8 w-8 animate-spin text-[#128c7e]" />
-              <p className="text-sm">Loading plans…</p>
+              <p className="text-sm">Loading {PRODUCT_LINE_LABELS[productLine]} plans…</p>
             </div>
           ) : null}
 
           {!loading && plans.length === 0 && !error ? (
-            <p className="mt-16 text-center text-[#6d6c6b]">No public plans published yet. Check back soon.</p>
+            <p className="mt-16 text-center text-[#6d6c6b]">
+              No public {PRODUCT_LINE_LABELS[productLine].toLowerCase()} plans yet. Check back soon.
+            </p>
           ) : null}
 
           {!loading && plans.length > 0 ? (
             <>
-              {/* Plan cards — mobile + top summary */}
-              <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="mx-auto mt-12 flex max-w-6xl flex-wrap justify-center gap-6">
                 {plans.map((plan, i) => {
                   const price = planDisplayPrice(plan, billingCycle);
                   return (
@@ -152,7 +171,7 @@ export function MarketingPricingPage() {
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05 }}
-                      className={`relative flex flex-col rounded-2xl border bg-white p-6 shadow-[0_8px_30px_rgba(17,17,17,0.06)] ${
+                      className={`relative flex w-full max-w-[300px] flex-col items-center border bg-white p-6 text-center shadow-[0_8px_30px_rgba(17,17,17,0.06)] ${
                         plan.isPopular ? 'border-[#128c7e]/40 ring-2 ring-[#25d366]/30' : 'border-black/[0.08]'
                       }`}
                     >
@@ -175,25 +194,12 @@ export function MarketingPricingPage() {
                             {formatInr(price.yearlyTotal)} billed yearly
                           </p>
                         ) : null}
-                        {plan.setupFee > 0 ? (
-                          <p className="mt-2 text-xs text-[#a1a1aa]">Setup fee {formatInr(plan.setupFee)}</p>
-                        ) : null}
                       </div>
-                      {(plan.signupCredits > 0 || plan.monthlyCredits > 0) && (
-                        <ul className="mt-4 space-y-1 border-t border-black/[0.06] pt-4 text-xs text-[#52525b]">
-                          {plan.signupCredits > 0 ? (
-                            <li>₹{plan.signupCredits.toLocaleString('en-IN')} signup credits</li>
-                          ) : null}
-                          {plan.monthlyCredits > 0 ? (
-                            <li>₹{plan.monthlyCredits.toLocaleString('en-IN')} / month platform credits</li>
-                          ) : null}
-                        </ul>
-                      )}
-                      <ul className="mt-4 flex-1 space-y-2">
-                        {plan.featureList.slice(0, 5).map((f) => (
-                          <li key={f} className="flex gap-2 text-sm text-[#3f3f46]">
-                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#128c7e]" />
-                            {f}
+                      <ul className="mt-4 w-full flex-1 space-y-2 text-left">
+                        {planCardHighlights(plan, productLine).map((item) => (
+                          <li key={item.label} className="flex justify-between gap-2 text-sm text-[#3f3f46]">
+                            <span className="text-[#6d6c6b]">{item.label}</span>
+                            <span className="font-semibold tabular-nums text-[#111111]">{item.value}</span>
                           </li>
                         ))}
                       </ul>
@@ -201,9 +207,7 @@ export function MarketingPricingPage() {
                         type="button"
                         onClick={() => startCheckout(plan)}
                         className={`mt-6 w-full rounded-xl py-3 text-sm font-semibold transition ${
-                          plan.isPopular
-                            ? 'marketing-cta-primary text-white'
-                            : 'marketing-cta-outline-wa'
+                          plan.isPopular ? 'marketing-cta-primary text-white' : 'marketing-cta-outline-wa'
                         }`}
                       >
                         Get started
@@ -213,81 +217,30 @@ export function MarketingPricingPage() {
                 })}
               </div>
 
-              {/* Comparison table — desktop */}
-              <div className="mt-16 hidden overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_12px_40px_rgba(17,17,17,0.06)] lg:block">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-black/[0.08] bg-[#fafafa]">
-                        <th className="w-[28%] px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#a1a1aa]">
-                          Compare plans
-                        </th>
-                        {plans.map((plan) => (
-                          <th key={plan._id} className="px-4 py-4 text-center align-bottom">
-                            <p className="text-base font-bold text-[#111111]">{plan.name}</p>
-                            <p className="mt-1 text-lg font-bold tabular-nums text-[#128c7e]">
-                              {formatInr(planDisplayPrice(plan, billingCycle).main)}
-                              <span className="text-xs font-normal text-[#71717a]">/mo</span>
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => startCheckout(plan)}
-                              className={`mt-3 w-full rounded-lg px-3 py-2 text-xs font-semibold ${
-                                plan.isPopular ? 'marketing-cta-primary text-white' : 'marketing-cta-outline-wa'
-                              }`}
-                            >
-                              Choose plan
-                            </button>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {comparisonRows.limits.map((key) => (
-                        <tr key={key} className="border-b border-black/[0.04]">
-                          <td className="px-5 py-3 font-medium text-[#52525b]">{LIMIT_LABELS[key] ?? key}</td>
-                          {plans.map((plan) => (
-                            <td key={`${plan._id}-${key}`} className="px-4 py-3 text-center tabular-nums text-[#3f3f46]">
-                              {formatLimit(plan.limits[key])}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                      {comparisonRows.features.length > 0 ? (
-                        <tr className="bg-[#fafafa]">
-                          <td
-                            colSpan={plans.length + 1}
-                            className="px-5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#a1a1aa]"
-                          >
-                            Features
-                          </td>
-                        </tr>
-                      ) : null}
-                      {comparisonRows.features.map((feature) => (
-                        <tr key={feature} className="border-b border-black/[0.04]">
-                          <td className="px-5 py-3 text-[#52525b]">{feature}</td>
-                          {plans.map((plan) => {
-                            const included = plan.featureList.includes(feature);
-                            return (
-                              <td key={`${plan._id}-${feature}`} className="px-4 py-3 text-center">
-                                {included ? (
-                                  <Check className="mx-auto h-4 w-4 text-[#128c7e]" />
-                                ) : (
-                                  <Minus className="mx-auto h-4 w-4 text-[#d4d4d8]" />
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {matrix && matrix.plans.length > 0 && matrix.rows.length > 0 ? (
+                <div className="mt-16 w-full">
+                  <h2 className="mb-2 text-center text-lg font-bold text-[#111111]">
+                    Full plan comparison
+                  </h2>
+                  <p className="mb-6 text-center text-sm text-[#71717a]">
+                    Usage limits, every feature, and per-message Meta charges (INR) — billed in addition to
+                    your subscription.
+                  </p>
+                  <PlanComparisonTable
+                    matrix={matrix}
+                    billingCycle={billingCycle}
+                    billingLabel={billingNote}
+                    onChoosePlan={(_id, name) => {
+                      const plan = plans.find((p) => p.name === name);
+                      if (plan) startCheckout(plan);
+                    }}
+                  />
                 </div>
-              </div>
+              ) : null}
 
               <p className="mt-10 text-center text-xs text-[#a1a1aa]">
-                Meta conversation fees are billed separately per category. Platform credits shown above apply to Replysys
-                usage where configured.
+                Subscription covers platform access. WhatsApp message charges follow Meta categories above
+                and are billed based on outbound volume.
               </p>
             </>
           ) : null}

@@ -19,6 +19,7 @@ router.post('/verify-payment', requireJWT, subscriptionController.verifyPayment)
 router.get('/payments', requireJWT, subscriptionController.getPayments);  // Get user's payments/invoices
 router.get('/credits', requireJWT, subscriptionController.getCredits);  // Get user's credit balance and ledger
 router.get('/usage', requireJWT, subscriptionController.getUsageStats);  // Get usage and quota metrics for UI meters
+router.get('/entitlements', requireJWT, subscriptionController.getPlanEntitlements);
 router.get('/triggers', requireJWT, subscriptionController.getBillingTriggers);  // Get low-credit + renewal trigger states
 router.post('/credits/adjust', requireJWT, subscriptionController.adjustCredits);  // Internal admin credit adjustments
 

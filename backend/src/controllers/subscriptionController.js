@@ -65,10 +65,25 @@ export const createOrder = async (req, res) => {
       return sendValidationError(res, 'Invalid billing cycle');
     }
 
-    // Get pricing plan
-    const pricingPlan = await PricingPlan.findOne({
-      name: { $regex: new RegExp(plan, 'i') }
+    const planKey = String(plan).trim();
+    let pricingPlan = await PricingPlan.findOne({
+      planId: { $regex: new RegExp(`^${planKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      isActive: true,
     });
+
+    if (!pricingPlan) {
+      pricingPlan = await PricingPlan.findOne({
+        name: { $regex: new RegExp(`^${planKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        isActive: true,
+      });
+    }
+
+    if (!pricingPlan) {
+      pricingPlan = await PricingPlan.findOne({
+        name: { $regex: new RegExp(planKey, 'i') },
+        isActive: true,
+      });
+    }
 
     if (!pricingPlan) {
       return sendNotFound(res, `Plan '${plan}' not found`);
@@ -1005,6 +1020,20 @@ export const buyCredits = async (req, res) => {
   }
 };
 
+export const getPlanEntitlements = async (req, res) => {
+  try {
+    const accountId = req.account?.accountId || req.user?.accountId;
+    if (!accountId) {
+      return sendValidationError(res, 'Account ID required');
+    }
+    const { getAccountEntitlements } = await import('../services/planEntitlementService.js');
+    const entitlements = await getAccountEntitlements(accountId);
+    return sendSuccess(res, { entitlements }, 'Plan entitlements retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'getPlanEntitlements');
+  }
+};
+
 export default { 
   createSubscription,
   getSubscription,
@@ -1014,6 +1043,7 @@ export default {
   getPendingTransactions,
   getAllPendingTransactions,
   getMySubscription,
+  getPlanEntitlements,
   changePlan,
   pauseSubscription,
   resumeSubscription,

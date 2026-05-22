@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -24,20 +24,30 @@ import {
   checkPhoneAvailable,
   signupAccount,
 } from '@/lib/auth/registrationApi';
-import { fetchPublicPricingPlans, type PublicPricingPlan } from '@/lib/pricing/publicPlans';
+import {
+  fetchPublicPricingPlans,
+  formatInr,
+  normalizeCheckoutCycle,
+  planCheckoutTotal,
+  planDisplayPrice,
+  type BillingCycle,
+  type PublicPricingPlan,
+} from '@/lib/pricing/publicPlans';
+import { openCashfreeCheckout } from '@/lib/payments/cashfreeCheckout';
+import { createSubscriptionOrder } from '@/lib/payments/subscriptionOrder';
 import { WhatsAppIcon } from '@/components/marketing/WhatsAppIcon';
 import WhatsAppOtpBlock from '@/components/auth/WhatsAppOtpBlock';
 
 const STEPS = [
   { id: 1, title: 'Your account', subtitle: 'Name, email & password' },
-  { id: 2, title: 'Contact & company', subtitle: 'Phone verification & business' },
-  { id: 3, title: 'Choose plan', subtitle: 'Pick billing cycle' },
-  { id: 4, title: 'Review', subtitle: 'Confirm & continue' },
+  { id: 2, title: 'Contact & company', subtitle: 'Phone, company & optional WhatsApp verify' },
+  { id: 3, title: 'Choose plan', subtitle: 'Monthly or annual pricing' },
+  { id: 4, title: 'Review & pay', subtitle: 'Cashfree checkout, then project setup' },
 ] as const;
 
 const JOURNEY = [
   { n: '01', t: 'Sign up', d: 'Create your Replysys workspace in minutes.' },
-  { n: '02', t: 'Verify details', d: 'We check email and phone so accounts stay unique.' },
+  { n: '02', t: 'Contact details', d: 'We check email and phone so accounts stay unique.' },
   { n: '03', t: 'Select plan', d: 'Start with the tier that fits your team today.' },
   { n: '04', t: 'Go live', d: 'Complete payment and connect WhatsApp Cloud API.' },
 ] as const;
@@ -65,6 +75,7 @@ const glassInput =
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +103,7 @@ export default function RegisterPage() {
     companyName: '',
     website: '',
     selectedPlan: '',
-    billingCycle: 'monthly' as 'monthly' | 'quarterly' | 'annual',
+    billingCycle: 'monthly' as BillingCycle,
   });
 
   const patch = (key: keyof typeof form, value: string) => {
@@ -123,17 +134,36 @@ export default function RegisterPage() {
   }, [router]);
 
   useEffect(() => {
+    const planFromUrl = searchParams.get('plan')?.toLowerCase();
+    const cycleFromUrl = searchParams.get('cycle');
+
     fetchPublicPricingPlans()
       .then((list) => {
         setPlans(list);
-        if (list[0]) {
-          const id = (list[0].planId || list[0].name).toLowerCase();
-          setForm((f) => (f.selectedPlan ? f : { ...f, selectedPlan: id }));
+
+        let selectedId = '';
+        if (planFromUrl) {
+          const match = list.find(
+            (p) =>
+              (p.planId || p.name).toLowerCase() === planFromUrl ||
+              p.name.toLowerCase() === planFromUrl
+          );
+          selectedId = match
+            ? (match.planId || match.name).toLowerCase()
+            : planFromUrl;
+        } else if (list[0]) {
+          selectedId = (list[0].planId || list[0].name).toLowerCase();
         }
+
+        setForm((f) => ({
+          ...f,
+          ...(selectedId ? { selectedPlan: selectedId } : {}),
+          ...(cycleFromUrl ? { billingCycle: normalizeCheckoutCycle(cycleFromUrl) } : {}),
+        }));
       })
       .catch(() => setPlans([]))
       .finally(() => setPlansLoading(false));
-  }, []);
+  }, [searchParams]);
 
   const runEmailCheck = useCallback(async (email: string) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -229,10 +259,6 @@ export default function RegisterPage() {
         setError('Use a phone number that is not already registered');
         return false;
       }
-      if (!phoneVerified || !phoneVerificationToken) {
-        setError('Verify your mobile number with the WhatsApp code');
-        return false;
-      }
       return true;
     }
     if (s === 3) {
@@ -264,32 +290,67 @@ export default function RegisterPage() {
     setStep((s) => Math.max(1, s - 1));
   };
 
+  const selectedPlanObj = plans.find(
+    (p) => (p.planId || p.name).toLowerCase() === form.selectedPlan.toLowerCase(),
+  );
+
   const submit = async () => {
     setError(null);
     if (!(await validateStep(4))) return;
 
+    const planForPayment = selectedPlanObj?.name || form.selectedPlan;
+    const billingCycle = normalizeCheckoutCycle(form.billingCycle);
+
     setLoading(true);
     try {
-      const result = await signupAccount({ ...form, phoneVerificationToken });
+      const result = await signupAccount({
+        ...form,
+        billingCycle,
+        ...(phoneVerificationToken ? { phoneVerificationToken } : {}),
+      });
       if (!result.ok) {
         setError(result.message || 'Registration failed');
         return;
       }
-      setSuccess(true);
-      if (result.token) {
-        localStorage.setItem('token', result.token);
-        localStorage.setItem('isAuthenticated', 'true');
-        if (result.user) localStorage.setItem('user', JSON.stringify(result.user));
+
+      const token = result.token;
+      if (!token) {
+        setError('Account created but session token missing. Please log in.');
+        return;
       }
-      setTimeout(() => {
-        const base =
-          result.redirectTo ||
-          `/checkout?plan=${encodeURIComponent(form.selectedPlan)}`;
-        const url = base.includes('cycle=')
-          ? base
-          : `${base}${base.includes('?') ? '&' : '?'}cycle=${form.billingCycle}`;
-        router.push(url);
-      }, 1200);
+
+      localStorage.setItem('token', token);
+      localStorage.setItem('isAuthenticated', 'true');
+      if (result.user) localStorage.setItem('user', JSON.stringify(result.user));
+
+      const total = selectedPlanObj ? planCheckoutTotal(selectedPlanObj, billingCycle) : 0;
+
+      if (total <= 0) {
+        setSuccess(true);
+        setTimeout(() => router.push('/projects?setup=1'), 600);
+        return;
+      }
+
+      const order = await createSubscriptionOrder(
+        { plan: planForPayment, billingCycle },
+        token
+      );
+      if (!order.ok || !order.paymentSessionId) {
+        setError(order.message || 'Could not start payment. Try again from billing.');
+        return;
+      }
+
+      const payment = await openCashfreeCheckout(order.paymentSessionId);
+      if (!payment.paid) {
+        setError(
+          payment.error ||
+            'Payment was not completed. Log in anytime to finish checkout from billing.'
+        );
+        return;
+      }
+
+      setSuccess(true);
+      setTimeout(() => router.push('/projects?setup=1'), 800);
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
@@ -304,10 +365,6 @@ export default function RegisterPage() {
       </div>
     );
   }
-
-  const selectedPlanObj = plans.find(
-    (p) => (p.planId || p.name).toLowerCase() === form.selectedPlan.toLowerCase(),
-  );
 
   return (
     <div className="min-h-[calc(100dvh-5rem)] sm:min-h-[calc(100dvh-6rem)]">
@@ -398,7 +455,7 @@ export default function RegisterPage() {
                 <div className="py-10 text-center">
                   <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
                   <h1 className="mt-4 text-xl font-bold text-[#111111]">Account created</h1>
-                  <p className="mt-2 text-sm text-[#6d6c6b]">Taking you to checkout…</p>
+                  <p className="mt-2 text-sm text-[#6d6c6b]">Payment received — opening project setup…</p>
                   <Loader2 className="mx-auto mt-6 h-6 w-6 animate-spin text-[#128c7e]" />
                 </div>
               ) : (
@@ -495,17 +552,23 @@ export default function RegisterPage() {
                             <FieldHint status={phoneStatus} message={phoneMessage} />
                           </div>
                           {phoneStatus === 'ok' ? (
-                            <WhatsAppOtpBlock
-                              phone={form.mobileNumber}
-                              purpose="signup"
-                              email={form.email}
-                              disabled={phoneStatus !== 'ok'}
-                              onSignupVerified={(token) => {
-                                setPhoneVerificationToken(token);
-                                setPhoneVerified(true);
-                                setError(null);
-                              }}
-                            />
+                            <div>
+                              <p className="mb-2 text-xs text-[#71717a]">
+                                WhatsApp verification is optional — you can continue without it.
+                              </p>
+                              <WhatsAppOtpBlock
+                                phone={form.mobileNumber}
+                                purpose="signup"
+                                email={form.email}
+                                optional
+                                disabled={phoneStatus !== 'ok'}
+                                onSignupVerified={(token) => {
+                                  setPhoneVerificationToken(token);
+                                  setPhoneVerified(true);
+                                  setError(null);
+                                }}
+                              />
+                            </div>
                           ) : null}
                           {phoneVerified ? (
                             <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
@@ -566,26 +629,31 @@ export default function RegisterPage() {
                                   >
                                     <p className="text-sm font-bold text-[#111111]">{plan.name}</p>
                                     <p className="mt-0.5 text-xs text-[#6d6c6b]">
-                                      ₹{plan.monthlyPrice.toLocaleString('en-IN')}/mo
+                                      {formatInr(
+                                        planDisplayPrice(plan, normalizeCheckoutCycle(form.billingCycle)).main
+                                      )}
+                                      {normalizeCheckoutCycle(form.billingCycle) === 'annual'
+                                        ? '/mo · billed yearly'
+                                        : '/mo'}
                                     </p>
                                   </button>
                                 );
                               })}
                             </div>
                           )}
-                          <div className="grid grid-cols-3 gap-2 pt-2">
-                            {(['monthly', 'quarterly', 'annual'] as const).map((cycle) => (
+                          <div className="grid grid-cols-2 gap-2 pt-2">
+                            {(['monthly', 'annual'] as const).map((cycle) => (
                               <button
                                 key={cycle}
                                 type="button"
                                 onClick={() => patch('billingCycle', cycle)}
                                 className={`rounded-lg border py-2 text-xs font-semibold capitalize ${
-                                  form.billingCycle === cycle
+                                  normalizeCheckoutCycle(form.billingCycle) === cycle
                                     ? 'border-[#128c7e] bg-emerald-50 text-[#128c7e]'
                                     : 'border-black/[0.08] bg-white/50 text-[#52525b]'
                                 }`}
                               >
-                                {cycle}
+                                {cycle === 'monthly' ? 'Monthly' : 'Annual'}
                               </button>
                             ))}
                           </div>
@@ -608,8 +676,22 @@ export default function RegisterPage() {
                           </p>
                           <p>
                             <span className="text-[#71717a]">Plan</span> · {selectedPlanObj?.name || form.selectedPlan}{' '}
-                            ({form.billingCycle})
+                            ({normalizeCheckoutCycle(form.billingCycle)})
                           </p>
+                          {selectedPlanObj ? (
+                            <p>
+                              <span className="text-[#71717a]">Total due now</span> ·{' '}
+                              <span className="font-semibold text-[#111111]">
+                                {formatInr(
+                                  planCheckoutTotal(
+                                    selectedPlanObj,
+                                    normalizeCheckoutCycle(form.billingCycle)
+                                  )
+                                )}
+                              </span>
+                              <span className="text-[#a1a1aa]"> · Secured by Cashfree</span>
+                            </p>
+                          ) : null}
                           <label className="mt-4 flex cursor-pointer items-start gap-2">
                             <input
                               type="checkbox"
@@ -674,7 +756,7 @@ export default function RegisterPage() {
                         ) : (
                           <>
                             <CreditCard className="h-4 w-4" />
-                            Create & pay
+                            Pay with Cashfree & continue
                           </>
                         )}
                       </button>

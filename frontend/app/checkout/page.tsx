@@ -6,17 +6,27 @@ import Link from 'next/link'
 import { Loader, ArrowRight, Check } from 'lucide-react'
 import { MarketingNavbar } from '@/components/marketing/MarketingNavbar'
 import { API_URL } from '@/lib/config/api'
-import { parsePublicPlansResponse } from '@/lib/pricing/publicPlans'
+import {
+  formatInr,
+  normalizeCheckoutCycle,
+  parsePublicPlansResponse,
+  planCheckoutDisplay,
+  planCheckoutTotal,
+  type BillingCycle,
+  type PublicPricingPlan,
+} from '@/lib/pricing/publicPlans'
 
 function CheckoutPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const planName = searchParams.get('plan') || 'starter'
-  const cycle = (searchParams.get('cycle') as 'monthly' | 'quarterly' | 'annual') || 'monthly'
+  const cycleParam = searchParams.get('cycle')
 
-  const [selectedPlan, setSelectedPlan] = useState<any>(null)
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'quarterly' | 'annual'>(cycle)
+  const [selectedPlan, setSelectedPlan] = useState<PublicPricingPlan | null>(null)
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>(() =>
+    normalizeCheckoutCycle(cycleParam)
+  )
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
@@ -49,12 +59,12 @@ function CheckoutPage() {
     fetchPlan()
   }, [planName])
 
-  const calculatePrice = () => {
-    if (!selectedPlan) return 0
-    const monthly = selectedPlan.monthlyPrice || 0
-    const multiplier = billingCycle === 'monthly' ? 1 : billingCycle === 'quarterly' ? 3 : 12
-    return monthly * multiplier
-  }
+  useEffect(() => {
+    setBillingCycle(normalizeCheckoutCycle(cycleParam))
+  }, [cycleParam])
+
+  const checkoutDisplay = selectedPlan ? planCheckoutDisplay(selectedPlan, billingCycle) : null
+  const totalAmount = selectedPlan ? planCheckoutTotal(selectedPlan, billingCycle) : 0
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -174,8 +184,8 @@ function CheckoutPage() {
         setProcessing(false)
         // Wait 2 seconds then redirect to dashboard
         setTimeout(() => {
-          router.push('/dashboard')
-        }, 2000)
+          router.push('/projects?setup=1')
+        }, 1500)
       } else {
         // Modal closed without payment
         console.log('⚠️ Checkout modal closed')
@@ -330,7 +340,14 @@ function CheckoutPage() {
                 <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-6">
                   <h3 className="text-2xl font-bold text-[#111111]">{selectedPlan.name}</h3>
                   <p className="text-[#6d6c6b] mt-2 mb-4">{selectedPlan.description}</p>
-                  <p className="text-3xl font-bold tabular-nums text-[#128c7e]">₹{selectedPlan.monthlyPrice}/month</p>
+                  {checkoutDisplay ? (
+                    <p className="text-3xl font-bold tabular-nums text-[#128c7e]">
+                      {checkoutDisplay.amountLabel}
+                      <span className="ml-2 text-base font-semibold text-[#6d6c6b]">
+                        {checkoutDisplay.periodLabel}
+                      </span>
+                    </p>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -339,10 +356,11 @@ function CheckoutPage() {
             {isAuthenticated && (
               <div className="rounded-2xl border border-black/[0.08] bg-white p-6 shadow-sm sm:p-8">
                 <h2 className="text-lg font-bold text-[#111111] mb-6">Step 3: Billing Period</h2>
-                <div className="grid grid-cols-3 gap-4">
-                  {(['monthly', 'quarterly', 'annual'] as const).map((c) => (
+                <div className="grid grid-cols-2 gap-4">
+                  {(['monthly', 'annual'] as const).map((c) => (
                     <button
                       key={c}
+                      type="button"
                       onClick={() => setBillingCycle(c)}
                       className={`p-4 rounded-lg border-2 font-semibold ${
                         billingCycle === c
@@ -350,9 +368,7 @@ function CheckoutPage() {
                           : 'border-black/[0.08] bg-white text-[#3f3f46] hover:border-black/[0.12]'
                       }`}
                     >
-                      {c === 'monthly' && '1 Month'}
-                      {c === 'quarterly' && '3 Months'}
-                      {c === 'annual' && '12 Months'}
+                      {c === 'monthly' ? 'Monthly' : 'Annual'}
                     </button>
                   ))}
                 </div>
@@ -375,25 +391,24 @@ function CheckoutPage() {
 
                     <div>
                       <p className="text-sm text-gray-600">Period</p>
-                      <p className="font-semibold text-gray-900">
-                        {billingCycle === 'monthly' ? '1 Month' : billingCycle === 'quarterly' ? '3 Months' : '12 Months'}
+                      <p className="font-semibold text-gray-900 capitalize">
+                        {billingCycle === 'monthly' ? 'Monthly' : 'Annual'}
                       </p>
                     </div>
 
-                    <div className="flex justify-between">
-                      <p className="text-sm text-gray-600">Price/month</p>
-                      <p className="font-semibold">₹{selectedPlan.monthlyPrice}</p>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <p className="text-sm text-gray-600">Multiplier</p>
-                      <p className="font-semibold">×{billingCycle === 'monthly' ? 1 : billingCycle === 'quarterly' ? 3 : 12}</p>
-                    </div>
+                    {checkoutDisplay ? (
+                      <div className="flex justify-between">
+                        <p className="text-sm text-gray-600">
+                          {billingCycle === 'annual' ? 'Annual price' : 'Monthly price'}
+                        </p>
+                        <p className="font-semibold">{checkoutDisplay.amountLabel}</p>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mb-6">
                     <p className="text-sm text-gray-600">Total Amount</p>
-                    <p className="text-4xl font-bold tabular-nums text-[#128c7e]">₹{calculatePrice()}</p>
+                    <p className="text-4xl font-bold tabular-nums text-[#128c7e]">{formatInr(totalAmount)}</p>
                   </div>
 
                   {isAuthenticated ? (

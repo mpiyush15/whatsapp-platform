@@ -272,12 +272,19 @@ class BillingLifecycleService {
         ? Number(planLimits.phoneNumbers)
         : Number(account?.limits?.phoneNumbers || 1);
 
+      const productLine = plan.productLine || 'whatsapp';
+      const planEntitlements = plan.entitlements instanceof Map
+        ? Object.fromEntries(plan.entitlements)
+        : (plan.entitlements || {});
+
       const subscription = await Subscription.findOneAndUpdate(
-        { accountId },
+        { accountId, productLine },
         {
           $set: {
             accountId,
             projectId: payment.projectId || null,
+            productLine,
+            pricingPlanId: plan.planId,
             planName,
             billingCycle,
             amount: Number(payment.amount || 0),
@@ -291,8 +298,10 @@ class BillingLifecycleService {
               messagesPerDay: resolvedMessagesLimit,
               contacts: resolvedContactsLimit,
             },
+            planLimits: planLimits,
+            entitlements: planEntitlements,
             updatedAt: new Date(),
-          }
+          },
         },
         {
           upsert: true,

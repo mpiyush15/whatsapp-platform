@@ -10,8 +10,11 @@ const router = express.Router();
  * PUBLIC ROUTES - No Auth Required
  */
 
-// Get all active public pricing plans
+// Get all active public pricing plans (?productLine=whatsapp|healthcare)
 router.get('/plans/public', pricingController.getPublicPricingPlans);
+
+// Feature comparison matrix for public pricing page
+router.get('/plans/feature-matrix', pricingController.getPricingFeatureMatrix);
 
 // Get specific plan details
 router.get('/plans/public/:planId', pricingController.getPricingPlanDetails);
@@ -19,6 +22,9 @@ router.get('/plans/public/:planId', pricingController.getPricingPlanDetails);
 /**
  * ADMIN ROUTES - Requires JWT Auth + Superadmin
  */
+
+// Plan feature catalog for superadmin editor
+router.get('/admin/catalog', requireJWT, requireSuperAdmin, pricingController.getPlanFeatureCatalog);
 
 // Pricing Plan Management (Superadmin only)
 router.post('/admin/plans', requireJWT, requireSuperAdmin, pricingController.createPricingPlan);

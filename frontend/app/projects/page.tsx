@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Plus, ArrowRight, Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import CreateProjectWizard from '@/components/projects/CreateProjectWizard';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api';
@@ -24,6 +24,7 @@ interface Account {
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [accountData, setAccountData] = useState<Account | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,6 +33,12 @@ export default function ProjectsPage() {
   useEffect(() => {
     fetchProjectsAndAccount();
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('setup') === '1') {
+      setWizardOpen(true);
+    }
+  }, [searchParams]);
 
   const getAuthToken = () => {
     if (typeof window !== 'undefined') {

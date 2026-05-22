@@ -3,24 +3,88 @@ import logger from '../utils/logger.js';
 import { handleControllerError, NotFoundError, ValidationError, ConflictError } from '../utils/errorHandler.js';
 import PricingPlan from '../models/PricingPlan.js';
 import DiscountOffer from '../models/DiscountOffer.js';
+import {
+  buildFeatureMatrix,
+  catalogForProductLine,
+  defaultMessageCharges,
+  MESSAGE_CHARGE_ROWS,
+} from '../config/planFeatureCatalog.js';
 
 /**
  * PRICING PLANS - Public Routes
  */
 
+function normalizeEntitlementsInput(raw) {
+  if (!raw) return {};
+  if (raw instanceof Map) return Object.fromEntries(raw);
+  return typeof raw === 'object' ? raw : {};
+}
+
+function syncIncludedFeatures(entitlements, productLine) {
+  const catalog = catalogForProductLine(productLine);
+  const included = catalog.features
+    .filter((f) => entitlements[f.key] === true)
+    .map((f) => f.label);
+  return included;
+}
+
 export const getPublicPricingPlans = async (req, res) => {
   try {
-    const plans = await PricingPlan.find({
+    const productLine = String(req.query?.productLine || 'whatsapp').toLowerCase();
+    const filter = {
       isActive: true,
-      publishedToPublic: true
-    }).select('-updatedBy -__v');
+      publishedToPublic: true,
+      productLine: ['whatsapp', 'healthcare'].includes(productLine) ? productLine : 'whatsapp',
+    };
+
+    const plans = await PricingPlan.find(filter)
+      .sort({ sortOrder: 1, monthlyPrice: 1 })
+      .select('-updatedBy -__v')
+      .lean();
 
     return sendSuccess(res, {
       data: plans,
-      count: plans.length
+      count: plans.length,
+      productLine: filter.productLine,
     }, 'Public pricing plans retrieved');
   } catch (error) {
     return handleControllerError(res, error, 'getPublicPricingPlans');
+  }
+};
+
+export const getPricingFeatureMatrix = async (req, res) => {
+  try {
+    const productLine = String(req.query?.productLine || 'whatsapp').toLowerCase();
+    const line = ['whatsapp', 'healthcare'].includes(productLine) ? productLine : 'whatsapp';
+
+    const plans = await PricingPlan.find({
+      isActive: true,
+      publishedToPublic: true,
+      productLine: line,
+    })
+      .sort({ sortOrder: 1, monthlyPrice: 1 })
+      .lean();
+
+    const matrix = buildFeatureMatrix(plans, line);
+    const catalog = catalogForProductLine(line);
+
+    return sendSuccess(res, { ...matrix, catalog }, 'Pricing feature matrix retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'getPricingFeatureMatrix');
+  }
+};
+
+export const getPlanFeatureCatalog = async (req, res) => {
+  try {
+    const productLine = String(req.query?.productLine || 'whatsapp').toLowerCase();
+    const line = ['whatsapp', 'healthcare'].includes(productLine) ? productLine : 'whatsapp';
+    return sendSuccess(res, {
+      ...catalogForProductLine(line),
+      messageCharges: MESSAGE_CHARGE_ROWS,
+      defaultMessageCharges: defaultMessageCharges(),
+    }, 'Plan feature catalog retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'getPlanFeatureCatalog');
   }
 };
 
@@ -79,37 +143,60 @@ export const getPlanById = async (req, res) => {
 
 export const createPricingPlan = async (req, res) => {
   try {
-    const { name, monthlyPrice, yearlyPrice, setupFee, signupCredits, monthlyCredits, limits, features, description, publishedToPublic, isPopular, isActive } = req.body;
+    const {
+      name,
+      productLine = 'whatsapp',
+      monthlyPrice,
+      yearlyPrice,
+      setupFee,
+      signupCredits,
+      monthlyCredits,
+      limits,
+      entitlements,
+      features,
+      description,
+      publishedToPublic,
+      isPopular,
+      isActive,
+      sortOrder,
+      currency,
+      messageCharges,
+    } = req.body;
 
-    // Validation
     if (!name || monthlyPrice === undefined || yearlyPrice === undefined) {
       throw new ValidationError('Name, monthly price, and yearly price are required');
     }
 
-    // Check duplicate
-    const existing = await PricingPlan.findOne({ name });
+    const line = ['whatsapp', 'healthcare'].includes(String(productLine)) ? productLine : 'whatsapp';
+    const existing = await PricingPlan.findOne({ name, productLine: line });
     if (existing) {
-      throw new ConflictError('Plan with this name already exists');
+      throw new ConflictError('Plan with this name already exists for this product line');
     }
 
+    const ent = normalizeEntitlementsInput(entitlements);
+    const included = features?.included?.length
+      ? features.included
+      : syncIncludedFeatures(ent, line);
+
     const plan = new PricingPlan({
-      planId: `plan_${name.toLowerCase()}_${Date.now()}`,
+      planId: `plan_${line}_${name.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`,
       name,
+      productLine: line,
+      sortOrder: Number(sortOrder || 0),
       monthlyPrice,
       yearlyPrice,
       setupFee: setupFee || 0,
+      currency: currency || 'INR',
       signupCredits: signupCredits || 0,
       monthlyCredits: monthlyCredits || 0,
-      limits: {
-        messages: limits?.messages ?? null,
-        contacts: limits?.contacts ?? null,
-        phoneNumbers: limits?.phoneNumbers ?? 1,
-      },
+      limits: limits || {},
+      entitlements: ent,
       description: description || '',
-      features: features || { included: [], excluded: [] },
+      features: { included, excluded: features?.excluded || [] },
       publishedToPublic: publishedToPublic !== undefined ? publishedToPublic : true,
       isPopular: isPopular || false,
-      isActive: isActive !== undefined ? isActive : true
+      isActive: isActive !== undefined ? isActive : true,
+      messageCharges: messageCharges || {},
     });
 
     await plan.save();
@@ -124,10 +211,29 @@ export const createPricingPlan = async (req, res) => {
 export const updatePricingPlan = async (req, res) => {
   try {
     const { planId } = req.params;
-    const updates = req.body;
+    const updates = { ...req.body };
 
-    // Don't allow updating planId
     delete updates.planId;
+
+    const existing = await PricingPlan.findById(planId);
+    if (!existing) {
+      throw new NotFoundError('Pricing plan not found');
+    }
+
+    const line = ['whatsapp', 'healthcare'].includes(String(updates.productLine))
+      ? updates.productLine
+      : (existing.productLine || 'whatsapp');
+
+    if (updates.entitlements !== undefined) {
+      const ent = normalizeEntitlementsInput(updates.entitlements);
+      updates.entitlements = ent;
+      updates.features = {
+        included: updates.features?.included?.length
+          ? updates.features.included
+          : syncIncludedFeatures(ent, line),
+        excluded: updates.features?.excluded || existing.features?.excluded || [],
+      };
+    }
 
     const plan = await PricingPlan.findByIdAndUpdate(
       planId,

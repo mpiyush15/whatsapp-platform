@@ -205,13 +205,12 @@ export const signup = async (req, res) => {
       return sendValidationError(res, 'Mobile number is required');
     }
 
-    if (!phoneVerificationToken) {
-      return sendValidationError(res, 'Verify your mobile number with WhatsApp OTP before continuing');
-    }
-    try {
-      verifyPhoneVerificationToken(phoneVerificationToken, phone);
-    } catch (verifyErr) {
-      return sendValidationError(res, verifyErr.message || 'Phone verification expired. Request a new OTP.');
+    if (phoneVerificationToken) {
+      try {
+        verifyPhoneVerificationToken(phoneVerificationToken, phone);
+      } catch (verifyErr) {
+        return sendValidationError(res, verifyErr.message || 'Phone verification expired. Request a new OTP.');
+      }
     }
 
     if (!selectedPlan || selectedPlan.trim() === '') {
@@ -393,14 +392,12 @@ export const signup = async (req, res) => {
         });
         
         if (pricingPlan) {
-          const monthlyPrice = pricingPlan.monthlyPrice || 0;
-          
-          if (cycle === 'monthly') {
-            planAmount = monthlyPrice;
+          if (cycle === 'annual') {
+            planAmount = pricingPlan.yearlyPrice || 0;
           } else if (cycle === 'quarterly') {
-            planAmount = Math.round(monthlyPrice * 3 * 0.95);
-          } else if (cycle === 'annual') {
-            planAmount = Math.round(monthlyPrice * 12 * 0.85);
+            planAmount = Math.round((pricingPlan.monthlyPrice || 0) * 3);
+          } else {
+            planAmount = pricingPlan.monthlyPrice || 0;
           }
         }
       } catch (priceErr) {
@@ -437,7 +434,7 @@ export const signup = async (req, res) => {
       token,
       user,
       selectedPlan: selectedPlan.toLowerCase(),
-      redirectTo: `/checkout?plan=${selectedPlan.toLowerCase()}`
+      redirectTo: `/projects?setup=1`
     });
   } catch (error) {
     logger.error('❌ Signup error:', error);

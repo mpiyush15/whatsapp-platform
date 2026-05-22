@@ -8,6 +8,7 @@ import path from 'path';
 import { authenticate } from './middlewares/auth.js';
 import { requireJWT } from './middlewares/jwtAuth.js';
 import requireSubscription from './middlewares/requireSubscription.js';
+import { requirePlanFeature } from './middlewares/requirePlanFeature.js';
 import { subdomainDetectionMiddleware } from './middlewares/subdomainDetection.js';
 import { validateWebhookSignature } from './middlewares/webhookSignatureValidator.js';
 import { validateDomain, requireAdminDomain, requireAppDomain, requireSupportDomain, enforceProjectIsolation } from './middlewares/domainMiddleware.js';
@@ -360,7 +361,13 @@ app.use('/api/chatbots', requireJWT, requireSubscription, chatbotRoutes);
 app.use('/api/messages', requireJWT, requireSubscription, messageRoutes);
 app.use('/api/conversations', requireJWT, requireSubscription, conversationRoutes);
 app.use('/api/contacts', requireJWT, requireSubscription, contactRoutes);
-app.use('/api/healthcare', requireJWT, requireSubscription, healthcareRoutes);
+app.use(
+  '/api/healthcare',
+  requireJWT,
+  requireSubscription,
+  requirePlanFeature('hc_patients', 'healthcare'),
+  healthcareRoutes
+);
 app.use('/api/clinic', requireJWT, requireSubscription, clinicRoutes);
 app.use('/api/segments', requireJWT, requireSubscription, segmentRoutes);
 app.use('/api/broadcasts', requireJWT, requireSubscription, broadcastRoutes);

@@ -12,6 +12,8 @@ type Props = {
   phone: string;
   purpose: 'login' | 'signup';
   email?: string;
+  /** When true, UI indicates verification is not required (signup only). */
+  optional?: boolean;
   onSignupVerified?: (token: string) => void;
   onLoginSuccess?: (token: string, user: Record<string, unknown>) => void;
   disabled?: boolean;
@@ -21,6 +23,7 @@ export default function WhatsAppOtpBlock({
   phone,
   purpose,
   email,
+  optional,
   onSignupVerified,
   onLoginSuccess,
   disabled,
@@ -91,6 +94,11 @@ export default function WhatsAppOtpBlock({
       <p className="mb-3 flex items-center gap-2 text-sm font-medium text-[#128c7e]">
         <MessageCircle className="h-4 w-4" />
         Verify with WhatsApp OTP
+        {optional ? (
+          <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#71717a]">
+            Optional
+          </span>
+        ) : null}
       </p>
 
       {!sent ? (

@@ -78,8 +78,15 @@ export function parsePublicPlansResponse(payload: unknown): PublicPricingPlan[] 
     .filter((p) => p.isActive);
 }
 
-export async function fetchPublicPricingPlans(): Promise<PublicPricingPlan[]> {
-  const res = await fetch(`${API_URL}/pricing/plans/public`, { cache: 'no-store' });
+export type ProductLine = 'whatsapp' | 'healthcare';
+
+export async function fetchPublicPricingPlans(
+  productLine: ProductLine = 'whatsapp'
+): Promise<PublicPricingPlan[]> {
+  const res = await fetch(
+    `${API_URL}/pricing/plans/public?productLine=${productLine}`,
+    { cache: 'no-store' }
+  );
   if (!res.ok) {
     throw new Error(`Could not load plans (${res.status})`);
   }
@@ -114,6 +121,80 @@ export function planDisplayPrice(plan: PublicPricingPlan, cycle: BillingCycle): 
   };
 }
 
+/** Total amount charged at checkout (matches backend create-order). */
+export function planCheckoutTotal(plan: PublicPricingPlan, cycle: BillingCycle): number {
+  return cycle === 'annual' ? plan.yearlyPrice : plan.monthlyPrice;
+}
+
+export function planCheckoutDisplay(
+  plan: PublicPricingPlan,
+  cycle: BillingCycle
+): { amountLabel: string; periodLabel: string; total: number } {
+  if (cycle === 'annual') {
+    return {
+      amountLabel: formatInr(plan.yearlyPrice),
+      periodLabel: 'billed annually',
+      total: plan.yearlyPrice,
+    };
+  }
+  return {
+    amountLabel: formatInr(plan.monthlyPrice),
+    periodLabel: 'per month',
+    total: plan.monthlyPrice,
+  };
+}
+
+export function formatPlanLimit(value: number | null | undefined): string {
+  if (value === null || value === undefined) return 'Unlimited';
+  return Number(value).toLocaleString('en-IN');
+}
+
+export type PlanCardHighlight = { label: string; value: string };
+
+export function planCardHighlights(
+  plan: PublicPricingPlan,
+  productLine: 'whatsapp' | 'healthcare' = 'whatsapp'
+): PlanCardHighlight[] {
+  const { limits } = plan;
+  if (productLine === 'healthcare') {
+    return [
+      { label: 'Patients', value: formatPlanLimit(limits.patients) },
+      { label: 'Appointments / mo', value: formatPlanLimit(limits.appointments) },
+      { label: 'Campaigns / mo', value: formatPlanLimit(limits.campaigns) },
+      { label: 'WhatsApp messages / mo', value: formatPlanLimit(limits.messages) },
+      { label: 'Business numbers', value: formatPlanLimit(limits.phoneNumbers) },
+    ];
+  }
+  return [
+    { label: 'Messages / mo', value: formatPlanLimit(limits.messages) },
+    { label: 'Campaigns / mo', value: formatPlanLimit(limits.campaigns) },
+    { label: 'Contacts', value: formatPlanLimit(limits.contacts) },
+    { label: 'Business numbers', value: formatPlanLimit(limits.phoneNumbers) },
+    { label: 'Team members', value: formatPlanLimit(limits.users) },
+  ];
+}
+
+export function normalizeCheckoutCycle(
+  value: string | null | undefined
+): BillingCycle {
+  return value === 'annual' ? 'annual' : 'monthly';
+}
+
+function planUrlKey(plan: PublicPricingPlan | string): string {
+  if (typeof plan === 'string') return plan.toLowerCase();
+  return (plan.planId || plan.name).toLowerCase();
+}
+
+/** New clients: pricing → signup → Cashfree → project wizard */
+export function signupUrl(plan: PublicPricingPlan | string, cycle: BillingCycle): string {
+  const params = new URLSearchParams({
+    plan: planUrlKey(plan),
+    cycle: cycle === 'annual' ? 'annual' : 'monthly',
+  });
+  return `/auth/register?${params.toString()}`;
+}
+
+/** Logged-in users upgrading or paying from billing */
 export function checkoutUrl(planName: string, cycle: BillingCycle): string {
   const params = new URLSearchParams({
     plan: planName.toLowerCase(),

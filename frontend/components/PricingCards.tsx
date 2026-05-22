@@ -277,7 +277,9 @@ export default function PricingCards() {
         }}
         onConfirm={() => {
           // Redirect to checkout after agreement
-          window.location.href = `/checkout?plan=${encodeURIComponent(selectedPlanName)}&cycle=${billingCycle}`;
+          const plan = plans.find((p) => p.name === selectedPlanName);
+          const planKey = plan ? (plan.planId || plan.name).toLowerCase() : selectedPlanName.toLowerCase();
+          window.location.href = `/auth/register?plan=${encodeURIComponent(planKey)}&cycle=${billingCycle}`;
         }}
       />
     </div>

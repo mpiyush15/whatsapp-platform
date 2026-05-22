@@ -10,7 +10,8 @@
     "smoke:support": "node scripts/smoke-test-support.mjs",
     "migrate:pharmacy-billing-flag": "node scripts/migrate-pharmacy-billing-flag.js",
     "fix:users-accountid-index": "node scripts/fix-users-accountid-index.js",
-    "seed:healthcare-demo": "node scripts/seed-healthcare-demo.js proj_hc_1777808469748 --clear"
+    "seed:healthcare-demo": "node scripts/seed-healthcare-demo.js proj_hc_1777808469748 --clear",
+    "seed:pricing-plans": "node scripts/seed-pricing-plans.js"
   },
   "keywords": [],
   "author": "",
