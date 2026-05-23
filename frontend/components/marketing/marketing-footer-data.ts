@@ -46,5 +46,5 @@ export const marketingFooterCopy = {
     'WhatsApp for teams that sell, support, and grow — team inbox, bulk messages, auto-replies, and reports on official WhatsApp Business.',
   companyLine: 'A product of Pixels Digital Solutions',
   officialPlatformLine:
-    'ReplySys uses the official WhatsApp Business Platform for secure and compliant messaging.',
+    'ReplySys is an official Meta Tech Provider, built to onboard and power your business securely on the official WhatsApp Business Platform',
 } as const;
