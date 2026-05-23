@@ -90,7 +90,7 @@ export default function ContactPage() {
               <h3 className="text-xl font-bold text-gray-900 mb-2">Address</h3>
               <p className="text-gray-600">
                 <strong className="block text-gray-900 mb-2">Replysys - A Product of Pixels Digital Solutions</strong>
-                Ashray Nagar, Danki Road<br/>
+                Ashray Nagar, Dabki Road<br/>
                 Akola, Maharashtra<br/>
                 India
               </p>
