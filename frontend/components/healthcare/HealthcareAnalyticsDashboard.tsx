@@ -91,29 +91,38 @@ type Props = {
 export function HealthcareAnalyticsDashboard({ projectId, clinicName, basePath }: Props) {
   const [period, setPeriod] = useState<HealthcareAnalyticsPeriod>('week')
   const [data, setData] = useState<HealthcareAnalytics | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const requestId = useRef(0)
+  const hasLoadedOnce = useRef(false)
 
   const load = useCallback(async () => {
     const id = ++requestId.current
+    const isRefresh = hasLoadedOnce.current
+    if (!isRefresh) setInitialLoading(true)
+    else setRefreshing(true)
+
     try {
-      setLoading(true)
       setError('')
       const payload = await fetchHealthcareAnalytics(projectId, period)
       if (id !== requestId.current) return
       if (!payload || payload.period !== period) {
         setError('Could not load stats for this period')
-        setData(null)
+        if (!isRefresh) setData(null)
         return
       }
       setData(payload)
+      hasLoadedOnce.current = true
     } catch (err) {
       if (id !== requestId.current) return
       setError(err instanceof Error ? err.message : 'Failed to load overview')
-      setData(null)
+      if (!isRefresh) setData(null)
     } finally {
-      if (id === requestId.current) setLoading(false)
+      if (id === requestId.current) {
+        setInitialLoading(false)
+        setRefreshing(false)
+      }
     }
   }, [projectId, period])
 
@@ -124,8 +133,6 @@ export function HealthcareAnalyticsDashboard({ projectId, clinicName, basePath }
   const handlePeriodChange = (next: HealthcareAnalyticsPeriod) => {
     if (next === period) return
     setPeriod(next)
-    setData(null)
-    setLoading(true)
   }
 
   const periodLabel = PERIODS.find((p) => p.id === period)?.label || 'This week'
@@ -172,10 +179,10 @@ export function HealthcareAnalyticsDashboard({ projectId, clinicName, basePath }
           <button
             type="button"
             onClick={() => void load()}
-            disabled={loading}
+            disabled={refreshing}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </div>
@@ -185,13 +192,19 @@ export function HealthcareAnalyticsDashboard({ projectId, clinicName, basePath }
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       ) : null}
 
-      {loading && !data ? (
+      {initialLoading && !data ? (
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-slate-500">
           <Loader2 className="h-5 w-5 animate-spin text-emerald-600" />
           Loading {periodLabel.toLowerCase()}…
         </div>
-      ) : data && data.period === period ? (
-        <div className={`space-y-6 transition-opacity ${loading ? 'pointer-events-none opacity-60' : ''}`}>
+      ) : data ? (
+        <div className={`relative space-y-6 transition-opacity ${refreshing ? 'pointer-events-none opacity-60' : ''}`}>
+          {refreshing ? (
+            <div className="absolute right-0 top-0 z-10 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Updating…
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               label="Money received"

@@ -89,10 +89,20 @@ export const VERTICAL_ACTION_REGISTRY: Record<string, { label: string; color: st
         description: 'Creates an appointment record for the patient in the healthcare system',
         configFields: [
           { key: 'patientNameVar', label: 'Patient Name Variable', placeholder: 'e.g. {{patient_name}}' },
-          { key: 'doctorId', label: 'Doctor ID or Variable', placeholder: 'e.g. dr_001 or {{doctor_id}}' },
-          { key: 'slotVar', label: 'Slot Variable', placeholder: 'e.g. {{selected_slot}}' },
-          { key: 'visitType', label: 'Visit Type', placeholder: 'consultation / follow_up / emergency' },
+          { key: 'doctorId', label: 'Doctor ID or Variable', placeholder: 'Optional: dr_001 or {{doctor_id}}' },
+          { key: 'dateVar', label: 'Date Variable', placeholder: 'e.g. {{appointment_date}} or 28/05/2026' },
+          { key: 'timeVar', label: 'Time Variable', placeholder: 'e.g. {{appointment_time}} or 10:30' },
+          { key: 'slotVar', label: 'Slot Variable', placeholder: 'Optional: {{selected_slot}} from check_slot' },
+          { key: 'slotsVar', label: 'Saved Slots Variable', placeholder: 'available_slots' },
+          { key: 'durationMinutes', label: 'Duration Minutes', placeholder: '30' },
+          { key: 'visitType', label: 'Visit Type', placeholder: 'consultation / follow-up / procedure' },
         ],
+      },
+      {
+        id: 'lookup_patient',
+        label: 'Lookup Patient (WhatsApp)',
+        description: 'Checks if the contact exists in patients DB and sets patient_exists / patientName',
+        configFields: [],
       },
       {
         id: 'create_patient',
@@ -110,6 +120,7 @@ export const VERTICAL_ACTION_REGISTRY: Record<string, { label: string; color: st
         configFields: [
           { key: 'doctorId', label: 'Doctor ID or Variable', placeholder: 'e.g. dr_001' },
           { key: 'date', label: 'Date Variable', placeholder: 'e.g. {{selected_date}}' },
+          { key: 'durationMinutes', label: 'Duration Minutes', placeholder: '30' },
           { key: 'saveAs', label: 'Save slots as variable', placeholder: 'e.g. available_slots' },
         ],
       },

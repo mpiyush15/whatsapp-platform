@@ -62,7 +62,7 @@ const ProjectSchema = new mongoose.Schema({
   // Vertical — determines which feature set is active for this project
   vertical: {
     type: String,
-    enum: ['whatsapp', 'healthcare', 'ecommerce'],
+    enum: ['whatsapp', 'healthcare', 'ecommerce', 'pathology'],
     default: 'whatsapp',
     index: true
   },

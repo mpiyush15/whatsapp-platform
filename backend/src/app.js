@@ -59,6 +59,7 @@ import projectRoutes from './routes/projects.js';
 import creditPackRoutes from './routes/creditPackRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
 import healthcareRoutes from './routes/healthcareRoutes.js';
+import pathologyRoutes from './routes/pathologyRoutes.js';
 
 // Import live chat routes
 import liveChatConversationRoutes from './routes/liveChat-conversationRoutes.js';
@@ -367,6 +368,13 @@ app.use(
   requireSubscription,
   requirePlanFeature('hc_patients', 'healthcare'),
   healthcareRoutes
+);
+app.use(
+  '/api/pathology',
+  requireJWT,
+  requireSubscription,
+  requirePlanFeature('pl_patients', 'pathology'),
+  pathologyRoutes
 );
 app.use('/api/clinic', requireJWT, requireSubscription, clinicRoutes);
 app.use('/api/segments', requireJWT, requireSubscription, segmentRoutes);

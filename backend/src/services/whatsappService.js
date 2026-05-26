@@ -153,8 +153,280 @@ class WhatsAppService {
   parseDateValue(rawValue, fallbackDate = null) {
     const str = String(rawValue || '').trim();
     if (!str) return fallbackDate;
+
+    const lower = str.toLowerCase();
+    if (lower === 'today') {
+      return new Date();
+    }
+    if (lower === 'tomorrow') {
+      return new Date(Date.now() + 24 * 60 * 60 * 1000);
+    }
+
+    const dateTimeMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?:\s*(am|pm))?)?$/i);
+    if (dateTimeMatch) {
+      const day = Number(dateTimeMatch[1]);
+      const month = Number(dateTimeMatch[2]) - 1;
+      const yearRaw = Number(dateTimeMatch[3]);
+      const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+      let hours = Number(dateTimeMatch[4] || 0);
+      const minutes = Number(dateTimeMatch[5] || 0);
+      const meridiem = String(dateTimeMatch[6] || '').toLowerCase();
+      if (meridiem === 'pm' && hours < 12) hours += 12;
+      if (meridiem === 'am' && hours === 12) hours = 0;
+      const parsed = new Date(year, month, day, hours, minutes, 0, 0);
+      return Number.isNaN(parsed.getTime()) ? fallbackDate : parsed;
+    }
+
+    const timeOnlyMatch = str.match(/^(\d{1,2}):(\d{2})(?:\s*(am|pm))?$/i);
+    if (timeOnlyMatch && fallbackDate) {
+      const parsed = new Date(fallbackDate);
+      let hours = Number(timeOnlyMatch[1]);
+      const minutes = Number(timeOnlyMatch[2]);
+      const meridiem = String(timeOnlyMatch[3] || '').toLowerCase();
+      if (meridiem === 'pm' && hours < 12) hours += 12;
+      if (meridiem === 'am' && hours === 12) hours = 0;
+      parsed.setHours(hours, minutes, 0, 0);
+      return Number.isNaN(parsed.getTime()) ? fallbackDate : parsed;
+    }
+
     const date = new Date(str);
     return Number.isNaN(date.getTime()) ? fallbackDate : date;
+  }
+
+  getDayName(date) {
+    return ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()];
+  }
+
+  timeToMinutes(value = '') {
+    const match = String(value).trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return hours * 60 + minutes;
+  }
+
+  buildDateAtMinutes(dayDate, minutes) {
+    const date = new Date(dayDate);
+    date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+    return date;
+  }
+
+  isDoctorScheduledFor(doctor, scheduledAt, durationMinutes = 30) {
+    if (!doctor || doctor.status !== 'active') return false;
+    const dayOfWeek = this.getDayName(scheduledAt);
+    const startMinutes = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
+    const endMinutes = startMinutes + durationMinutes;
+
+    return (doctor.availability || []).some((slot) => {
+      if (slot.dayOfWeek !== dayOfWeek) return false;
+      const slotStart = this.timeToMinutes(slot.startTime);
+      const slotEnd = this.timeToMinutes(slot.endTime);
+      if (slotStart === null || slotEnd === null) return false;
+      return startMinutes >= slotStart && endMinutes <= slotEnd;
+    });
+  }
+
+  async hasDoctorAppointmentConflict(accountId, projectId, doctorId, scheduledAt, durationMinutes = 30) {
+    const endAt = new Date(scheduledAt.getTime() + durationMinutes * 60 * 1000);
+    const conflict = await Appointment.findOne({
+      accountId,
+      ...(projectId ? { projectId } : {}),
+      doctorId,
+      status: { $nin: ['cancelled', 'no-show'] },
+      scheduledAt: { $lt: endAt },
+      endAt: { $gt: scheduledAt },
+    }).select('appointmentId');
+
+    return Boolean(conflict);
+  }
+
+  async findAvailableDoctorsForSlot(accountId, projectId, scheduledAt, durationMinutes = 30, doctorId = '', { allowQueue = false } = {}) {
+    const doctors = await Doctor.find({
+      accountId,
+      ...(projectId ? { projectId } : {}),
+      status: 'active',
+      ...(doctorId ? { doctorId } : {}),
+    }).sort({ fullName: 1 });
+
+    const available = [];
+    for (const doctor of doctors) {
+      if (!this.isDoctorScheduledFor(doctor, scheduledAt, durationMinutes)) continue;
+      const hasConflict = await this.hasDoctorAppointmentConflict(
+        accountId,
+        projectId,
+        doctor.doctorId,
+        scheduledAt,
+        durationMinutes
+      );
+      if (!hasConflict || allowQueue) available.push(doctor);
+    }
+
+    return available;
+  }
+
+  async getHealthcareDoctorListItems(accountId, projectId) {
+    const doctors = await Doctor.find({
+      accountId,
+      ...(projectId ? { projectId } : {}),
+      status: 'active',
+    })
+      .sort({ fullName: 1 })
+      .limit(10);
+
+    return doctors.map((doctor) => ({
+      id: doctor.doctorId,
+      title: doctor.fullName,
+      description: doctor.specialization
+        ? String(doctor.specialization).substring(0, 72)
+        : 'General consultation',
+    }));
+  }
+
+  async getHealthcareSlotsForPicker(accountId, projectId, doctorId, durationMinutes = 30, daysAhead = 10) {
+    if (!doctorId) return [];
+
+    const doctor = await Doctor.findOne({
+      accountId,
+      ...(projectId ? { projectId } : {}),
+      doctorId,
+      status: 'active',
+    });
+
+    if (!doctor) return [];
+
+    const slots = [];
+    const now = Date.now();
+
+    for (let dayOffset = 0; dayOffset < daysAhead && slots.length < 10; dayOffset += 1) {
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setDate(dayStart.getDate() + dayOffset);
+      const dayOfWeek = this.getDayName(dayStart);
+      const daySlots = (doctor.availability || []).filter((slot) => slot.dayOfWeek === dayOfWeek);
+
+      for (const schedule of daySlots) {
+        const slotStart = this.timeToMinutes(schedule.startTime);
+        const slotEnd = this.timeToMinutes(schedule.endTime);
+        if (slotStart === null || slotEnd === null) continue;
+
+        for (let minute = slotStart; minute + durationMinutes <= slotEnd && slots.length < 10; minute += durationMinutes) {
+          const startsAt = this.buildDateAtMinutes(dayStart, minute);
+          if (startsAt.getTime() < now) continue;
+
+          const hasConflict = await this.hasDoctorAppointmentConflict(
+            accountId,
+            projectId,
+            doctor.doctorId,
+            startsAt,
+            durationMinutes
+          );
+
+          const timeLabel = startsAt.toLocaleString('en-IN', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+
+          slots.push({
+            pickerId: `hcslot_${startsAt.getTime()}`,
+            doctorId: doctor.doctorId,
+            doctorName: doctor.fullName,
+            startsAt: startsAt.toISOString(),
+            timeLabel,
+            description: hasConflict ? 'Queue (slot busy)' : 'Available',
+            queued: hasConflict,
+          });
+        }
+      }
+    }
+
+    return slots;
+  }
+
+  async resolveDynamicListItems(session, step) {
+    const source = String(step?.dynamicList || '').trim();
+    if (!source) return step?.listItems || [];
+
+    if (source === 'healthcare_doctors') {
+      return this.getHealthcareDoctorListItems(session.accountId, session.projectId || null);
+    }
+
+    if (source === 'healthcare_slots') {
+      const responses = this.getSessionResponsesObject(session);
+      const doctorId = responses.doctor_id || responses.doctorId || '';
+      const durationMinutes = 30;
+      const slots = await this.getHealthcareSlotsForPicker(
+        session.accountId,
+        session.projectId || null,
+        doctorId,
+        durationMinutes
+      );
+
+      session.saveResponse('_slot_picker_json', JSON.stringify(slots));
+
+      if (slots.length === 0) {
+        return [{
+          id: 'no_slots',
+          title: 'No slots found',
+          description: 'Ask clinic to add doctor schedule',
+        }];
+      }
+
+      return slots.map((slot) => ({
+        id: slot.pickerId,
+        title: slot.timeLabel.substring(0, 24),
+        description: slot.description,
+      }));
+    }
+
+    return step?.listItems || [];
+  }
+
+  async getAvailableHealthcareSlots(accountId, projectId, doctorId, dayDate, durationMinutes = 30) {
+    const dayStart = new Date(dayDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayOfWeek = this.getDayName(dayStart);
+    const doctors = await Doctor.find({
+      accountId,
+      ...(projectId ? { projectId } : {}),
+      status: 'active',
+      ...(doctorId ? { doctorId } : {}),
+      'availability.dayOfWeek': dayOfWeek,
+    }).sort({ fullName: 1 });
+
+    const slots = [];
+    for (const doctor of doctors) {
+      const daySlots = (doctor.availability || []).filter((slot) => slot.dayOfWeek === dayOfWeek);
+      for (const schedule of daySlots) {
+        const slotStart = this.timeToMinutes(schedule.startTime);
+        const slotEnd = this.timeToMinutes(schedule.endTime);
+        if (slotStart === null || slotEnd === null) continue;
+
+        for (let minute = slotStart; minute + durationMinutes <= slotEnd; minute += durationMinutes) {
+          const startsAt = this.buildDateAtMinutes(dayStart, minute);
+          if (startsAt.getTime() < Date.now()) continue;
+          const hasConflict = await this.hasDoctorAppointmentConflict(
+            accountId,
+            projectId,
+            doctor.doctorId,
+            startsAt,
+            durationMinutes
+          );
+          slots.push({
+            doctorId: doctor.doctorId,
+            doctorName: doctor.fullName,
+            startsAt: startsAt.toISOString(),
+            queued: hasConflict,
+            label: `${doctor.fullName} - ${startsAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}${hasConflict ? ' (Queue)' : ''}`,
+          });
+        }
+      }
+    }
+
+    return slots.sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
   }
 
   async executeHealthcareVerticalAction(session, step) {
@@ -165,6 +437,31 @@ class WhatsAppService {
 
     if (!action) {
       logger.warn('⚠️ vertical_action skipped: missing action id', { sessionId: String(session?._id || '') });
+      return;
+    }
+
+    if (action === 'lookup_patient') {
+      const normalizedPhone = this.normalizePhoneDigits(session.contactPhone);
+      const patient = await this.resolveHealthcarePatient(
+        session.accountId,
+        normalizedPhone,
+        session.projectId || null,
+        null
+      );
+
+      if (patient) {
+        session.saveResponse('patient_exists', 'yes');
+        session.saveResponse('patientId', patient.patientId);
+        session.saveResponse('patientName', patient.fullName || 'Patient');
+      } else {
+        session.saveResponse('patient_exists', 'no');
+        session.saveResponse('patientName', '');
+      }
+
+      logger.info('✅ vertical_action:lookup_patient', {
+        sessionId: String(session._id),
+        exists: Boolean(patient),
+      });
       return;
     }
 
@@ -208,43 +505,33 @@ class WhatsAppService {
     if (action === 'check_slot') {
       const doctorIdValue = this.resolveWorkflowValue(cfg.doctorId, session, '');
       const dateValue = this.resolveWorkflowValue(cfg.date, session, '');
+      const durationValue = Number(this.resolveWorkflowValue(cfg.durationMinutes, session, '30')) || 30;
       const saveAs = String(cfg.saveAs || 'available_slots').trim() || 'available_slots';
 
       const dayDate = this.parseDateValue(dateValue, new Date());
-      const dayStart = new Date(dayDate);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(dayDate);
-      dayEnd.setHours(23, 59, 59, 999);
+      const slots = await this.getAvailableHealthcareSlots(
+        session.accountId,
+        session.projectId || null,
+        doctorIdValue,
+        dayDate,
+        durationValue
+      );
+      const limitedSlots = slots.slice(0, 8);
 
-      const booked = await Appointment.find({
-        accountId: session.accountId,
-        ...(session.projectId ? { projectId: session.projectId } : {}),
-        ...(doctorIdValue ? { doctorId: doctorIdValue } : {}),
-        scheduledAt: { $gte: dayStart, $lte: dayEnd },
-        status: { $nin: ['cancelled', 'no-show'] },
-      }).select('scheduledAt');
-
-      const bookedSet = new Set(booked.map((a) => new Date(a.scheduledAt).toISOString()));
-      const slots = [];
-      for (let hour = 9; hour <= 17; hour += 1) {
-        const slot = new Date(dayStart);
-        slot.setHours(hour, 0, 0, 0);
-        const iso = slot.toISOString();
-        if (!bookedSet.has(iso)) {
-          slots.push(slot.toISOString());
-        }
-      }
-
-      session.saveResponse(saveAs, JSON.stringify(slots.slice(0, 8)));
+      session.saveResponse(saveAs, JSON.stringify(limitedSlots));
+      session.saveResponse(`${saveAs}_text`, limitedSlots.map((slot, index) => `${index + 1}. ${slot.label}`).join('\n'));
       logger.info('✅ vertical_action:check_slot', { sessionId: String(session._id), slots: slots.length });
       return;
     }
 
     if (action === 'book_appointment') {
       const patientName = this.resolveWorkflowValue(cfg.patientNameVar, session, 'Patient');
+      const dateRaw = this.resolveWorkflowValue(cfg.dateVar || cfg.date, session, '');
+      const timeRaw = this.resolveWorkflowValue(cfg.timeVar || cfg.time, session, '');
       const slotRaw = this.resolveWorkflowValue(cfg.slotVar, session, '');
       const doctorIdValue = this.resolveWorkflowValue(cfg.doctorId, session, '');
       const visitTypeValue = this.resolveWorkflowValue(cfg.visitType, session, 'consultation');
+      const durationMinutes = Number(this.resolveWorkflowValue(cfg.durationMinutes, session, '30')) || 30;
 
       const normalizedPhone = this.normalizePhoneDigits(session.contactPhone);
       let patient = await this.resolveHealthcarePatient(session.accountId, normalizedPhone, session.projectId || null, null);
@@ -256,29 +543,139 @@ class WhatsAppService {
           fullName: patientName,
           phoneNumber: normalizedPhone || null,
           whatsappNumber: normalizedPhone || null,
+          communicationPreferences: { whatsapp: true, sms: false, email: false, calls: true },
+          consentSummary: {
+            privacyAccepted: false,
+            treatmentAccepted: false,
+            whatsappOptIn: true,
+            marketingOptIn: false,
+            consentUpdatedAt: new Date(),
+          },
           createdBy: 'workflow-bot',
           updatedBy: 'workflow-bot',
         });
       }
 
-      let doctor = null;
-      if (doctorIdValue) {
-        doctor = await Doctor.findOne({
-          accountId: session.accountId,
-          ...(session.projectId ? { projectId: session.projectId } : {}),
-          doctorId: doctorIdValue,
-        });
-      }
-      if (!doctor) {
-        doctor = await Doctor.findOne({
-          accountId: session.accountId,
-          ...(session.projectId ? { projectId: session.projectId } : {}),
-          status: 'active',
-        }).sort({ updatedAt: -1 });
+      let scheduledAt = null;
+      let slotDoctorId = '';
+
+      try {
+        const parsedSlot = JSON.parse(slotRaw);
+        if (parsedSlot?.startsAt) {
+          scheduledAt = this.parseDateValue(parsedSlot.startsAt, null);
+          slotDoctorId = parsedSlot.doctorId || '';
+        } else if (Array.isArray(parsedSlot) && parsedSlot[0]?.startsAt) {
+          scheduledAt = this.parseDateValue(parsedSlot[0].startsAt, null);
+          slotDoctorId = parsedSlot[0].doctorId || '';
+        }
+      } catch (_err) {
+        // Plain date strings are supported below.
       }
 
-      const scheduledAt = this.parseDateValue(slotRaw, new Date(Date.now() + (60 * 60 * 1000)));
-      const endAt = new Date(scheduledAt.getTime() + (30 * 60 * 1000));
+      if (!scheduledAt && String(slotRaw).startsWith('hcslot_')) {
+        const timestamp = Number(String(slotRaw).slice('hcslot_'.length));
+        if (Number.isFinite(timestamp) && timestamp > 0) {
+          scheduledAt = new Date(timestamp);
+        }
+      }
+
+      if (!scheduledAt && /^\d+$/.test(slotRaw)) {
+        try {
+          const responses = this.getSessionResponsesObject(session);
+          const slotsVar = String(cfg.slotsVar || cfg.slotListVar || 'available_slots');
+          const savedSlots = JSON.parse(
+            responses[slotsVar] || responses._slot_picker_json || responses.available_slots || responses.slots || '[]'
+          );
+          const selectedSlot = savedSlots[Number(slotRaw) - 1];
+          if (selectedSlot?.startsAt) {
+            scheduledAt = this.parseDateValue(selectedSlot.startsAt, null);
+            slotDoctorId = selectedSlot.doctorId || '';
+          }
+        } catch (_err) {
+          // Fall through to date parsing.
+        }
+      }
+
+      if (!scheduledAt && slotRaw && slotRaw !== 'no_slots') {
+        try {
+          const responses = this.getSessionResponsesObject(session);
+          const savedSlots = JSON.parse(responses._slot_picker_json || '[]');
+          const selectedSlot = savedSlots.find((item) => item.pickerId === slotRaw);
+          if (selectedSlot?.startsAt) {
+            scheduledAt = this.parseDateValue(selectedSlot.startsAt, null);
+            slotDoctorId = selectedSlot.doctorId || '';
+          }
+        } catch (_err) {
+          // Fall through.
+        }
+      }
+
+      if (!scheduledAt && slotRaw) {
+        scheduledAt = this.parseDateValue(slotRaw, null);
+      }
+
+      if (!scheduledAt) {
+        const datePart = this.parseDateValue(dateRaw, new Date());
+        scheduledAt = this.parseDateValue(timeRaw, datePart);
+      }
+
+      if (!scheduledAt || Number.isNaN(scheduledAt.getTime())) {
+        await this.sendTextMessage(
+          session.accountId,
+          session.phoneNumberId,
+          session.contactPhone,
+          'Please send the appointment date/time in this format: DD/MM/YYYY HH:mm, for example 28/05/2026 10:30.',
+          { campaign: 'workflow_vertical_action', action: 'book_appointment_invalid_date', sessionId: session._id.toString() }
+        );
+        session.saveResponse('appointmentStatus', 'invalid_date');
+        return;
+      }
+
+      if (slotRaw === 'no_slots') {
+        await this.sendTextMessage(
+          session.accountId,
+          session.phoneNumberId,
+          session.contactPhone,
+          'No appointment slots are configured yet. Please contact the clinic.',
+          { campaign: 'workflow_vertical_action', action: 'book_appointment_no_slots', sessionId: session._id.toString() }
+        );
+        session.saveResponse('appointmentStatus', 'no_slots');
+        return;
+      }
+
+      const availableDoctors = await this.findAvailableDoctorsForSlot(
+        session.accountId,
+        session.projectId || null,
+        scheduledAt,
+        durationMinutes,
+        doctorIdValue || slotDoctorId,
+        { allowQueue: true }
+      );
+      const doctor = availableDoctors[0] || null;
+
+      if (!doctor) {
+        await this.sendTextMessage(
+          session.accountId,
+          session.phoneNumberId,
+          session.contactPhone,
+          `Sorry, no doctor is available for ${scheduledAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}. Please send another date and time.`,
+          { campaign: 'workflow_vertical_action', action: 'book_appointment_unavailable', sessionId: session._id.toString() }
+        );
+        session.saveResponse('appointmentStatus', 'unavailable');
+        session.saveResponse('requestedAppointmentTime', scheduledAt.toISOString());
+        return;
+      }
+
+      const hasConflict = await this.hasDoctorAppointmentConflict(
+        session.accountId,
+        session.projectId || null,
+        doctor.doctorId,
+        scheduledAt,
+        durationMinutes
+      );
+      const queueStatus = hasConflict ? 'queued' : 'none';
+
+      const endAt = new Date(scheduledAt.getTime() + (durationMinutes * 60 * 1000));
 
       const normalizedVisitType = ['consultation', 'follow-up', 'procedure', 'lab', 'pharmacy', 'other']
         .includes(String(visitTypeValue || '').toLowerCase())
@@ -303,10 +700,12 @@ class WhatsAppService {
         } : null,
         scheduledAt,
         endAt,
-        durationMinutes: 30,
+        durationMinutes,
         status: 'scheduled',
         visitType: normalizedVisitType,
         channel: 'clinic',
+        bookingSource: 'whatsapp_bot',
+        queueStatus,
         reason: 'Booked via WhatsApp flow',
         createdBy: 'workflow-bot',
         updatedBy: 'workflow-bot',
@@ -318,13 +717,20 @@ class WhatsAppService {
 
       session.saveResponse('appointmentId', appointment.appointmentId);
       session.saveResponse('appointmentTime', scheduledAt.toISOString());
+      session.saveResponse('doctorId', doctor.doctorId);
+      session.saveResponse('doctorName', doctor.fullName);
+      session.saveResponse('appointmentStatus', 'booked');
+      session.saveResponse('queueStatus', queueStatus);
 
       const doctorText = doctor?.fullName ? ` with Dr. ${doctor.fullName}` : '';
+      const queueNote = queueStatus === 'queued'
+        ? ' You are in the queue for this slot; clinic will confirm.'
+        : '';
       await this.sendTextMessage(
         session.accountId,
         session.phoneNumberId,
         session.contactPhone,
-        `✅ Appointment booked${doctorText} on ${scheduledAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}.`,
+        `✅ Appointment booked${doctorText} on ${scheduledAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}.${queueNote}`,
         {
           campaign: 'workflow_vertical_action',
           action: 'book_appointment',
@@ -1849,13 +2255,15 @@ class WhatsAppService {
         await new Promise(resolve => setTimeout(resolve, step.delay * 1000));
       }
 
+      const renderStepText = (text) => this.resolveWorkflowValue(String(text || ''), session, '');
+
       // Send based on step type
       if (step.type === 'text' || step.type === 'question') {
         await this.sendTextMessage(
           session.accountId,
           session.phoneNumberId,
           session.contactPhone,
-          step.text || '',
+          renderStepText(step.text),
           { campaign: 'workflow_conversation', sessionId: session._id.toString() }
         );
       } else if (step.type === 'buttons' && step.buttons && step.buttons.length > 0) {
@@ -1863,17 +2271,31 @@ class WhatsAppService {
           session.accountId,
           session.phoneNumberId,
           session.contactPhone,
-          step.text || '',
+          renderStepText(step.text),
           step.buttons
         );
-      } else if (step.type === 'list' && step.listItems && step.listItems.length > 0) {
-        await this.sendListMessage(
-          session.accountId,
-          session.phoneNumberId,
-          session.contactPhone,
-          step.text || '',
-          step.listItems
-        );
+      } else if (step.type === 'list') {
+        const listItems = step.dynamicList
+          ? await this.resolveDynamicListItems(session, step)
+          : (step.listItems || []);
+
+        if (listItems.length > 0) {
+          await this.sendListMessage(
+            session.accountId,
+            session.phoneNumberId,
+            session.contactPhone,
+            renderStepText(step.text) || 'Please choose an option:',
+            listItems
+          );
+        } else {
+          await this.sendTextMessage(
+            session.accountId,
+            session.phoneNumberId,
+            session.contactPhone,
+            'No options are available right now. Please contact the clinic.',
+            { campaign: 'workflow_conversation', sessionId: session._id.toString() }
+          );
+        }
       } else if (step.type === 'vertical_action') {
         await this.executeVerticalActionStep(session, step);
       } else if (step.type === 'condition') {
@@ -1948,8 +2370,9 @@ class WhatsAppService {
 
       // Save response if step has saveAs field
       if (step.saveAs) {
-        session.saveResponse(step.saveAs, responseText);
-        logger.info(`✅ Saved response as: ${step.saveAs} = "${responseText}"`);
+        const savedValue = metadata.buttonId || metadata.listItemId || responseText;
+        session.saveResponse(step.saveAs, savedValue);
+        logger.info(`✅ Saved response as: ${step.saveAs} = "${savedValue}"`);
       }
 
       // Check if next step should be determined by conditional branching

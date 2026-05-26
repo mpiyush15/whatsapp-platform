@@ -41,6 +41,18 @@ const AppointmentSchema = new mongoose.Schema({
     enum: ['clinic', 'video', 'phone', 'home-visit', 'other'],
     default: 'clinic',
   },
+  bookingSource: {
+    type: String,
+    enum: ['manual', 'whatsapp_bot', 'api', 'other'],
+    default: 'manual',
+    index: true,
+  },
+  queueStatus: {
+    type: String,
+    enum: ['none', 'queued'],
+    default: 'none',
+    index: true,
+  },
   reason: { type: String, trim: true, default: '' },
   notes: { type: String, trim: true, default: '' },
   internalNotes: { type: String, trim: true, default: '' },

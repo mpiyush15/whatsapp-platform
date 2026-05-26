@@ -5,6 +5,8 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Loader2, Plus, RefreshCw, Search, X } from "lucide-react"
 import { apiGet, apiPost } from "@/lib/api-client"
+import { HealthcareTableShell } from "@/components/healthcare/HealthcareTableShell"
+import { useHealthcareListLoader } from "@/lib/hooks/useHealthcareListLoader"
 
 interface PatientRecord {
   patientId: string
@@ -51,35 +53,46 @@ export default function HealthcarePatientsPage() {
   const params = useParams()
   const projectId = params.projectId as string
   const [patients, setPatients] = useState<PatientRecord[]>([])
-  const [loading, setLoading] = useState(true)
+  const { initialLoading, refreshing, run: runListLoad } = useHealthcareListLoader()
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState("")
   const [error, setError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
   const [form, setForm] = useState(initialForm)
   const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [limit] = useState(20)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
-  const loadPatients = useCallback(async (query = "") => {
+  const loadPatients = useCallback(async (query = "", pageNum = 1) => {
     try {
-      setLoading(true)
-      setError("")
+      const result = await runListLoad(async () => {
+        setError("")
+        const payload = await apiGet<PatientsResponse>(
+          `/healthcare/patients?projectId=${encodeURIComponent(projectId)}&page=${pageNum}&limit=${limit}${query ? `&q=${encodeURIComponent(query)}` : ""}`
+        )
+        const list = payload?.data?.patients || []
+        const pagination = payload?.data?.pagination
+        return { list, pagination }
+      })
 
-      const payload = await apiGet<PatientsResponse>(`/healthcare/patients?projectId=${encodeURIComponent(projectId)}&limit=50${query ? `&q=${encodeURIComponent(query)}` : ""}`)
-      const list = payload?.data?.patients || []
+      if (!result) return
 
-      setPatients(list)
-      setTotal(payload?.data?.pagination?.total || list.length)
+      setPatients(result.list)
+      setTotal(result.pagination?.total || result.list.length)
+      setTotalPages(result.pagination?.totalPages || 1)
+      if (result.pagination?.page) {
+        setPage(result.pagination.page)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load patients")
-    } finally {
-      setLoading(false)
     }
-  }, [projectId])
+  }, [projectId, limit, runListLoad])
 
   useEffect(() => {
-    loadPatients("")
-  }, [loadPatients])
+    void loadPatients(search, page)
+  }, [page, projectId])
 
   const activePatients = useMemo(
     () => patients.filter((patient) => patient.status === "active").length,
@@ -163,17 +176,21 @@ export default function HealthcarePatientsPage() {
             </div>
             <button
               type="button"
-              onClick={() => loadPatients(search)}
+              onClick={() => {
+                setPage(1)
+                loadPatients(search, 1)
+              }}
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
             >
               Search
             </button>
             <button
               type="button"
-              onClick={() => loadPatients(search)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              onClick={() => void loadPatients(search, page)}
+              disabled={refreshing}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               Refresh
             </button>
             <button
@@ -191,13 +208,12 @@ export default function HealthcarePatientsPage() {
         {successMessage ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
 
         <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-          {loading ? (
-            <div className="flex items-center justify-center py-12 text-slate-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading patients...
-            </div>
-          ) : patients.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-500">No patients found for this project yet.</div>
-          ) : (
+          <HealthcareTableShell
+            initialLoading={initialLoading}
+            refreshing={refreshing}
+            isEmpty={patients.length === 0}
+            emptyMessage="No patients found for this project yet."
+          >
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
@@ -240,8 +256,34 @@ export default function HealthcarePatientsPage() {
                 })}
               </tbody>
             </table>
-          )}
+          </HealthcareTableShell>
         </div>
+
+        {!initialLoading && total > 0 ? (
+          <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
+            <p className="text-sm text-slate-600">
+              Showing page {page} of {totalPages} ({total} patients)
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {showCreateModal ? (

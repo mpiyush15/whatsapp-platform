@@ -9,6 +9,7 @@ import {
   Stethoscope,
   ShoppingBag,
   MessageCircle,
+  FlaskConical,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,7 @@ const VERTICAL_ICONS: Record<string, React.ReactNode> = {
   whatsapp: <MessageCircle className="w-5 h-5 text-teal-600" />,
   healthcare: <Stethoscope className="w-5 h-5 text-emerald-600" />,
   ecommerce: <ShoppingBag className="w-5 h-5 text-violet-600" />,
+  pathology: <FlaskConical className="w-5 h-5 text-sky-600" />,
 };
 
 export default function CreateProjectWizard({
@@ -105,6 +107,7 @@ export default function CreateProjectWizard({
           vertical: selectedPreset.vertical,
           presetId: selectedPreset.id,
           clinicType: selectedPreset.clinicType,
+          labType: selectedPreset.labType,
         }),
       });
       const json = await res.json();

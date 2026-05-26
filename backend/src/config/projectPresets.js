@@ -2,7 +2,7 @@
  * Project creation presets — vertical + optional healthcare clinic seed.
  */
 
-export const PROJECT_VERTICALS = ['whatsapp', 'healthcare', 'ecommerce'];
+export const PROJECT_VERTICALS = ['whatsapp', 'healthcare', 'ecommerce', 'pathology'];
 
 export const HEALTHCARE_CLINIC_TYPES = ['consultation', 'clinic_pharmacy'];
 
@@ -62,6 +62,24 @@ export const PROJECT_PRESETS = [
     description: 'Catalog campaigns, order updates, and agent inbox for stores.',
     defaultHomePath: 'root',
     features: ['Live Chat', 'Campaigns', 'Segments', 'Order-style templates'],
+  },
+  {
+    id: 'pathology-standalone',
+    vertical: 'pathology',
+    label: 'Pathology — Diagnostic lab',
+    description: 'Patients, test catalog, collection booking, reports, and WhatsApp automations for labs.',
+    labType: 'standalone',
+    defaultHomePath: 'pathology',
+    features: ['Patients', 'Test catalog', 'Lab orders', 'Report delivery', 'WhatsApp booking'],
+  },
+  {
+    id: 'pathology-hospital',
+    vertical: 'pathology',
+    label: 'Pathology — Hospital lab',
+    description: 'Diagnostic lab with referrers, orders, collection, and report delivery on WhatsApp.',
+    labType: 'hospital_attached',
+    defaultHomePath: 'pathology',
+    features: ['Referrers', 'Test catalog', 'Orders', 'Reports', 'WhatsApp automations'],
   },
 ];
 

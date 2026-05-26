@@ -139,6 +139,8 @@ const compileNodeToStep = (node, outgoingEdges = [], nodeMap) => {
         text: normalizeString(data.text || data.label || getNodeLabel(node)),
         delay: Number(data.delay || 0),
         waitForResponse: true,
+        saveAs: normalizeString(data.saveAs || data.variableName) || undefined,
+        dynamicList: normalizeString(data.dynamicList) || undefined,
         listItems,
       },
       nextTargets,

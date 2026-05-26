@@ -283,6 +283,70 @@ export const getSidebarItems = (role: UserRole) => {
       vertical: 'healthcare',
       roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
     },
+    {
+      label: 'Overview',
+      href: '/dashboard/pathology',
+      icon: 'Activity',
+      group: '🧪 Pathology • Core',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Lab Setup',
+      href: '/dashboard/pathology/lab-setup',
+      icon: 'Building2',
+      group: '🧪 Pathology • Core',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Patients',
+      href: '/dashboard/pathology/patients',
+      icon: 'Users',
+      group: '🧪 Pathology • Operations',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Test catalog',
+      href: '/dashboard/pathology/tests',
+      icon: 'BookOpen',
+      group: '🧪 Pathology • Operations',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Lab orders',
+      href: '/dashboard/pathology/orders',
+      icon: 'Calendar',
+      group: '🧪 Pathology • Operations',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Collection',
+      href: '/dashboard/pathology/collection',
+      icon: 'Sliders',
+      group: '🧪 Pathology • Operations',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Reports',
+      href: '/dashboard/pathology/reports',
+      icon: 'FileText',
+      group: '🧪 Pathology • Reports',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Lab billing',
+      href: '/dashboard/pathology/billing',
+      icon: 'CreditCard',
+      group: '🧪 Pathology • Billing',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
     // ── MARKETING ──
     {
       label: 'Campaigns',

@@ -51,6 +51,7 @@ const workflowSessionSchema = new mongoose.Schema({
       description: String,
       nextStepId: String // For conditional branching
     }],
+    dynamicList: String,
     delay: { type: Number, default: 0 },
     saveAs: String, // Variable name to save response as
     waitForResponse: { type: Boolean, default: false },

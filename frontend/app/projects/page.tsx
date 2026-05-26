@@ -102,6 +102,10 @@ export default function ProjectsPage() {
       router.push(`/projects/${project.projectId}/healthcare`);
       return;
     }
+    if (project.vertical === 'pathology') {
+      router.push(`/projects/${project.projectId}/pathology`);
+      return;
+    }
     router.push(`/projects/${project.projectId}`);
   };
 
@@ -112,6 +116,7 @@ export default function ProjectsPage() {
 
   const verticalLabel = (v?: string) => {
     if (v === 'healthcare') return 'Healthcare';
+    if (v === 'pathology') return 'Pathology';
     if (v === 'ecommerce') return 'E-commerce';
     return 'WhatsApp';
   };

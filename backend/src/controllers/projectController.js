@@ -134,6 +134,7 @@ export async function createProject(req, res) {
       vertical: verticalInput = 'whatsapp',
       presetId = null,
       clinicType = 'consultation',
+      labType = 'standalone',
       whatsappPhoneNumber = null,
       whatsappPhoneNumberId = null,
       whatsappBusinessAccountId = null,
@@ -155,7 +156,13 @@ export async function createProject(req, res) {
     }
 
     const vertical = normalizeVertical(verticalInput);
-    const slugPrefix = vertical === 'healthcare' ? 'hc' : vertical === 'ecommerce' ? 'ec' : 'wa';
+    const slugPrefix = vertical === 'healthcare'
+      ? 'hc'
+      : vertical === 'pathology'
+        ? 'pl'
+        : vertical === 'ecommerce'
+          ? 'ec'
+          : 'wa';
     const projectId = `proj_${slugPrefix}_${Date.now()}`;
 
     const existingProjects = await Project.countDocuments({ accountId });
@@ -192,12 +199,17 @@ export async function createProject(req, res) {
         vertical,
         presetId,
         clinicType,
+        labType,
       });
     } catch (presetError) {
       console.error('Project preset apply failed (project still created):', presetError);
       presetResult = {
         vertical,
-        defaultHomePath: vertical === 'healthcare' ? 'healthcare' : 'root',
+        defaultHomePath: vertical === 'healthcare'
+          ? 'healthcare'
+          : vertical === 'pathology'
+            ? 'pathology'
+            : 'root',
         checklist: [],
         clinicSeeded: false,
         presetError: presetError.message,
@@ -215,7 +227,9 @@ export async function createProject(req, res) {
     const redirectPath =
       presetResult?.defaultHomePath === 'healthcare'
         ? `/projects/${projectId}/healthcare`
-        : `/projects/${projectId}`;
+        : presetResult?.defaultHomePath === 'pathology'
+          ? `/projects/${projectId}/pathology`
+          : `/projects/${projectId}`;
 
     res.status(201).json({
       success: true,

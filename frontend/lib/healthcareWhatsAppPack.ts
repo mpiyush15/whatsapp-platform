@@ -32,9 +32,9 @@ export const HEALTHCARE_WHATSAPP_PACK: readonly HealthcareTemplatePreset[] = [
     recommendedTemplateName: 'healthcare_appointment_reminder',
     purpose: 'appointment-reminder',
     triggerEvents: ['appointment_booked', 'appointment_rescheduled', 'appointment_reminder'],
-    variables: ['patientName', 'doctorName', 'appointmentDate', 'appointmentTime', 'clinicName'],
+    variables: ['patientName', 'appointmentDateTime', 'clinicName'],
     sampleMessage:
-      'Hi {{1}}, reminder: your appointment with Dr. {{2}} is on {{3}} at {{4}}. Reply to confirm or reschedule. — {{5}}',
+      'Hi {{1}}, reminder: your appointment is on {{2}}. Reply to confirm or reschedule. — {{3}}',
   },
   {
     key: 'appointment-cancelled',
@@ -43,8 +43,8 @@ export const HEALTHCARE_WHATSAPP_PACK: readonly HealthcareTemplatePreset[] = [
     recommendedTemplateName: 'healthcare_appointment_cancelled',
     purpose: 'appointment-cancelled',
     triggerEvents: ['appointment_cancelled'],
-    variables: ['patientName', 'appointmentDate', 'appointmentTime', 'clinicName'],
-    sampleMessage: 'Hi {{1}}, your appointment on {{2}} at {{3}} has been cancelled. Contact {{4}} to rebook.',
+    variables: ['patientName', 'appointmentDateTime', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, your appointment on {{2}} has been cancelled. Contact {{3}} to rebook.',
   },
   {
     key: 'refill-reminder',
@@ -53,8 +53,8 @@ export const HEALTHCARE_WHATSAPP_PACK: readonly HealthcareTemplatePreset[] = [
     recommendedTemplateName: 'healthcare_refill_reminder',
     purpose: 'refill-reminder',
     triggerEvents: ['prescription_saved'],
-    variables: ['patientName', 'medicineName', 'daysLeft', 'clinicName'],
-    sampleMessage: 'Hi {{1}}, your medicine {{2}} may run out in {{3}} day(s). Contact {{4}} for refill support.',
+    variables: ['patientName', 'medicineName', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, your medicine {{2}} needs a refill soon. Contact {{3}} for refill support.',
   },
   {
     key: 'follow-up-checkin',
@@ -63,9 +63,9 @@ export const HEALTHCARE_WHATSAPP_PACK: readonly HealthcareTemplatePreset[] = [
     recommendedTemplateName: 'healthcare_followup_checkin',
     purpose: 'follow-up',
     triggerEvents: ['follow_up'],
-    variables: ['patientName', 'doctorName', 'followUpDate', 'clinicName'],
+    variables: ['patientName', 'followUpDate', 'clinicName'],
     sampleMessage:
-      'Hi {{1}}, this is your follow-up reminder from Dr. {{2}} for {{3}}. Reply if you need to reschedule. — {{4}}',
+      'Hi {{1}}, this is your follow-up reminder for {{2}}. Reply if you need to reschedule. — {{3}}',
   },
   {
     key: 'invoice-created',

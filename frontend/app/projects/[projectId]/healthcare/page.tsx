@@ -21,7 +21,7 @@ import {
   UsersRound,
   type LucideIcon,
 } from "lucide-react"
-import { apiGet } from "@/lib/api-client"
+import { apiGet, apiPost } from "@/lib/api-client"
 import { authService } from "@/lib/auth"
 import {
   isHealthcareStaffSession,
@@ -88,13 +88,15 @@ export default function HealthcareHomePage() {
   const params = useParams()
   const projectId = params.projectId as string
   const [clinic, setClinic] = useState<ClinicPayload | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [clinicLoading, setClinicLoading] = useState(true)
+  const [botInstalling, setBotInstalling] = useState(false)
+  const [botMessage, setBotMessage] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       try {
-        setLoading(true)
+        setClinicLoading(true)
         const payload = await apiGet<{ success?: boolean; data?: ClinicPayload | null }>(
           `/healthcare/clinic/${encodeURIComponent(projectId)}`
         )
@@ -102,7 +104,7 @@ export default function HealthcareHomePage() {
       } catch {
         if (!cancelled) setClinic(null)
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setClinicLoading(false)
       }
     }
     if (projectId) void load()
@@ -122,10 +124,55 @@ export default function HealthcareHomePage() {
   const clinicName = clinic?.name?.trim() || "Your clinic"
   const base = `/projects/${projectId}`
 
+  const installAppointmentBot = async () => {
+    try {
+      setBotInstalling(true)
+      setBotMessage(null)
+      const payload = await apiPost<{ message?: string }>("/healthcare/appointment-bot/install", { projectId })
+      setBotMessage(payload?.message || "Appointment booking bot installed. Patients can message hi or hello on WhatsApp.")
+    } catch (err) {
+      setBotMessage(err instanceof Error ? err.message : "Could not install booking bot")
+    } finally {
+      setBotInstalling(false)
+    }
+  }
+
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-50 via-white to-slate-50 px-4 py-6 md:px-6 lg:py-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <HealthcareAnalyticsDashboard projectId={projectId} clinicName={clinicName} basePath={base} />
+
+        <section className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50/90 to-white p-4 shadow-sm md:p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">WhatsApp booking</p>
+              <h2 className="text-base font-semibold text-slate-900">Clinic appointment bot</h2>
+              <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                Preset flow: greets patients, registers new ones, shows doctors and time slots, books appointments (queue when slot is busy).
+                Triggers: hi, hello, hey, book, appointment.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={installAppointmentBot}
+                disabled={botInstalling}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-70"
+              >
+                {botInstalling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                {botInstalling ? "Installing…" : "Install / refresh bot"}
+              </button>
+              <Link
+                href={`${base}/flow`}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <GitBranch className="h-4 w-4" />
+                Edit in Flow Builder
+              </Link>
+            </div>
+          </div>
+          {botMessage ? <p className="mt-3 text-sm text-emerald-800">{botMessage}</p> : null}
+        </section>
 
         <section aria-labelledby="modules-strip-heading" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -144,15 +191,16 @@ export default function HealthcareHomePage() {
             </Link>
           </div>
 
-          {loading ? (
-            <div className="flex items-center gap-2 py-4 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading modules…
-            </div>
-          ) : moduleRows.length === 0 ? (
+          {moduleRows.length === 0 && !clinicLoading ? (
             <p className="text-sm text-amber-800">No modules visible for your role.</p>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className={`flex flex-wrap gap-2 ${clinicLoading ? "opacity-70" : ""}`}>
+              {clinicLoading ? (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-500">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Syncing clinic…
+                </span>
+              ) : null}
               {moduleRows.map((m) => {
                 const Icon = m.icon
                 return (

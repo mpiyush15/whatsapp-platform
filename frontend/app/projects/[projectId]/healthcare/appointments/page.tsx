@@ -5,6 +5,8 @@ import Link from "next/link"
 import { useParams, useSearchParams } from "next/navigation"
 import { Loader2, MessageSquare, Plus, RefreshCw, Search, X } from "lucide-react"
 import { apiGet, apiPost, apiPut } from "@/lib/api-client"
+import { HealthcareTableShell } from "@/components/healthcare/HealthcareTableShell"
+import { useHealthcareListLoader } from "@/lib/hooks/useHealthcareListLoader"
 
 interface PatientRecord {
   patientId: string
@@ -27,6 +29,8 @@ interface AppointmentRecord {
   status?: string
   visitType?: string
   channel?: string
+  bookingSource?: string
+  queueStatus?: string
   reason?: string
   billingStatus?: string
   patientSnapshot?: {
@@ -108,7 +112,8 @@ export default function HealthcareAppointmentsPage() {
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([])
   const [patients, setPatients] = useState<PatientRecord[]>([])
   const [doctors, setDoctors] = useState<DoctorRecord[]>([])
-  const [loading, setLoading] = useState(true)
+  const { initialLoading, refreshing, run: runListLoad } = useHealthcareListLoader()
+  const [referenceLoading, setReferenceLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState("")
   const [error, setError] = useState("")
@@ -118,6 +123,9 @@ export default function HealthcareAppointmentsPage() {
   const [showViewModal, setShowViewModal] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [limit] = useState(20)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   const toDateTimeLocal = (value?: string | null) => {
@@ -128,25 +136,35 @@ export default function HealthcareAppointmentsPage() {
     return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16)
   }
 
-  const loadAppointments = useCallback(async (query = "") => {
+  const loadAppointments = useCallback(async (query = "", pageNum = page) => {
     try {
-      setLoading(true)
-      setError("")
+      const result = await runListLoad(async () => {
+        setError("")
+        const payload = await apiGet<AppointmentsResponse>(
+          `/healthcare/appointments?projectId=${encodeURIComponent(projectId)}&page=${pageNum}&limit=${limit}${query ? `&q=${encodeURIComponent(query)}` : ""}`
+        )
+        const list = payload?.data?.appointments || []
+        const pagination = payload?.data?.pagination
+        return { list, pagination, pageNum }
+      })
 
-      const payload = await apiGet<AppointmentsResponse>(`/healthcare/appointments?projectId=${encodeURIComponent(projectId)}&limit=50${query ? `&q=${encodeURIComponent(query)}` : ""}`)
-      const list = payload?.data?.appointments || []
+      if (!result) return
 
-      setAppointments(list)
-      setTotal(payload?.data?.pagination?.total || list.length)
+      setAppointments(result.list)
+      setTotal(result.pagination?.total || result.list.length)
+      setTotalPages(result.pagination?.totalPages || 1)
+      if (result.pagination?.page) {
+        setPage(result.pagination.page)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load appointments")
-    } finally {
-      setLoading(false)
     }
-  }, [projectId])
+  }, [projectId, limit, runListLoad])
 
   const loadReferenceData = useCallback(async () => {
+    if (patients.length > 0 && doctors.length > 0) return
     try {
+      setReferenceLoading(true)
       const [patientsPayload, doctorsPayload] = await Promise.all([
         apiGet<PatientsResponse>(`/healthcare/patients?projectId=${encodeURIComponent(projectId)}&limit=200`),
         apiGet<DoctorsResponse>(`/healthcare/doctors?projectId=${encodeURIComponent(projectId)}&limit=200`),
@@ -156,13 +174,20 @@ export default function HealthcareAppointmentsPage() {
       setDoctors(doctorsPayload?.data?.doctors || [])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load reference data")
+    } finally {
+      setReferenceLoading(false)
     }
-  }, [projectId])
+  }, [projectId, patients.length, doctors.length])
 
   useEffect(() => {
-    loadReferenceData()
-    loadAppointments("")
-  }, [loadAppointments, loadReferenceData])
+    void loadAppointments(search, page)
+  }, [page, projectId])
+
+  useEffect(() => {
+    if (showCreateModal || showViewModal) {
+      void loadReferenceData()
+    }
+  }, [showCreateModal, showViewModal, loadReferenceData])
 
   useEffect(() => {
     if (!patientIdFromQuery) return
@@ -210,6 +235,8 @@ export default function HealthcareAppointmentsPage() {
         visitType: form.visitType,
         channel: form.channel,
         reason: form.reason,
+        bookingSource: "manual",
+        allowQueue: true,
       })
 
       if (payload?.data?.appointment) {
@@ -312,25 +339,29 @@ export default function HealthcareAppointmentsPage() {
             </div>
             <button
               type="button"
-              onClick={() => loadAppointments(search)}
+              onClick={() => {
+                setPage(1)
+                loadAppointments(search, 1)
+              }}
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
             >
               Search
             </button>
             <button
               type="button"
-              onClick={() => {
-                loadReferenceData()
-                loadAppointments(search)
-              }}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              onClick={() => void loadAppointments(search, page)}
+              disabled={refreshing}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               Refresh
             </button>
             <button
               type="button"
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                void loadReferenceData()
+                setShowCreateModal(true)
+              }}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-700"
             >
               <Plus className="h-4 w-4" />
@@ -343,13 +374,12 @@ export default function HealthcareAppointmentsPage() {
         {successMessage ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
 
         <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-          {loading ? (
-            <div className="flex items-center justify-center py-12 text-slate-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading appointments...
-            </div>
-          ) : appointments.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-500">No appointments found for this project yet.</div>
-          ) : (
+          <HealthcareTableShell
+            initialLoading={initialLoading}
+            refreshing={refreshing}
+            isEmpty={appointments.length === 0}
+            emptyMessage="No appointments found for this project yet."
+          >
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
@@ -357,6 +387,8 @@ export default function HealthcareAppointmentsPage() {
                   <th className="px-4 py-3">Doctor</th>
                   <th className="px-4 py-3">Schedule</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Source</th>
+                  <th className="px-4 py-3">Queue</th>
                   <th className="px-4 py-3">Visit</th>
                   <th className="px-4 py-3">Billing</th>
                   <th className="px-4 py-3">Actions</th>
@@ -379,6 +411,16 @@ export default function HealthcareAppointmentsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${statusClass}`}>{status}</span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700 capitalize">
+                        {appointment.bookingSource === "whatsapp_bot" ? "WhatsApp bot" : "Manual"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {appointment.queueStatus === "queued" ? (
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold uppercase text-amber-800">Queued</span>
+                        ) : (
+                          <span className="text-xs text-slate-500">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-700 capitalize">{appointment.visitType || "consultation"}</td>
                       <td className="px-4 py-3 text-slate-700 capitalize">{appointment.billingStatus || "pending"}</td>
@@ -407,8 +449,34 @@ export default function HealthcareAppointmentsPage() {
                 })}
               </tbody>
             </table>
-          )}
+          </HealthcareTableShell>
         </div>
+
+        {!initialLoading && total > 0 ? (
+          <div className="mt-4 flex flex-col items-center justify-between gap-3 sm:flex-row">
+            <p className="text-sm text-slate-600">
+              Showing page {page} of {totalPages} ({total} appointments)
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {showCreateModal ? (
@@ -538,7 +606,7 @@ export default function HealthcareAppointmentsPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || patients.length === 0}
+                  disabled={submitting || referenceLoading || patients.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}

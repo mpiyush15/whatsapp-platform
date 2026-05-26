@@ -4,7 +4,7 @@
 
 import { META_MESSAGE_RATES_INR } from './metaMessagePricing.js';
 
-export const PRODUCT_LINES = ['whatsapp', 'healthcare'];
+export const PRODUCT_LINES = ['whatsapp', 'healthcare', 'pathology'];
 
 /** Meta conversation / message category rates (INR per billable message) */
 export const MESSAGE_CHARGE_ROWS = [
@@ -42,6 +42,10 @@ export const LIMIT_KEYS = [
   { key: 'prescriptions', label: 'Prescriptions / month', productLine: 'healthcare', unit: 'count' },
   { key: 'doctors', label: 'Doctors', productLine: 'healthcare', unit: 'count' },
   { key: 'healthcareUsers', label: 'Clinic staff logins', productLine: 'healthcare', unit: 'count' },
+  { key: 'labPatients', label: 'Lab patients', productLine: 'pathology', unit: 'count' },
+  { key: 'labOrders', label: 'Lab orders / month', productLine: 'pathology', unit: 'count' },
+  { key: 'labTests', label: 'Test catalog items', productLine: 'pathology', unit: 'count' },
+  { key: 'labReports', label: 'Reports / month', productLine: 'pathology', unit: 'count' },
 ];
 
 export const FEATURE_DEFINITIONS = [
@@ -70,12 +74,21 @@ export const FEATURE_DEFINITIONS = [
   { key: 'hc_analytics', label: 'Clinic overview analytics', productLine: 'healthcare', category: 'Insights' },
   { key: 'hc_whatsapp', label: 'WhatsApp reminders', productLine: 'healthcare', category: 'Messaging' },
   { key: 'hc_compliance', label: 'Consent & compliance', productLine: 'healthcare', category: 'Governance' },
+  // Pathology
+  { key: 'pl_patients', label: 'Patient registry', productLine: 'pathology', category: 'Lab' },
+  { key: 'pl_tests', label: 'Test catalog', productLine: 'pathology', category: 'Lab' },
+  { key: 'pl_orders', label: 'Lab orders & collection', productLine: 'pathology', category: 'Operations' },
+  { key: 'pl_reports', label: 'Reports & delivery', productLine: 'pathology', category: 'Operations' },
+  { key: 'pl_billing', label: 'Lab billing', productLine: 'pathology', category: 'Billing' },
+  { key: 'pl_whatsapp', label: 'WhatsApp automations', productLine: 'pathology', category: 'Messaging' },
+  { key: 'pl_analytics', label: 'Lab overview analytics', productLine: 'pathology', category: 'Insights' },
 ];
 
 /** API path prefix → required entitlement key */
 export const ROUTE_ENTITLEMENT_MAP = [
   { prefix: '/api/healthcare', key: 'hc_patients', productLine: 'healthcare' },
   { prefix: '/api/clinic', key: 'hc_patients', productLine: 'healthcare' },
+  { prefix: '/api/pathology', key: 'pl_patients', productLine: 'pathology' },
   { prefix: '/api/campaigns', key: 'campaigns', productLine: 'whatsapp' },
   { prefix: '/api/broadcasts', key: 'broadcasts', productLine: 'whatsapp' },
   { prefix: '/api/chatbots', key: 'chatbot', productLine: 'whatsapp' },
@@ -86,6 +99,8 @@ const WHATSAPP_LIMITS = LIMIT_KEYS.filter((l) => l.productLine === 'whatsapp');
 const WHATSAPP_FEATURES = FEATURE_DEFINITIONS.filter((f) => f.productLine === 'whatsapp');
 const HEALTHCARE_LIMITS = LIMIT_KEYS.filter((l) => l.productLine === 'healthcare');
 const HEALTHCARE_FEATURES = FEATURE_DEFINITIONS.filter((f) => f.productLine === 'healthcare');
+const PATHOLOGY_LIMITS = LIMIT_KEYS.filter((l) => l.productLine === 'pathology');
+const PATHOLOGY_FEATURES = FEATURE_DEFINITIONS.filter((f) => f.productLine === 'pathology');
 
 /** Keys that collide between a limit row and a feature row (same entitlement name). */
 const FEATURE_ROWS_SKIP_WHEN_LIMIT_EXISTS = new Set(['campaigns', 'templates']);
@@ -99,6 +114,17 @@ export function catalogForProductLine(productLine) {
       limits: [...HEALTHCARE_LIMITS, ...WHATSAPP_LIMITS],
       features: [
         ...HEALTHCARE_FEATURES,
+        ...WHATSAPP_FEATURES.filter((f) => !FEATURE_ROWS_SKIP_WHEN_LIMIT_EXISTS.has(f.key)),
+      ],
+    };
+  }
+
+  if (line === 'pathology') {
+    return {
+      productLine: line,
+      limits: [...PATHOLOGY_LIMITS, ...WHATSAPP_LIMITS],
+      features: [
+        ...PATHOLOGY_FEATURES,
         ...WHATSAPP_FEATURES.filter((f) => !FEATURE_ROWS_SKIP_WHEN_LIMIT_EXISTS.has(f.key)),
       ],
     };

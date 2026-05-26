@@ -1,4 +1,6 @@
 import Clinic from '../models/Clinic.js';
+import { installHealthcareAppointmentBot } from './healthcareAppointmentBotService.js';
+import { applyPathologyProjectPreset } from './pathologyPresetService.js';
 import {
   getPresetById,
   MODULE_PRESETS_BY_CLINIC_TYPE,
@@ -17,18 +19,38 @@ export async function applyProjectPreset({
   vertical: verticalInput,
   presetId = null,
   clinicType = 'consultation',
+  labType = 'standalone',
 }) {
   const preset = presetId ? getPresetById(presetId) : null;
   const vertical = preset?.vertical || normalizeVertical(verticalInput);
   const resolvedClinicType = preset?.clinicType || clinicType;
 
+  const defaultHomePath = preset?.defaultHomePath
+    || (vertical === 'healthcare' ? 'healthcare' : vertical === 'pathology' ? 'pathology' : 'root');
+
   const result = {
     vertical,
     presetId: preset?.id || null,
     clinicSeeded: false,
-    defaultHomePath: preset?.defaultHomePath || (vertical === 'healthcare' ? 'healthcare' : 'root'),
+    defaultHomePath,
     checklist: [],
   };
+
+  if (vertical === 'pathology') {
+    const labType = preset?.labType || 'standalone';
+    const pathologyResult = await applyPathologyProjectPreset({
+      accountId,
+      projectId,
+      projectName,
+      presetId: preset?.id || null,
+      labType,
+    });
+    return {
+      ...result,
+      ...pathologyResult,
+      checklist: pathologyResult.checklist,
+    };
+  }
 
   if (vertical !== 'healthcare') {
     result.checklist = buildGenericChecklist(vertical);
@@ -69,6 +91,19 @@ export async function applyProjectPreset({
   }
 
   result.checklist = buildHealthcareChecklist(resolvedClinicType);
+
+  try {
+    const { created } = await installHealthcareAppointmentBot({
+      accountId,
+      projectId,
+    });
+    result.appointmentBotInstalled = true;
+    result.appointmentBotCreated = created;
+  } catch (err) {
+    result.appointmentBotInstalled = false;
+    result.appointmentBotError = err?.message || 'install failed';
+  }
+
   return result;
 }
 
@@ -93,6 +128,8 @@ function buildHealthcareChecklist(clinicType) {
     'Connect WhatsApp number in Settings',
     'Install healthcare template pack under Templates → Healthcare',
     'Submit templates to Meta and sync approval status',
+    'Add doctors and set weekly schedules on Doctors page',
+    'Appointment booking WhatsApp bot is pre-installed (triggers: hi, hello, book)',
     'Add patients and book first appointment',
   ];
   if (clinicType === 'clinic_pharmacy') {

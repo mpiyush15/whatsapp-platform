@@ -9,7 +9,7 @@ interface Project {
   businessCategory: string
   status: string
   isDefault: boolean
-  vertical?: 'whatsapp' | 'healthcare' | 'ecommerce'
+  vertical?: 'whatsapp' | 'healthcare' | 'ecommerce' | 'pathology'
   settings?: {
     timezone?: string
     autoReplyEnabled?: boolean
@@ -19,7 +19,7 @@ interface Project {
 interface ProjectContextType {
   projectId: string
   project: Project | null
-  vertical: 'whatsapp' | 'healthcare' | 'ecommerce'
+  vertical: 'whatsapp' | 'healthcare' | 'ecommerce' | 'pathology'
   /** True only on first load (or projectId change) — not on background refresh */
   loading: boolean
   error: string | null
@@ -116,7 +116,7 @@ export function ProjectProvider({ children, projectId }: ProjectProviderProps) {
   const value: ProjectContextType = {
     projectId,
     project,
-    vertical: (project?.vertical ?? 'whatsapp') as 'whatsapp' | 'healthcare' | 'ecommerce',
+    vertical: (project?.vertical ?? 'whatsapp') as 'whatsapp' | 'healthcare' | 'ecommerce' | 'pathology',
     loading,
     error,
     refreshProject,

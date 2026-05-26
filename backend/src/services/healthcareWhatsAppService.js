@@ -4,6 +4,13 @@ import HealthcareAuditEvent from '../models/HealthcareAuditEvent.js';
 import whatsappService from './whatsappService.js';
 import logger from '../utils/logger.js';
 
+const buildDateTimeLabel = (dateValue, timeValue) => {
+  const datePart = String(dateValue || '').trim();
+  const timePart = String(timeValue || '').trim();
+  if (datePart && timePart) return `${datePart} ${timePart}`;
+  return datePart || timePart || '';
+};
+
 const EVENT_TEMPLATE_MAP = {
   patient_created: {
     templateName: 'healthcare_patient_welcome',
@@ -17,9 +24,7 @@ const EVENT_TEMPLATE_MAP = {
     purpose: 'appointment-confirmation',
     params: (data, clinicName) => [
       data.patientName || 'Patient',
-      data.doctorName || 'Doctor',
-      data.appointmentDate || '',
-      data.appointmentTime || '',
+      buildDateTimeLabel(data.appointmentDate, data.appointmentTime),
       clinicName,
     ],
     phone: (data) => data.patientPhone,
@@ -30,9 +35,7 @@ const EVENT_TEMPLATE_MAP = {
     purpose: 'appointment-reminder',
     params: (data, clinicName) => [
       data.patientName || 'Patient',
-      data.doctorName || 'Doctor',
-      data.appointmentDate || '',
-      data.appointmentTime || '',
+      buildDateTimeLabel(data.appointmentDate, data.appointmentTime),
       clinicName,
     ],
     phone: (data) => data.patientPhone,
@@ -43,9 +46,7 @@ const EVENT_TEMPLATE_MAP = {
     purpose: 'appointment-reminder',
     params: (data, clinicName) => [
       data.patientName || 'Patient',
-      data.doctorName || 'Doctor',
-      data.appointmentDate || '',
-      data.appointmentTime || '',
+      buildDateTimeLabel(data.appointmentDate, data.appointmentTime),
       clinicName,
     ],
     phone: (data) => data.patientPhone,
@@ -56,8 +57,7 @@ const EVENT_TEMPLATE_MAP = {
     purpose: 'appointment-cancelled',
     params: (data, clinicName) => [
       data.patientName || 'Patient',
-      data.appointmentDate || '',
-      data.appointmentTime || '',
+      buildDateTimeLabel(data.appointmentDate, data.appointmentTime),
       clinicName,
     ],
     phone: (data) => data.patientPhone,
@@ -69,7 +69,6 @@ const EVENT_TEMPLATE_MAP = {
     params: (data, clinicName) => [
       data.patientName || 'Patient',
       data.medicineSummary || 'your prescription',
-      '30',
       clinicName,
     ],
     phone: (data) => data.patientPhone,
@@ -80,7 +79,6 @@ const EVENT_TEMPLATE_MAP = {
     purpose: 'follow-up',
     params: (data, clinicName) => [
       data.patientName || 'Patient',
-      data.doctorName || 'Doctor',
       data.followUpDate || '',
       clinicName,
     ],

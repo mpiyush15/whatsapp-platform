@@ -27,6 +27,7 @@ import * as clinicController from '../controllers/healthcareClinicController.js'
 import { createInvoiceForPrescription } from '../services/healthcarePrescriptionInvoiceService.js';
 import healthcareAnalyticsService from '../services/healthcareAnalyticsService.js';
 import { checkPlanLimit } from '../middlewares/checkPlanLimit.js';
+import { installHealthcareAppointmentBot } from '../services/healthcareAppointmentBotService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,8 +97,8 @@ const HEALTHCARE_TEMPLATE_PRESETS = [
     recommendedTemplateName: 'healthcare_appointment_reminder',
     purpose: 'appointment-reminder',
     triggerEvents: ['appointment_booked', 'appointment_rescheduled', 'appointment_reminder'],
-    variables: ['patientName', 'doctorName', 'appointmentDate', 'appointmentTime', 'clinicName'],
-    sampleMessage: 'Hi {{1}}, reminder: your appointment with Dr. {{2}} is on {{3}} at {{4}}. - {{5}}',
+    variables: ['patientName', 'appointmentDateTime', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, reminder: your appointment is on {{2}}. - {{3}}',
   },
   {
     key: 'appointment-cancelled',
@@ -107,8 +108,8 @@ const HEALTHCARE_TEMPLATE_PRESETS = [
     recommendedTemplateName: 'healthcare_appointment_cancelled',
     purpose: 'appointment-cancelled',
     triggerEvents: ['appointment_cancelled'],
-    variables: ['patientName', 'appointmentDate', 'appointmentTime', 'clinicName'],
-    sampleMessage: 'Hi {{1}}, your appointment on {{2}} at {{3}} has been cancelled. Contact {{4}} to rebook.',
+    variables: ['patientName', 'appointmentDateTime', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, your appointment on {{2}} has been cancelled. Contact {{3}} to rebook.',
   },
   {
     key: 'refill-reminder',
@@ -118,8 +119,8 @@ const HEALTHCARE_TEMPLATE_PRESETS = [
     recommendedTemplateName: 'healthcare_refill_reminder',
     purpose: 'refill-reminder',
     triggerEvents: ['prescription_saved'],
-    variables: ['patientName', 'medicineName', 'daysLeft', 'clinicName'],
-    sampleMessage: 'Hi {{1}}, your medicine {{2}} may run out in {{3}} day(s). Contact {{4}} for refill support.',
+    variables: ['patientName', 'medicineName', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, your medicine {{2}} needs a refill soon. Contact {{3}} for support.',
   },
   {
     key: 'follow-up-checkin',
@@ -129,8 +130,8 @@ const HEALTHCARE_TEMPLATE_PRESETS = [
     recommendedTemplateName: 'healthcare_followup_checkin',
     purpose: 'follow-up',
     triggerEvents: ['follow_up'],
-    variables: ['patientName', 'doctorName', 'followUpDate', 'clinicName'],
-    sampleMessage: 'Hi {{1}}, this is your follow-up reminder from Dr. {{2}} for {{3}}. Reply if you need to reschedule. - {{4}}',
+    variables: ['patientName', 'followUpDate', 'clinicName'],
+    sampleMessage: 'Hi {{1}}, this is your follow-up reminder for {{2}}. Reply if you need to reschedule. - {{3}}',
   },
   {
     key: 'invoice-created',
@@ -603,7 +604,79 @@ function normalizeDoctorPayload(payload = {}) {
     throw new ValidationError('fullName is required');
   }
 
+  if (data.availability !== undefined) {
+    if (!Array.isArray(data.availability)) {
+      throw new ValidationError('availability must be a list of schedule slots');
+    }
+
+    data.availability = data.availability
+      .map((slot) => ({
+        dayOfWeek: String(slot?.dayOfWeek || '').trim().toLowerCase(),
+        startTime: String(slot?.startTime || '').trim(),
+        endTime: String(slot?.endTime || '').trim(),
+        location: toNullableTrimmedString(slot?.location),
+      }))
+      .filter((slot) => slot.dayOfWeek && slot.startTime && slot.endTime);
+  }
+
   return data;
+}
+
+const dayNameForDate = (date) => (
+  ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][date.getDay()]
+);
+
+const timeToMinutes = (value = '') => {
+  const match = String(value).trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+};
+
+async function ensureDoctorCanTakeAppointment(scope, doctor, scheduledAt, durationMinutes, excludeAppointmentId = null, { allowQueue = false } = {}) {
+  if (!doctor) return { queueStatus: 'none' };
+
+  if (doctor.status !== 'active') {
+    throw new ValidationError('Selected doctor is not active');
+  }
+
+  const appointmentStart = new Date(scheduledAt);
+  const appointmentEnd = new Date(appointmentStart.getTime() + durationMinutes * 60 * 1000);
+  const dayOfWeek = dayNameForDate(appointmentStart);
+  const appointmentStartMinutes = appointmentStart.getHours() * 60 + appointmentStart.getMinutes();
+  const appointmentEndMinutes = appointmentEnd.getHours() * 60 + appointmentEnd.getMinutes();
+
+  const matchingSlot = (doctor.availability || []).find((slot) => {
+    if (slot.dayOfWeek !== dayOfWeek) return false;
+    const slotStart = timeToMinutes(slot.startTime);
+    const slotEnd = timeToMinutes(slot.endTime);
+    if (slotStart === null || slotEnd === null) return false;
+    return appointmentStartMinutes >= slotStart && appointmentEndMinutes <= slotEnd;
+  });
+
+  if (!matchingSlot) {
+    throw new ValidationError('Selected doctor is not scheduled for this date and time');
+  }
+
+  const conflict = await Appointment.findOne({
+    ...buildScopeFilter(scope),
+    doctorId: doctor.doctorId,
+    ...(excludeAppointmentId ? { appointmentId: { $ne: excludeAppointmentId } } : {}),
+    status: { $nin: ['cancelled', 'no-show'] },
+    scheduledAt: { $lt: appointmentEnd },
+    endAt: { $gt: appointmentStart },
+  }).select('appointmentId scheduledAt endAt');
+
+  if (conflict) {
+    if (allowQueue) {
+      return { queueStatus: 'queued' };
+    }
+    throw new ValidationError('Selected doctor already has an appointment in this slot');
+  }
+
+  return { queueStatus: 'none' };
 }
 
 async function normalizeAppointmentPayload(scope, payload = {}, existingAppointment = null) {
@@ -631,7 +704,22 @@ async function normalizeAppointmentPayload(scope, payload = {}, existingAppointm
   const durationMinutes = toNumber(data.durationMinutes ?? existingAppointment?.durationMinutes, 30);
   const endAt = data.endAt !== undefined
     ? toNullableDate(data.endAt)
-    : (existingAppointment?.endAt || new Date(scheduledAt.getTime() + durationMinutes * 60 * 1000));
+    : new Date(scheduledAt.getTime() + durationMinutes * 60 * 1000);
+
+  const allowQueue = data.allowQueue !== false;
+  delete data.allowQueue;
+
+  const bookingSource = data.bookingSource || existingAppointment?.bookingSource || 'manual';
+  delete data.bookingSource;
+
+  const { queueStatus } = await ensureDoctorCanTakeAppointment(
+    scope,
+    doctor,
+    scheduledAt,
+    durationMinutes,
+    existingAppointment?.appointmentId || null,
+    { allowQueue }
+  );
 
   return {
     ...data,
@@ -640,6 +728,8 @@ async function normalizeAppointmentPayload(scope, payload = {}, existingAppointm
     scheduledAt,
     endAt,
     durationMinutes,
+    bookingSource,
+    queueStatus,
     patientSnapshot: {
       entityId: patient.patientId,
       fullName: patient.fullName,
@@ -1130,16 +1220,17 @@ router.get('/patients', async (req, res) => {
 
     const [patients, total] = await Promise.all([
       Patient.find(filter)
-        .sort({ updatedAt: -1 })
+        .sort({ updatedAt: -1, createdAt: -1 })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Patient.countDocuments(filter),
     ]);
 
     const exposeSensitive = shouldExposeSensitive(req);
     const responsePatients = exposeSensitive
       ? patients
-      : patients.map((patient) => redactPatientRecord(patient.toObject()));
+      : patients.map((patient) => redactPatientRecord(patient));
 
     return sendSuccess(res, {
       patients: responsePatients,
@@ -1262,7 +1353,8 @@ router.get('/doctors', async (req, res) => {
       Doctor.find(filter)
         .sort({ fullName: 1 })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Doctor.countDocuments(filter),
     ]);
 
@@ -1382,16 +1474,17 @@ router.get('/appointments', async (req, res) => {
 
     const [appointments, total] = await Promise.all([
       Appointment.find(filter)
-        .sort({ scheduledAt: 1 })
+        .sort({ scheduledAt: -1, createdAt: -1 })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Appointment.countDocuments(filter),
     ]);
 
     const exposeSensitive = shouldExposeSensitive(req);
     const responseAppointments = exposeSensitive
       ? appointments
-      : appointments.map((appointment) => redactAppointmentRecord(appointment.toObject()));
+      : appointments.map((appointment) => redactAppointmentRecord(appointment));
 
     return sendSuccess(res, {
       appointments: responseAppointments,
@@ -2852,6 +2945,28 @@ router.post('/whatsapp/send-template', async (req, res) => {
       return sendValidationError(res, error.message);
     }
     return handleControllerError(res, error, 'sendHealthcareWhatsAppTemplate');
+  }
+});
+
+router.post('/appointment-bot/install', async (req, res) => {
+  try {
+    const scope = await resolveScope(req, { requireProject: true });
+    const phoneNumberId = req.body?.phoneNumberId || null;
+
+    const { rule, created } = await installHealthcareAppointmentBot({
+      accountId: scope.accountId,
+      projectId: scope.projectId,
+      phoneNumberId,
+    });
+
+    return sendSuccess(res, {
+      chatbotId: String(rule._id),
+      name: rule.name,
+      keywords: rule.keywords,
+      created,
+    }, created ? 'Appointment booking chatbot installed' : 'Appointment booking chatbot updated', created ? 201 : 200);
+  } catch (error) {
+    return handleControllerError(res, error, 'installHealthcareAppointmentBot');
   }
 });
 

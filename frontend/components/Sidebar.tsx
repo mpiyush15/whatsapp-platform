@@ -67,9 +67,32 @@ const defaultHealthcareModules = [
   'whatsapp',
 ]
 
+const pathologyLabelToModule: Record<string, string> = {
+  Patients: 'patients',
+  'Test catalog': 'tests',
+  'Lab orders': 'orders',
+  Collection: 'collection',
+  Reports: 'reports',
+  'Lab billing': 'billing',
+  Chatbot: 'whatsapp',
+  Templates: 'whatsapp',
+  Broadcasts: 'whatsapp',
+  'Live Chat': 'whatsapp',
+  'Flow Builder': 'flow-builder',
+}
+
+const defaultPathologyModules = [
+  'patients',
+  'tests',
+  'orders',
+  'collection',
+  'reports',
+  'whatsapp',
+]
+
 interface SidebarProps {
   projectId?: string
-  vertical?: 'whatsapp' | 'healthcare' | 'ecommerce'
+  vertical?: 'whatsapp' | 'healthcare' | 'ecommerce' | 'pathology'
   mobileOpen?: boolean
   onMobileClose?: () => void
 }
@@ -79,6 +102,7 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
   const [isClient, setIsClient] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [enabledHealthcareModules, setEnabledHealthcareModules] = useState<string[] | null>(null)
+  const [enabledPathologyModules, setEnabledPathologyModules] = useState<string[] | null>(null)
   const navRef = useRef<HTMLElement | null>(null)
   const preservedScrollRef = useRef<number | null>(null)
 
@@ -121,6 +145,42 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
     return () => {
       cancelled = true
       window.removeEventListener('clinic-modules-updated', loadClinicModules)
+    }
+  }, [projectId, projectVertical])
+
+  useEffect(() => {
+    if (!projectId || projectVertical !== 'pathology') {
+      setEnabledPathologyModules(null)
+      return
+    }
+
+    let cancelled = false
+
+    const loadLabModules = async () => {
+      try {
+        const token = authService.getToken()
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050/api'
+        const response = await fetch(`${apiUrl}/pathology/lab/${encodeURIComponent(projectId)}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+        const payload = await response.json().catch(() => null)
+        const modules = payload?.data?.lab?.enabledModules
+        if (!cancelled) {
+          setEnabledPathologyModules(Array.isArray(modules) && modules.length ? modules : defaultPathologyModules)
+        }
+      } catch {
+        if (!cancelled) setEnabledPathologyModules(defaultPathologyModules)
+      }
+    }
+
+    loadLabModules()
+    window.addEventListener('lab-modules-updated', loadLabModules)
+    return () => {
+      cancelled = true
+      window.removeEventListener('lab-modules-updated', loadLabModules)
     }
   }, [projectId, projectVertical])
 
@@ -168,8 +228,16 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
   const updatedItems = items
     .filter(item => {
       const routeKey = routeKeyFromDashboardHref(item.href)
-      const moduleKey = healthcareLabelToModule[item.label]
+      const moduleKey = healthcareLabelToModule[item.label] || pathologyLabelToModule[item.label]
       const enabledByClinic = !moduleKey || !enabledHealthcareModules || enabledHealthcareModules.includes(moduleKey)
+      const enabledByLab = !moduleKey || !enabledPathologyModules || enabledPathologyModules.includes(moduleKey)
+
+      if ((item as any).vertical === 'pathology') {
+        if (projectVertical !== 'pathology') return false
+        if (item.label === 'Overview') return true
+        if (item.label === 'Lab Setup') return true
+        return enabledByLab
+      }
 
       // Healthcare items: only show when project vertical is healthcare
       if ((item as any).vertical === 'healthcare') {
@@ -189,6 +257,14 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
         const alwaysShowGroups = ['⚙️ System', '📈 Analytics']
         const alwaysShowLabels = ['Dashboard', 'Live Chat', 'Broadcasts', 'Templates', 'Chatbot', 'Flow Builder']
         if (moduleKey && enabledHealthcareModules && !enabledHealthcareModules.includes(moduleKey)) {
+          return false
+        }
+        return alwaysShowGroups.includes((item as any).group ?? '') || alwaysShowLabels.includes(item.label)
+      }
+      if (projectVertical === 'pathology') {
+        const alwaysShowGroups = ['⚙️ System', '📈 Analytics']
+        const alwaysShowLabels = ['Dashboard', 'Live Chat', 'Broadcasts', 'Templates', 'Chatbot', 'Flow Builder']
+        if (moduleKey && enabledPathologyModules && !enabledPathologyModules.includes(moduleKey)) {
           return false
         }
         return alwaysShowGroups.includes((item as any).group ?? '') || alwaysShowLabels.includes(item.label)
@@ -268,7 +344,25 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
           })
 
           // In healthcare projects, prioritize healthcare navigation first.
-          if (projectVertical === 'healthcare') {
+          if (projectVertical === 'pathology') {
+            const pathologyGroupOrder: Record<string, number> = {
+              '🧪 Pathology • Core': 0,
+              '🧪 Pathology • Operations': 1,
+              '🧪 Pathology • Reports': 2,
+              '🧪 Pathology • Billing': 3,
+              '__none__': 4,
+              '💬 Conversations': 5,
+              '📢 Marketing': 6,
+              '📈 Analytics': 7,
+              '⚙️ System': 8,
+            }
+            groups.sort((a, b) => {
+              const aRank = pathologyGroupOrder[a] ?? 999
+              const bRank = pathologyGroupOrder[b] ?? 999
+              if (aRank !== bRank) return aRank - bRank
+              return 0
+            })
+          } else if (projectVertical === 'healthcare') {
             const healthcareGroupOrder: Record<string, number> = {
               '🏥 Healthcare • Core': 0,
               '🏥 Healthcare • Front Desk': 1,
