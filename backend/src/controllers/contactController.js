@@ -7,7 +7,10 @@ import { dispatchWebhookEvent } from '../services/webhookDispatcherService.js';
 export const createContact = async (req, res) => {
   try {
     const { accountId } = req.user;
-    const contact = await contactService.createContact(accountId, req.body);
+    const contact = await contactService.createContact(accountId, {
+      ...req.body,
+      projectId: req.projectId || req.body?.projectId || null,
+    });
 
     dispatchWebhookEvent({
       accountId,
@@ -130,12 +133,22 @@ export const deleteContact = async (req, res) => {
 
 export const importContacts = async (req, res) => {
   try {
+    const { accountId } = req.user;
     const { contacts } = req.body;
     if (!contacts) {
       return sendValidationError(res, 'Contacts array required');
     }
-    return sendSuccess(res, { imported: contacts.length }, 'Contacts imported');
+
+    const result = await contactService.importContacts(accountId, contacts, {
+      projectId: req.projectId || req.body?.projectId || null,
+      importBatch: `csv_${Date.now()}`,
+    });
+
+    return sendSuccess(res, result, 'Contacts imported');
   } catch (error) {
+    if (error.statusCode === 400) {
+      return sendValidationError(res, error.message);
+    }
     return handleControllerError(res, error, 'importContacts');
   }
 };

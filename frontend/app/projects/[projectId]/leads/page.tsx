@@ -4,16 +4,30 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { ErrorToast } from '@/components/ErrorToast';
 import { LeadStatus } from '@/lib/enums';
-import Link from 'next/link';
+import { API_URL } from '@/lib/config/api';
+import { authService } from '@/lib/auth';
+
+const getHeaders = () => {
+  const token = authService.getToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+};
 
 interface Lead {
   _id: string;
   name: string;
-  email: string;
+  email?: string;
+  phone?: string;
   intent: string;
   score: number;
   messageCount: number;
   status: LeadStatus;
+  source?: 'crm' | 'chatbot' | string;
+  chatbotName?: string;
+  responses?: Record<string, string>;
+  createdAt?: string;
 }
 
 interface Stats {
@@ -47,7 +61,7 @@ export default function LeadsPage() {
       setLoading(true);
       setError('');
 
-      let url = `/api/leads?projectId=${projectId}`;
+      let url = `${API_URL}/leads?projectId=${projectId}`;
       if (filter !== 'all') {
         url += `&status=${filter}`;
       }
@@ -55,15 +69,15 @@ export default function LeadsPage() {
         url += `&search=${encodeURIComponent(searchTerm)}`;
       }
 
-      const response = await fetch(url);
+      const response = await fetch(url, { headers: getHeaders() });
       const data = await response.json();
 
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch leads');
       }
 
-      setLeads(data.leads);
-      setStats(data.stats);
+      setLeads(data.leads || data.data?.leads || []);
+      setStats(data.stats || data.data?.stats || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch leads');
     } finally {
@@ -73,9 +87,9 @@ export default function LeadsPage() {
 
   const handleStatusChange = async (leadId: string, newStatus: string) => {
     try {
-      const response = await fetch(`/api/leads/${leadId}?projectId=${projectId}`, {
+      const response = await fetch(`${API_URL}/leads/${leadId}?projectId=${projectId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ status: newStatus })
       });
 
@@ -102,12 +116,12 @@ export default function LeadsPage() {
 
   const handleExport = async () => {
     try {
-      let url = `/api/leads/bulk/export?projectId=${projectId}`;
+      let url = `${API_URL}/leads/bulk/export?projectId=${projectId}`;
       if (filter !== 'all') {
         url += `&status=${filter}`;
       }
 
-      const response = await fetch(url);
+      const response = await fetch(url, { headers: getHeaders() });
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -210,78 +224,70 @@ export default function LeadsPage() {
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Name</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Intent</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Score</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Messages</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Customer</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Chatbot</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Saved Replies</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Status</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Action</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {leads.map((lead) => (
-                    <tr key={lead._id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="font-medium text-slate-900">{lead.name}</p>
-                          <p className="text-sm text-slate-600">{lead.email}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium capitalize">
-                          {lead.intent}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-12 h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${
-                                lead.score >= 75
-                                  ? 'bg-green-600'
-                                  : lead.score >= 50
-                                  ? 'bg-yellow-600'
-                                  : 'bg-red-600'
-                              }`}
-                              style={{ width: `${lead.score}%` }}
-                            />
+                  {leads.map((lead) => {
+                    const responseEntries = Object.entries(lead.responses || {});
+                    return (
+                      <tr key={lead._id} className="hover:bg-slate-50 transition">
+                        <td className="px-6 py-4">
+                          <div>
+                            <p className="font-medium text-slate-900">{lead.name || lead.phone || 'Unknown lead'}</p>
+                            <p className="text-sm text-slate-600">{lead.email || lead.phone || 'No contact detail'}</p>
                           </div>
-                          <span className="text-sm font-semibold text-slate-900">{lead.score}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{lead.messageCount}</td>
-                      <td className="px-6 py-4">
-                        <select
-                          value={lead.status}
-                          onChange={(e) => handleStatusChange(lead._id, e.target.value)}
-                          className={`px-3 py-1 rounded-lg text-sm font-medium border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
-                            lead.status === LeadStatus.NEW
-                              ? 'bg-blue-100 text-blue-700'
-                              : lead.status === LeadStatus.CONVERTED
-                              ? 'bg-green-100 text-green-700'
-                              : lead.status === LeadStatus.LOST
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          <option value={LeadStatus.NEW}>New</option>
-                          <option value={LeadStatus.CONTACTED}>Contacted</option>
-                          <option value={LeadStatus.QUALIFIED}>Qualified</option>
-                          <option value={LeadStatus.CONVERTED}>Converted</option>
-                          <option value={LeadStatus.LOST}>Lost</option>
-                          <option value={LeadStatus.STALE}>Stale</option>
-                        </select>
-                      </td>
-                      <td className="px-6 py-4">
-                        <Link
-                          href={`/projects/${projectId}/leads/${lead._id}`}
-                          className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                        >
-                          View →
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium text-slate-900">
+                            {lead.chatbotName || lead.intent?.replaceAll('_', ' ') || 'Inquiry'}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4 min-w-64">
+                          {responseEntries.length > 0 ? (
+                            <div className="space-y-1">
+                              {responseEntries.map(([key, value]) => (
+                                <p key={key} className="max-w-xl text-sm text-slate-700">
+                                  <span className="font-medium capitalize">{key.replaceAll('_', ' ')}:</span> {value}
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-slate-500">No saved replies</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <select
+                            value={lead.status}
+                            onChange={(e) => handleStatusChange(lead._id, e.target.value)}
+                            className={`px-3 py-1 rounded-lg text-sm font-medium border-0 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
+                              lead.status === LeadStatus.NEW
+                                ? 'bg-blue-100 text-blue-700'
+                                : lead.status === LeadStatus.CONVERTED
+                                ? 'bg-green-100 text-green-700'
+                                : lead.status === LeadStatus.LOST
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <option value={LeadStatus.NEW}>New</option>
+                            <option value={LeadStatus.CONTACTED}>Contacted</option>
+                            {lead.source !== 'chatbot' && <option value={LeadStatus.QUALIFIED}>Qualified</option>}
+                            <option value={LeadStatus.CONVERTED}>Converted</option>
+                            <option value={LeadStatus.LOST}>Lost</option>
+                            {lead.source !== 'chatbot' && <option value={LeadStatus.STALE}>Stale</option>}
+                          </select>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">
+                          {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

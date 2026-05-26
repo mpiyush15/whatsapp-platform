@@ -3,6 +3,7 @@ import logger from '../utils/logger.js';
 import { handleControllerError } from '../utils/errorHandler.js';
 import KeywordRule from '../models/KeywordRule.js';
 import ChatbotLead from '../models/ChatbotLead.js';
+import WorkflowSession from '../models/WorkflowSession.js';
 import Contact from '../models/Contact.js';
 import Message from '../models/Message.js';
 import { ContactType } from '../constants/enums.js';
@@ -18,6 +19,12 @@ const getChatbotId = (req) => req.params?.chatbotId || req.params?.id || null;
 
 const normalizeString = (value) => String(value || '').trim();
 const normalizeArray = (value) => Array.isArray(value) ? value : [];
+const normalizeResponseObject = (value) => {
+  if (!value) return {};
+  if (typeof value.toObject === 'function') return value.toObject();
+  if (value instanceof Map) return Object.fromEntries(value);
+  return value;
+};
 
 const parseKeywords = (value) => {
   if (Array.isArray(value)) {
@@ -329,11 +336,51 @@ export const getChatbotLeads = async (req, res) => {
     const chatbotId = req.params?.chatbotId;
     const projectId = getProjectId(req);
 
-    const leads = await ChatbotLead.find({
+    const savedLeads = await ChatbotLead.find({
       chatbotId: String(chatbotId),
       accountId,
       ...(projectId ? { projectId } : {}),
     }).sort({ createdAt: -1 });
+
+    const savedSessionIds = new Set(
+      savedLeads
+        .map((lead) => String(lead.workflowSessionId || ''))
+        .filter(Boolean)
+    );
+    const sessions = await WorkflowSession.find({
+      ruleId: String(chatbotId),
+      accountId,
+      ...(projectId ? { projectId } : {}),
+      responses: { $exists: true },
+    }).sort({ updatedAt: -1 }).lean();
+
+    const sessionLeads = sessions
+      .filter((session) => !savedSessionIds.has(String(session._id)))
+      .map((session) => {
+        const responses = normalizeResponseObject(session.responses);
+        if (Object.keys(responses).length === 0) return null;
+
+        return {
+          _id: `session_${session._id}`,
+          chatbotId: String(chatbotId),
+          accountId,
+          projectId: session.projectId || null,
+          phoneNumberId: session.phoneNumberId,
+          customerPhone: session.contactPhone,
+          customerName: responses.name || responses.fullName || responses.customerName || '',
+          responses,
+          workflowSessionId: String(session._id),
+          status: session.status === 'completed' ? 'new' : 'contacted',
+          notes: session.status === 'active' ? 'Workflow still in progress' : '',
+          createdAt: session.createdAt || session.startedAt,
+          updatedAt: session.updatedAt || session.lastActivityAt,
+          isSessionOnly: true,
+        };
+      })
+      .filter(Boolean);
+
+    const leads = [...savedLeads, ...sessionLeads]
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
     return sendSuccess(res, leads, 'Chatbot leads retrieved');
   } catch (error) {

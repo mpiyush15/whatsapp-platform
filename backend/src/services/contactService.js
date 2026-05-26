@@ -1,6 +1,54 @@
 import contactRepository from '../repositories/contactRepository.js';
 import contactTimelineService from './contactTimelineService.js';
 import { ContactType } from '../constants/enums.js';
+import Lead from '../models/Lead.js';
+import { normalizePhone } from '../utils/normalizePhone.js';
+
+const LEAD_INTENTS = new Set([
+  'inquiry',
+  'demo_request',
+  'pricing_inquiry',
+  'product_info',
+  'complaint',
+  'support_request',
+  'purchase_intent',
+  'comparison',
+  'integration',
+  'customization',
+  'other'
+]);
+
+const LEAD_STATUSES = new Set(['new', 'contacted', 'qualified', 'negotiating', 'converted', 'lost', 'stale']);
+
+function parseBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  return ['true', 'yes', 'y', '1', 'lead'].includes(String(value || '').trim().toLowerCase());
+}
+
+function parseTags(tags) {
+  if (Array.isArray(tags)) return tags.map(tag => String(tag).trim()).filter(Boolean);
+  return String(tags || '')
+    .split(/[;,|]/)
+    .map(tag => tag.trim())
+    .filter(Boolean);
+}
+
+function normalizeContactType(value, isLead) {
+  const type = String(value || '').trim().toLowerCase();
+  if (isLead || type === ContactType.LEAD) return ContactType.LEAD;
+  if (type === ContactType.OTHER) return ContactType.OTHER;
+  return ContactType.CUSTOMER;
+}
+
+function normalizeIntent(value) {
+  const intent = String(value || '').trim().toLowerCase();
+  return LEAD_INTENTS.has(intent) ? intent : 'inquiry';
+}
+
+function normalizeLeadStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+  return LEAD_STATUSES.has(status) ? status : 'new';
+}
 
 class ContactService {
   async createContact(accountId, payload = {}) {
@@ -10,32 +58,156 @@ class ContactService {
       whatsappNumber,
       email,
       tags = [],
-      source = 'Manual'
+      source = 'Manual',
+      type,
+      company,
+      intent,
+      notes,
+      projectId
     } = payload;
 
-    if (!phone && !whatsappNumber) {
+    const normalizedPhone = normalizePhone(phone || whatsappNumber);
+
+    if (!normalizedPhone) {
       const error = new Error('Phone or WhatsApp number required');
       error.statusCode = 400;
       throw error;
     }
 
+    const contactType = normalizeContactType(type, parseBoolean(payload.isLead));
     const contact = await contactRepository.create({
       accountId,
-      name: name || phone || whatsappNumber,
-      phone: phone || whatsappNumber,
-      whatsappNumber: whatsappNumber || phone,
+      projectId: projectId || payload.projectId || null,
+      name: name || normalizedPhone,
+      phone: normalizedPhone,
+      whatsappNumber: normalizedPhone,
       email,
       source,
-      type: ContactType.CUSTOMER,
+      type: contactType,
       isOptedIn: true,
       optInDate: new Date(),
       firstContactAt: new Date(),
-      tags,
+      tags: parseTags(tags),
+      notes,
       messageCount: 0,
       conversationCount: 0
     });
 
+    if (contactType === ContactType.LEAD) {
+      await this.syncLeadFromContact(accountId, contact, { company, intent, source, projectId });
+    }
+
     return contact;
+  }
+
+  async syncLeadFromContact(accountId, contact, payload = {}) {
+    const phone = normalizePhone(contact?.phone || contact?.whatsappNumber || payload.phone);
+    if (!phone || !contact?._id) return null;
+
+    return Lead.findOneAndUpdate(
+      { accountId, phone },
+      {
+        $set: {
+          accountId,
+          projectId: payload.projectId || contact.projectId || null,
+          contactId: contact._id,
+          phoneNumberId: payload.phoneNumberId || 'manual',
+          name: contact.name || phone,
+          email: contact.email || payload.email || '',
+          phone,
+          company: payload.company || contact.metadata?.company || '',
+          intent: normalizeIntent(payload.intent),
+          status: normalizeLeadStatus(payload.status),
+          sourceMessage: payload.source || 'Contact import',
+          updatedAt: new Date()
+        },
+        $setOnInsert: {
+          conversationId: `contact_import_${accountId}_${phone.replace(/\D/g, '') || Date.now()}`,
+          score: 50,
+          messageCount: 1,
+          firstMessage: new Date(),
+          lastMessage: new Date(),
+          tags: contact.tags || [],
+          createdAt: new Date()
+        }
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+  }
+
+  async importContacts(accountId, contacts = [], options = {}) {
+    if (!Array.isArray(contacts) || contacts.length === 0) {
+      const error = new Error('Contacts array required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const result = {
+      imported: 0,
+      created: 0,
+      updated: 0,
+      leadsSynced: 0,
+      skipped: 0,
+      errors: []
+    };
+
+    for (const [index, row] of contacts.entries()) {
+      try {
+        const phone = normalizePhone(row.phone || row.whatsappNumber || row.mobile || row.number);
+        if (!phone) {
+          result.skipped += 1;
+          result.errors.push({ row: index + 1, error: 'Phone or WhatsApp number required' });
+          continue;
+        }
+
+        const isLead = parseBoolean(row.isLead) || String(row.type || '').trim().toLowerCase() === ContactType.LEAD;
+        const type = normalizeContactType(row.type, isLead);
+        const tags = parseTags(row.tags);
+
+        const upsertResult = await contactRepository.upsertByPhone(accountId, phone, {
+          projectId: options.projectId || row.projectId || null,
+          name: row.name || row.fullName || phone,
+          phone,
+          whatsappNumber: phone,
+          email: row.email || '',
+          source: row.source || 'CSV Import',
+          type,
+          isOptedIn: row.isOptedIn === undefined ? true : parseBoolean(row.isOptedIn),
+          optInDate: row.isOptedIn === false ? undefined : new Date(),
+          tags,
+          notes: row.notes || '',
+          metadata: {
+            company: row.company || row.businessName || '',
+            importBatch: options.importBatch || '',
+            originalType: row.type || ''
+          }
+        });
+
+        const contact = upsertResult.value;
+        result.imported += 1;
+        if (upsertResult.lastErrorObject?.updatedExisting) {
+          result.updated += 1;
+        } else {
+          result.created += 1;
+        }
+
+        if (type === ContactType.LEAD) {
+          await this.syncLeadFromContact(accountId, contact, {
+            company: row.company || row.businessName,
+            intent: row.intent,
+            status: row.leadStatus || row.status || 'new',
+            source: row.source || 'CSV Import',
+            projectId: options.projectId || row.projectId || null
+          });
+          result.leadsSynced += 1;
+        }
+      } catch (error) {
+        result.skipped += 1;
+        result.errors.push({ row: index + 1, error: error.message });
+      }
+    }
+
+    return result;
   }
 
   async getContacts(accountId) {

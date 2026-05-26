@@ -2043,6 +2043,7 @@ class WhatsAppService {
       }
       
       await session.save();
+      await this.saveWorkflowLead(session);
 
       const hasMore = session.currentStepIndex < session.workflowSteps.length;
 
@@ -2139,6 +2140,7 @@ class WhatsAppService {
       if (!session) return;
 
       logger.info('⏰ Workflow session expired:', sessionId);
+      await this.saveWorkflowLead(session);
       await this.sendTimeoutMessage(session);
       logger.info('💾 Partial lead data:', Object.fromEntries(session.responses || []));
     } catch (error) {
@@ -2173,6 +2175,48 @@ class WhatsAppService {
     }
   }
 
+  async saveWorkflowLead(session) {
+    try {
+      const responses = Object.fromEntries(session.responses || []);
+      if (Object.keys(responses).length === 0) return null;
+
+      const ChatbotLead = (await import('../models/ChatbotLead.js')).default;
+      const customerName =
+        responses.name ||
+        responses.fullName ||
+        responses.customerName ||
+        undefined;
+
+      return ChatbotLead.findOneAndUpdate(
+        {
+          workflowSessionId: session._id.toString(),
+          accountId: session.accountId,
+        },
+        {
+          $set: {
+            chatbotId: session.ruleId,
+            accountId: session.accountId,
+            projectId: session.projectId || null,
+            phoneNumberId: session.phoneNumberId,
+            customerPhone: session.contactPhone,
+            ...(customerName ? { customerName } : {}),
+            responses,
+            workflowSessionId: session._id.toString(),
+            status: 'new',
+            updatedAt: new Date(),
+          },
+          $setOnInsert: {
+            createdAt: new Date(),
+          },
+        },
+        { new: true, upsert: true }
+      );
+    } catch (error) {
+      logger.error('❌ Error saving workflow lead:', error.message);
+      return null;
+    }
+  }
+
   /**
    * Send workflow completion message with collected data
    * @param {Object} session - WorkflowSession document
@@ -2181,22 +2225,9 @@ class WhatsAppService {
     try {
       logger.info('📊 Workflow completed. Collected data:', Object.fromEntries(session.responses));
       
-      // Import ChatbotLead model
-      const ChatbotLead = (await import('../models/ChatbotLead.js')).default;
+      const lead = await this.saveWorkflowLead(session);
       
-      // Save lead with collected responses
-      const lead = await ChatbotLead.create({
-        chatbotId: session.ruleId,
-        accountId: session.accountId,
-        projectId: session.projectId || null,
-        phoneNumberId: session.phoneNumberId,
-        customerPhone: session.contactPhone,
-        responses: Object.fromEntries(session.responses),
-        workflowSessionId: session._id.toString(),
-        status: 'new'
-      });
-      
-      logger.info('💾 Lead saved:', lead._id);
+      logger.info('💾 Lead saved:', lead?._id);
       
       // Build summary message
       let summaryText = '✅ *Thank you for completing the form!*\n\n';
@@ -2217,7 +2248,7 @@ class WhatsAppService {
         { 
           campaign: 'workflow_completed', 
           sessionId: session._id.toString(),
-          leadId: lead._id.toString(),
+          ...(lead?._id ? { leadId: lead._id.toString() } : {}),
           responses: Object.fromEntries(session.responses)
         }
       );

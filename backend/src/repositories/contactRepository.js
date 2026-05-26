@@ -13,6 +13,37 @@ class ContactRepository {
     return Contact.create(contactData);
   }
 
+  async upsertByPhone(accountId, phone, contactData) {
+    return Contact.findOneAndUpdate(
+      {
+        accountId,
+        $or: [
+          { whatsappNumber: phone },
+          { phone }
+        ]
+      },
+      {
+        $set: {
+          ...contactData,
+          updatedAt: new Date()
+        },
+        $setOnInsert: {
+          accountId,
+          phone,
+          whatsappNumber: phone,
+          firstContactAt: new Date(),
+          createdAt: new Date()
+        }
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+        includeResultMetadata: true
+      }
+    );
+  }
+
   async findByAccountId(accountId) {
     return Contact.find({ accountId }).sort({ createdAt: -1 }).lean();
   }

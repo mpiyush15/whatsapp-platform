@@ -3,6 +3,16 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { ErrorToast } from '@/components/ErrorToast';
+import { API_URL } from '@/lib/config/api';
+import { authService } from '@/lib/auth';
+
+const getHeaders = () => {
+  const token = authService.getToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+};
 
 interface Message {
   _id: string;
@@ -14,12 +24,16 @@ interface Message {
 interface LeadDetail {
   _id: string;
   name: string;
-  email: string;
-  phone: string;
+  email?: string;
+  phone?: string;
   intent: string;
   score: number;
   status: string;
-  messages: Message[];
+  messages?: Message[];
+  source?: 'crm' | 'chatbot' | string;
+  chatbotName?: string;
+  responses?: Record<string, string>;
+  notes?: string;
   createdAt: Date;
 }
 
@@ -41,14 +55,16 @@ export default function LeadDetailPage() {
       setLoading(true);
       setError('');
 
-      const response = await fetch(`/api/leads/${leadId}?projectId=${projectId}`);
+      const response = await fetch(`${API_URL}/leads/${leadId}?projectId=${projectId}`, {
+        headers: getHeaders(),
+      });
       const data = await response.json();
 
       if (!data.success) {
         throw new Error(data.message || 'Failed to fetch lead');
       }
 
-      setLead(data.lead);
+      setLead(data.lead || data.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch lead');
     } finally {
@@ -89,15 +105,19 @@ export default function LeadDetailPage() {
           <a href={`/projects/${projectId}/leads`} className="text-blue-600 hover:text-blue-700 mb-4 inline-block">
             ← Back to Leads
           </a>
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">{lead.name}</h1>
-          <p className="text-slate-600">{lead.email} • {lead.phone}</p>
+          <h1 className="text-4xl font-bold text-slate-900 mb-2">{lead.name || lead.phone || 'Lead'}</h1>
+          <p className="text-slate-600">
+            {[lead.email, lead.phone, lead.source === 'chatbot' ? lead.chatbotName : null].filter(Boolean).join(' • ')}
+          </p>
         </div>
 
         {/* Lead Info */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
-            <p className="text-sm text-slate-600 mb-2">Intent</p>
-            <p className="text-2xl font-bold text-slate-900 capitalize">{lead.intent}</p>
+            <p className="text-sm text-slate-600 mb-2">{lead.source === 'chatbot' ? 'Chatbot' : 'Intent'}</p>
+            <p className="text-2xl font-bold text-slate-900 capitalize">
+              {(lead.source === 'chatbot' ? lead.chatbotName : lead.intent)?.replaceAll('_', ' ') || 'Inquiry'}
+            </p>
           </div>
 
           <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
@@ -127,15 +147,34 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
+        {lead.source === 'chatbot' && (
+          <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200 mb-8">
+            <h2 className="text-xl font-bold text-slate-900 mb-6">Saved Chatbot Replies</h2>
+
+            {Object.entries(lead.responses || {}).length === 0 ? (
+              <p className="text-slate-600 text-center py-8">No replies were saved for this chatbot lead.</p>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-4">
+                {Object.entries(lead.responses || {}).map(([key, value]) => (
+                  <div key={key} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase text-slate-500">{key.replaceAll('_', ' ')}</p>
+                    <p className="mt-1 text-sm text-slate-900 whitespace-pre-wrap">{value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Messages */}
         <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
           <h2 className="text-xl font-bold text-slate-900 mb-6">Conversation History</h2>
 
-          {lead.messages.length === 0 ? (
+          {(lead.messages || []).length === 0 ? (
             <p className="text-slate-600 text-center py-8">No messages yet</p>
           ) : (
             <div className="space-y-4 max-h-96 overflow-y-auto">
-              {lead.messages.map((message) => (
+              {(lead.messages || []).map((message) => (
                 <div
                   key={message._id}
                   className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}

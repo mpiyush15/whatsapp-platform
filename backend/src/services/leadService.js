@@ -226,6 +226,9 @@ export const getLeads = async (accountId, filters = {}) => {
     const query = { accountId };
 
     // Apply filters
+    if (filters.projectId) {
+      query.projectId = filters.projectId;
+    }
     if (filters.status) {
       query.status = filters.status;
     }

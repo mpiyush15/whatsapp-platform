@@ -511,7 +511,7 @@ export default function ChatbotPage() {
         />
       </div>
 
-      {/* Bots Grid */}
+      {/* Bots Table */}
       {filteredBots.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-6 sm:p-12 text-center">
           <Bot className="h-10 w-10 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
@@ -523,143 +523,113 @@ export default function ChatbotPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {filteredBots.map((bot) => (
-            <div key={bot._id} className="bg-white rounded-lg border border-gray-200 p-3 sm:p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
-                  <div className="h-10 w-10 sm:h-12 sm:w-12 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-sm sm:text-lg font-semibold text-gray-900 truncate">{bot.name}</h3>
-                    <span className={`inline-flex px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-medium rounded-full mt-1 ${
-                      bot.isActive
-                        ? "bg-green-100 text-green-700"
-                        : bot.triggerCount === 0
-                        ? "bg-gray-100 text-gray-700"
-                        : "bg-orange-100 text-orange-700"
-                    }`}>
-                      {getStatusText(bot)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {bot.description && (
-                <p className="text-xs sm:text-sm text-gray-600 mb-3 truncate">{bot.description}</p>
-              )}
-
-              <div className="mb-3">
-                <p className="text-[10px] sm:text-xs text-gray-500 mb-1">Keywords:</p>
-                <div className="flex flex-wrap gap-1">
-                  {bot.keywords.slice(0, 5).map((keyword, idx) => (
-                    <span key={idx} className="px-2 py-0.5 sm:py-1 bg-gray-100 text-gray-700 text-[10px] sm:text-xs rounded-full">
-                      {keyword}
-                    </span>
-                  ))}
-                  {bot.keywords.length > 5 && (
-                    <span className="px-2 py-0.5 sm:py-1 bg-gray-100 text-gray-600 text-[10px] sm:text-xs rounded-full">
-                      +{bot.keywords.length - 5} more
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="mb-3">
-                <p className="text-[10px] sm:text-xs text-gray-500 mb-1">Reply Type:</p>
-                <div className="flex items-center gap-2">
-                  {bot.replyType === 'workflow' ? (
-                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full flex items-center gap-1">
-                      <Zap className="h-3 w-3" />
-                      Workflow ({bot.replyContent.workflow?.length || 0} steps)
-                    </span>
-                  ) : bot.replyType === 'template' ? (
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">
-                      Template
-                    </span>
-                  ) : (
-                    <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3" />
-                      Text
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-600">Interactions</p>
-                  <p className="text-lg sm:text-xl font-bold text-gray-900">{bot.triggerCount.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-600">Success Rate</p>
-                  <p className="text-lg sm:text-xl font-bold text-gray-900">
-                    {bot.successRate > 0 ? `${bot.successRate}%` : '-'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-gray-200 gap-3">
-                <p className="text-xs sm:text-sm text-gray-600">Last active: {getLastActiveText(bot)}</p>
-                <div className="flex gap-1 sm:gap-2 flex-wrap">
-                  <Button 
-                    onClick={() => openLeadsDrawer(bot)}
-                    variant="outline" 
-                    size="sm"
-                    className="text-blue-600 hover:text-blue-700 text-xs sm:text-sm px-2 sm:px-3 py-1"
-                  >
-                    <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                    <span className="hidden sm:inline">Leads</span>
-                  </Button>
-                  <Button 
-                    onClick={() => toggleBot(bot._id)}
-                    variant="outline" 
-                    size="sm"
-                    className="text-xs sm:text-sm px-2 sm:px-3 py-1"
-                  >
-                    {bot.isActive ? (
-                      <>
-                        <Pause className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                        <span className="hidden sm:inline">Pause</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                        <span className="hidden sm:inline">Start</span>
-                      </>
-                    )}
-                  </Button>
-                  {bot.replyType === 'workflow' && (bot.replyContent as any)?.flowGraph && (
-                    <Link
-                      href={`/projects/${projectId}/flow`}
-                      className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-violet-50 px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-violet-700 hover:bg-violet-100 transition"
-                    >
-                      <GitBranch className="h-3 w-3 sm:h-4 sm:w-4" />
-                      <span className="hidden sm:inline">Builder</span>
-                    </Link>
-                  )}
-                  <Button 
-                    onClick={() => openEditModal(bot)}
-                    variant="outline" 
-                    size="sm"
-                    className="text-xs sm:text-sm px-2 sm:px-3 py-1"
-                  >
-                    <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                    <span className="hidden sm:inline">Edit</span>
-                  </Button>
-                  <Button 
-                    onClick={() => deleteBot(bot._id)}
-                    variant="outline" 
-                    size="sm"
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px]">
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Bot</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Keywords</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Reply</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Interactions</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Success</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Last Active</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredBots.map((bot) => (
+                  <tr key={bot._id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-green-100">
+                          <Bot className="h-5 w-5 text-green-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="max-w-56 truncate text-sm font-semibold text-gray-900">{bot.name}</p>
+                          <p className="max-w-56 truncate text-xs text-gray-500">{bot.description || 'No description'}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        bot.isActive
+                          ? "bg-green-100 text-green-700"
+                          : bot.triggerCount === 0
+                          ? "bg-gray-100 text-gray-700"
+                          : "bg-orange-100 text-orange-700"
+                      }`}>
+                        {getStatusText(bot)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex max-w-72 flex-wrap gap-1">
+                        {bot.keywords.slice(0, 4).map((keyword, idx) => (
+                          <span key={idx} className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                            {keyword}
+                          </span>
+                        ))}
+                        {bot.keywords.length > 4 && (
+                          <span className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600">
+                            +{bot.keywords.length - 4}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      {bot.replyType === 'workflow' ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-1 text-xs text-green-700">
+                          <Zap className="h-3 w-3" />
+                          Workflow ({bot.replyContent.workflow?.length || 0})
+                        </span>
+                      ) : bot.replyType === 'template' ? (
+                        <span className="inline-flex rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-700">
+                          Template
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
+                          <MessageSquare className="h-3 w-3" />
+                          Text
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 text-right text-sm font-semibold text-gray-900">
+                      {bot.triggerCount.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-4 text-right text-sm text-gray-700">
+                      {bot.successRate > 0 ? `${bot.successRate}%` : '-'}
+                    </td>
+                    <td className="px-4 py-4 text-sm text-gray-600">{getLastActiveText(bot)}</td>
+                    <td className="px-4 py-4">
+                      <div className="flex justify-end gap-2">
+                        <Button onClick={() => openLeadsDrawer(bot)} variant="outline" size="sm" className="text-blue-600 hover:text-blue-700">
+                          <Users className="h-4 w-4" />
+                        </Button>
+                        <Button onClick={() => toggleBot(bot._id)} variant="outline" size="sm">
+                          {bot.isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        </Button>
+                        {bot.replyType === 'workflow' && (bot.replyContent as any)?.flowGraph && (
+                          <Link
+                            href={`/projects/${projectId}/flow`}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100"
+                          >
+                            <GitBranch className="h-4 w-4" />
+                          </Link>
+                        )}
+                        <Button onClick={() => openEditModal(bot)} variant="outline" size="sm">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button onClick={() => deleteBot(bot._id)} variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
