@@ -14,7 +14,7 @@ import { resolveStaffRoutes } from '../constants/healthcareStaffRoutes.js';
 import { normalizePhone } from '../utils/normalizePhone.js';
 import { verifyPhoneVerificationToken } from '../services/platformOtpService.js';
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 export const checkEmailAvailable = async (req, res) => {
   try {
@@ -62,7 +62,7 @@ export const checkPhoneAvailable = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    logger.info('🔐 Login attempt:', email);
+    logger.info('🔐 Login attempt from IP:', req.ip);
     
     if (!email || !password) {
       return sendValidationError(res, 'Email and password required');
@@ -79,31 +79,56 @@ export const login = async (req, res) => {
       user = await User.findOne({ email }).select('+password');
       logger.info('📊 User (superadmin) found:', !!user);
       if (!user) {
-        logger.info('❌ No account/user for email:', email);
         return sendUnauthorized(res, 'Invalid email or password');
       }
     }
     
     // Use account or user
     const authEntity = account || user;
-    console.log('🔐 Password in DB?:', !!authEntity?.password);
     
     if (account && !['active', 'pending'].includes(account.status)) {
       return sendUnauthorized(res, 'Account is not active. Contact support if you need help.');
     }
+
+    // Check if account is temporarily locked
+    if (account?.accountLockedUntil && account.accountLockedUntil > new Date()) {
+      return sendUnauthorized(res, 'Account is temporarily locked. Try again later.');
+    }
     
     // ✅ VERIFY PASSWORD WITH BCRYPT
     if (!authEntity.password) {
-      logger.error('❌ No password stored for:', email);
+      logger.error('❌ No password stored for account');
       return sendUnauthorized(res, 'Invalid email or password');
     }
     
     const isPasswordValid = await bcrypt.compare(password, authEntity.password);
     if (!isPasswordValid) {
-      logger.info('❌ Invalid password for email:', email);
+      // Increment failed login attempts (accounts only — User model is superadmin)
+      if (account) {
+        account.failedLoginAttempts = (account.failedLoginAttempts || 0) + 1;
+
+        if (account.failedLoginAttempts >= 5) {
+          account.accountLockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+          await account.save();
+          logger.warn('Account locked due to failed login attempts:', { accountId: account.accountId });
+          return sendUnauthorized(res, 'Account locked due to multiple failed login attempts. Try again in 15 minutes.');
+        }
+
+        await account.save();
+        logger.warn('Failed login attempt:', { accountId: account.accountId, attempts: account.failedLoginAttempts });
+      }
       return sendUnauthorized(res, 'Invalid email or password');
     }
     
+    // Successful login — reset lockout state and invalidate any pending reset tokens
+    if (account) {
+      account.failedLoginAttempts = 0;
+      account.accountLockedUntil = null;
+      account.resetPasswordToken = null;
+      account.resetPasswordExpires = null;
+      await account.save();
+    }
+
     let tokenType = account?.type || 'client';
     if (!account && user) {
       const orgAccount = await Account.findOne({ accountId: user.accountId });
@@ -226,13 +251,21 @@ export const signup = async (req, res) => {
     const cycle = cycleRaw === 'annual' ? 'yearly' : cycleRaw;
     const cycleForPayment = cycleRaw === 'yearly' ? 'annual' : cycleRaw;
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!EMAIL_REGEX.test(email)) {
       return sendValidationError(res, 'Please provide a valid email address');
     }
 
-    if (password.length < 6) {
-      return sendValidationError(res, 'Password must be at least 6 characters');
+    if (password.length < 12) {
+      return sendValidationError(res, 'Password must be at least 12 characters');
+    }
+
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChar) {
+      return sendValidationError(res, 'Password must contain uppercase, lowercase, numbers, and special characters');
     }
 
     const existingAccount = await Account.findOne({ email: email.toLowerCase().trim() });
@@ -516,8 +549,8 @@ export const resetPassword = async (req, res) => {
       return sendValidationError(res, 'Token and new password are required');
     }
 
-    if (password.length < 6) {
-      return sendValidationError(res, 'Password must be at least 6 characters');
+    if (password.length < 12) {
+      return sendValidationError(res, 'Password must be at least 12 characters');
     }
 
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');

@@ -93,10 +93,44 @@ export const apiKeyLimiter = rateLimit({
   keyGenerator: (req, res) => req.headers['x-api-key'] || ipKeyGenerator(req, res)
 });
 
+// Login limiter - 5 attempts per 15 minutes per email/IP
+export const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: 'Too many login attempts. Please try again after 15 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.user, // Skip if already authenticated
+  keyGenerator: (req) => req.body?.email || req.ip,
+});
+
+// Signup limiter - 3 attempts per hour per email/IP
+export const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  message: 'Too many signup attempts. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.body?.email || req.ip,
+});
+
+// Forgot-password limiter - 3 attempts per hour per email/IP
+export const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  message: 'Too many password reset requests. Please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.body?.email || req.ip,
+});
+
 export default {
   messageLimiter,
   broadcastLimiter,
   templateLimiter,
   contactLimiter,
-  apiKeyLimiter
+  apiKeyLimiter,
+  loginLimiter,
+  signupLimiter,
+  forgotPasswordLimiter,
 };

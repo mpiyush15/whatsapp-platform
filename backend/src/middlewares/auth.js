@@ -1,6 +1,14 @@
 import Account from '../models/Account.js';
 import logger from '../utils/logger.js';
 
+export const securityHeaders = (req, res, next) => {
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+};
+
 import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
 /**
  * API Key Authentication Middleware (External Integrations)
@@ -137,4 +145,4 @@ export const optionalAuth = async (req, res, next) => {
   }
 };
 
-export default { authenticate, optionalAuth };
+export default { authenticate, optionalAuth, securityHeaders };

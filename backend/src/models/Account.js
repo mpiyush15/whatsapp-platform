@@ -10,6 +10,8 @@ const accountSchema = new mongoose.Schema({
   password: { type: String, default: null, select: false },
   resetPasswordToken: { type: String, default: null, index: true },
   resetPasswordExpires: { type: Date, default: null },
+  failedLoginAttempts: { type: Number, default: 0 },
+  accountLockedUntil: { type: Date, default: null },
   
   // WhatsApp
   whatsappAccessToken: { type: String, default: null, select: false },
