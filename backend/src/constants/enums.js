@@ -305,6 +305,15 @@ export const KeywordRuleAction = {
   FORWARD: 'forward',
 };
 
+export const WorkflowStepType = {
+  TEXT: 'text',
+  QUESTION: 'question',
+  BUTTONS: 'buttons',
+  LIST: 'list',
+  VERTICAL_ACTION: 'vertical_action',
+  CONDITION: 'condition',
+};
+
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
@@ -379,6 +388,8 @@ export default {
   TagType,
   KeywordRuleAction,
   WebhookStatus,
+  // Chatbot & Workflow
+  WorkflowStepType,
   // Utilities
   enumToArray,
   isValidEnum,

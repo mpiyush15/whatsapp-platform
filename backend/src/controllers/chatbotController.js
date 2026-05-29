@@ -140,6 +140,14 @@ const buildRulePayload = (req, { partial = false } = {}) => {
     const rawWorkflow = normalizeArray(rawReplyContent?.workflow || req.body?.workflow);
     const workflow = flowGraph ? compileFlowGraph(flowGraph) : rawWorkflow;
 
+    // Validate workflow step types
+    const validStepTypes = new Set(['text', 'question', 'buttons', 'list', 'vertical_action', 'condition']);
+    for (const step of workflow) {
+      if (step && step.type && !validStepTypes.has(step.type)) {
+        return { error: `Invalid workflow step type: ${step.type}` };
+      }
+    }
+
     // Only require steps when no visual flowGraph is provided (flowGraph is the source of truth)
     if (!partial && !flowGraph && workflow.length === 0) {
       return { error: 'Workflow requires at least one valid step' };

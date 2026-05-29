@@ -321,6 +321,20 @@ export enum IntegrationType {
   OTHER = 'other'
 }
 
+/**
+ * Workflow Step Type
+ * Maps to backend WorkflowStepType enum
+ * Defines all valid step types in chatbot flow builder
+ */
+export enum WorkflowStepType {
+  TEXT = 'text',
+  QUESTION = 'question',
+  BUTTONS = 'buttons',
+  LIST = 'list',
+  VERTICAL_ACTION = 'vertical_action',
+  CONDITION = 'condition'
+}
+
 // ============================================
 // Helper Functions
 // ============================================
