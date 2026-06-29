@@ -48,9 +48,12 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href={faviconUrl} />
         <ThemeScript />
         {/* Flow B: Embedded Signup - Clean Implementation */}
-        <script suppressHydrationWarning>
-          {`window.WHATSAPP_CONFIG_ID = '${process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID || '1239299391737840'}';`}
-        </script>
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{
+            __html: `window.WHATSAPP_CONFIG_ID = '${process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID || '1239299391737840'}';`
+          }}
+        />
         
         {/* Meta SDK for WhatsApp Embedded Signup */}
         <script
