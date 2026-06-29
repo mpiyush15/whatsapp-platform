@@ -1,0 +1,4 @@
+name,email,phone,intent,score,messageCount,status,accountId,notes,conversionValue,nextFollowUp,tags,source,vertical,location,demoScheduled,demoCompleted,demoMissed
+"Acme Corp","contact@acme.com","+15551234567","interest",85,5,"new","acc123","First contact made",50000,"2024-09-10","sales;priority","api","ecommerce","NYC","2024-09-01","2024-09-05","false"
+"Beta Ltd","","+1234567890","inquiry",70,3,"contacted","acc456","Follow up required",25000,"2024-10-20","new","manual","healthcare","LA","2024-10-12","2024-10-15","true"
+"Gamma Solutions","info@gamma.com","","qualified",90,4,"qualified","acc789","Qualified lead","25000","2024-11-01","partner;priority","webhook","education","London","","",""

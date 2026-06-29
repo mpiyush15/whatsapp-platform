@@ -1,0 +1,16 @@
+backend/
+.git/
+.github/
+node_modules/
+*.md
+.DS_Store
+.env
+.env.local
+check-chatbot.js
+check-webhook-status.js
+delete-accounts.cjs
+delete-test-accounts.js
+test-*.js
+seed-*.sh
+verify-*.js
+WEBHOOK-*.js

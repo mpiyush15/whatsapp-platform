@@ -1,0 +1,155 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
+**/.env.local
+
+# API Keys (NEVER COMMIT)
+API_KEYS.md
+**/API_KEYS.md
+
+# Test & Debug Scripts (mjs, md docs)
+*.mjs
+**/*.mjs
+*-test.js
+*-debug.js
+*-verify.js
+*-check.js
+*-COMPLETE.md
+*-SUMMARY.md
+*-BRIEF.md
+*-STATUS.md
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+**/.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Next.js
+.next/
+.next.stale*/
+out/
+*.tsbuildinfo
+next-env.d.ts
+**/.next/
+**/.next.stale*/
+
+# Production
+dist/
+build/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.pem
+.vercel
+.turbo
+# Cache & Temp
+.cache/
+cache/
+tmp/
+temp/
+*.cache
+
+# Uploads
+uploads/
+public/uploads/
+
+# Marketing assets — served from S3 (upload via backend/scripts/uploadMarketingAsset.js)
+frontend/public/marketing/
+
+# Local scratch / backups — do not commit
+*.bak
+**/package-lock.json.bak
+sample.txt
+test.txt
+clinic.txt
+backend/test_logo.png
+scripts/marketing-nav-body.txt
+
+# Test files
+*.test.mjs
+*.test.js
+test-*.js
+test-*.mjs
+*-test.js
+debug-*.js
+
+# Documentation (local)
+**/*.md
+!README.md
+!CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+
+# MJS Scripts & Diagnostic Files
+*.mjs
+backend/*.mjs
+
+# Shell scripts & diagnostic docs (local development only)
+*.sh
+*-CHECKLIST.txt
+*-SUMMARY.txt
+*-DIAGNOSTIC.js
+*-READY-*.js
+*-STATUS.txt
+*-COMPLETE.sh
+DEMO-*.txt
+WEBHOOK-*.js
+WEBHOOK-*.txt
+CACHE-*.js
+CHATBOT-*.js
+LIVE-*.js
+VERIFY-*.js
+REALTIME-*.js
+BUSINESS-*.txt
+ENROMATICS-*.txt
+DEPLOYMENT.md
+PERFORMANCE-*.sh
+_archived_docs/
+
+# Local development scripts
+backend/check-*.js
+backend/clean-*.js
+backend/find-*.js
+backend/get-*.js
+backend/migrate-*.js
+backend/setup-*.js
+*.py
+CLIENT-LOGIN-*.txt
+EVERYTHING-YOU-NEED.txt
+PHASE2-*.txt
+WHAT-WE-DID.txt
+
+# Test Pages and Scripts
+frontend/app/test-premium/
+frontend/app/test-premium-landing/
+backend/audit_isolation.js
+backend/clean_duplicate_numbers.js
+backend/link_number.js
+backend/migrate_legacy_data.js
+frontend/app/test-subscriptions/

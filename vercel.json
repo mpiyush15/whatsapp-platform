@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "buildCommand": "NEXT_DISABLE_TURBOPACK=1 next build",
+  "env": {
+    "NEXT_PUBLIC_ADMIN_DOMAIN": "@admin_domain",
+    "NEXT_PUBLIC_APP_DOMAIN": "@app_domain"
+  }
+}

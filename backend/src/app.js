@@ -1,0 +1,540 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import path from 'path';
+
+// Import middleware
+import { authenticate } from './middlewares/auth.js';
+import { requireJWT, requireSuperAdmin } from './middlewares/jwtAuth.js';
+import requireSubscription from './middlewares/requireSubscription.js';
+import { requirePlanFeature } from './middlewares/requirePlanFeature.js';
+import { subdomainDetectionMiddleware } from './middlewares/subdomainDetection.js';
+import { validateWebhookSignature } from './middlewares/webhookSignatureValidator.js';
+import { validateDomain, requireAdminDomain, requireAppDomain, requireSupportDomain, enforceProjectIsolation } from './middlewares/domainMiddleware.js';
+import { attachDefaultProject } from './middleware/projectAuth.js';
+
+// Import Sentry for error tracking
+import { initSentry, sentryErrorHandler } from './config/sentry.js';
+
+// Import routes
+import webhookRoutes from './routes/webhookRoutes.js';
+// -- Gemini edit route removed (was imported here) --
+import messageRoutes from './routes/messageRoutes.js';
+import conversationRoutes from './routes/conversationRoutes.js';
+import contactRoutes from './routes/contactRoutes.js';
+import segmentRoutes from './routes/segmentRoutes.js';
+import statsRoutes from './routes/statsRoutes.js';
+import accountRoutes from './routes/accountRoutes.js';
+import templateRoutes from './routes/templateRoutes.js';
+import settingsRoutes from './routes/settingsRoutes.js';
+import chatbotRoutes from './routes/chatbotRoutes.js';
+import authRoutes from './routes/authRoutes.js';
+import integrationsRoutes from './routes/integrationsRoutes.js';
+import broadcastRoutes from './routes/broadcastRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import campaignRoutes from './routes/campaignRoutes.js';
+import pricingRoutes from './routes/pricingRoutes.js';
+import subscriptionRoutes from './routes/subscriptionRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import paymentWebhookRoutes from './routes/paymentWebhookRoutes.js';
+import organizationsRoutes from './routes/organizationsRoutes.js';
+import leadRoutes from './routes/leadRoutes.js';
+import paymentReminderRoutes from './routes/paymentReminderRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import adminFinancialRoutes from './routes/adminFinancialRoutes.js';
+import { startPaymentStatusPoller } from './jobs/paymentStatusPoller.js';
+import { startPaymentTimeoutScheduler } from './schedulers/paymentTimeoutScheduler.js';
+import { startWorkflowTimeoutScheduler } from './schedulers/workflowTimeoutScheduler.js';
+import jobRoutes from './routes/jobRoutes.js';
+import demoRoutes from './routes/demoRoutes.js';
+import whatsappRoutes from './routes/whatsappRoutes.js';
+import messagingMetricsRoutes from './routes/messagingMetricsRoutes.js';
+import crmRoutes from './routes/crmRoutes.js';
+import discountRoutes from './routes/discountRoutes.js';
+import externalApiRoutes from './routes/externalApiRoutes.js';
+import agentRoutes from './routes/agentRoutes.js';
+import apiKeyRoutes from './routes/apiKeyRoutes.js';
+import businessPermissionsRoutes from './routes/businessPermissionsRoutes.js';
+import enumsRoutes from './routes/enumsRoutes.js';
+import projectRoutes from './routes/projects.js';
+import creditPackRoutes from './routes/creditPackRoutes.js';
+import supportRoutes from './routes/supportRoutes.js';
+import healthcareRoutes from './routes/healthcareRoutes.js';
+import pathologyRoutes from './routes/pathologyRoutes.js';
+import courseRoutes from './routes/education/courseRoutes.js';
+import batchRoutes from './routes/education/batchRoutes.js';
+import enquiryRoutes from './routes/education/enquiryRoutes.js';
+
+// Import live chat routes
+import liveChatConversationRoutes from './routes/liveChat-conversationRoutes.js';
+import liveChatMessageRoutes from './routes/liveChat-messageRoutes.js';
+import liveChatTagRoutes from './routes/liveChat-tagRoutes.js';
+import clinicRoutes from './routes/clinicRoutes.js';
+import mediaRoutes from '../routes/media.js';
+import mediaLibraryRoutes from './routes/mediaLibraryRoutes.js';
+
+// Load environment variables
+dotenv.config();
+
+// Initialize Express app
+const app = express();
+
+// Initialize Sentry error tracking
+initSentry(app);
+
+// Middleware - CORS Configuration
+const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true);
+    
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    
+    if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1') ||
+        allowedOrigins.includes(normalizedOrigin)) {
+      return callback(null, true);
+    }
+    
+    // For VPS where frontend and backend are on the same domain, origin might be undefined or match
+    callback(null, true); // Allow all by default for now, since it's same-origin behind Nginx
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-phone-number-id'],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
+}));
+
+// ✅ CRITICAL: Custom body parser that captures raw body AND parses JSON
+// IMPORTANT: This middleware runs ONCE per request and sets up per-request data collection
+app.use((req, res, next) => {
+  // Skip processing for multipart/form-data (let multer handle it)
+  const contentType = req.get('content-type') || '';
+  if (contentType.includes('multipart/form-data')) {
+    return next();
+  }
+  
+  // Each request gets its own data buffer (per-request scope)
+  let requestData = Buffer.alloc(0);
+  const chunks = [];
+  
+  // Collect all chunks for this specific request
+  req.on('data', chunk => {
+    chunks.push(chunk);
+    requestData = Buffer.concat([requestData, chunk]);
+    
+    // 🛡️ CRITICAL SECURITY FIX: Protect single-server from memory exhaustion (OOM crashes)
+    // Abort if the request body exceeds 10MB (prevents malicious huge payloads)
+    if (requestData.length > 10 * 1024 * 1024) {
+      req.socket.destroy();
+      return;
+    }
+  });
+  
+  // When THIS request's body ends, process it immediately
+  req.on('end', () => {
+    // ✅ Store raw body as Buffer immediately (for webhook signature verification)
+    req.rawBody = requestData;
+    
+    // Parse JSON safely
+    try {
+      if (requestData.length === 0) {
+        req.body = {}; // Fix for "Unexpected end of JSON input" on empty bodies
+      } else if (req.get('content-type')?.includes('application/json')) {
+        const rawBodyString = requestData.toString('utf-8');
+        req.body = JSON.parse(rawBodyString);
+      } else if (req.get('content-type')?.includes('application/x-www-form-urlencoded')) {
+        const qs = require('querystring');
+        req.body = qs.parse(requestData.toString('utf-8'));
+      } else {
+        req.body = requestData;
+      }
+    } catch (e) {
+      console.error(`[${new Date().toISOString()}] Body parse error:`, e.message);
+      req.body = {};
+    }
+    
+    // Call next() - this allows the request to proceed to the handler
+    // Each request has its own req.rawBody and req.body (proper scoping)
+    next();
+  });
+  
+  // Handle errors during body collection
+  req.on('error', err => {
+    console.error('Request error during body collection:', err);
+    next(err);
+  });
+});
+
+// Keep express.json() for fallback, but it won't process since body is already parsed
+// app.use(express.json({ limit: '100mb' }));
+// app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+
+// Subdomain detection middleware (RUNS FIRST - extracts workspace context from URL)
+app.use(subdomainDetectionMiddleware);
+
+// Domain validation middleware (Enforce admin.domain vs app.domain separation)
+app.use(validateDomain(['admin', 'app', 'support', 'healthcare']));
+
+// Serve static files (uploads)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+// Basic health check route
+app.get('/', (req, res) => {
+  res.json({
+    message: '🚀 WhatsApp Platform API is running!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    message: 'Server is healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Debug endpoint - check JWT validation
+app.post('/api/debug/verify-token', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'No token provided',
+        authHeader: authHeader ? 'present' : 'missing'
+      });
+    }
+    
+    // Import jwt here to verify
+    import('jsonwebtoken').then(jwt => {
+      const JWT_SECRET = process.env.JWT_SECRET || 'whatsapp-platform-jwt-secret-2026';
+      try {
+        const decoded = jwt.default.verify(token, JWT_SECRET);
+        res.json({
+          success: true,
+          message: 'Token is valid',
+          decoded,
+          tokenLength: token.length,
+          expiresAt: new Date(decoded.exp * 1000)
+        });
+      } catch (error) {
+        res.status(401).json({
+          success: false,
+          message: 'Token verification failed',
+          error: error.message,
+          jwtSecret: JWT_SECRET ? '✅ Set' : '❌ Using default',
+          tokenLength: token.length
+        });
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Debug error',
+      error: error.message
+    });
+  }
+});
+
+// Test database connection endpoint
+app.get('/api/test-db', async (req, res) => {
+  if (mongoose.connection.readyState === 1) {
+    res.json({
+      status: 'success',
+      message: '✅ Database connected successfully!',
+      database: mongoose.connection.name,
+      host: mongoose.connection.host,
+      collections: await mongoose.connection.db.listCollections().toArray()
+    });
+  } else {
+    res.status(500).json({
+      status: 'error',
+      message: '❌ Database not connected',
+      readyState: mongoose.connection.readyState
+    });
+  }
+});
+
+// Mount webhook routes (NO AUTH - verified by token + HMAC signature validation)
+app.use('/api/webhooks', validateWebhookSignature, webhookRoutes);
+// Register Gemini code‑editing endpoint
+// -- Gemini edit route registration removed --
+
+// ============================================
+// AUTH STRATEGY FOR ALL ROUTES (STEP 5 COMPLETE):
+// ============================================
+// 1. /api/webhooks/* 
+//    - X-Hub-Signature-256 validation (HMAC from Meta)
+//    - No user auth needed
+//    - For incoming webhooks from WhatsApp
+//
+// 2. /api/auth/* & /api/demo/*
+//    - NO AUTH (public endpoints)
+//    - Login, logout, demo booking
+//
+// 3. /api/external/* (Integration API - API Key only)
+//    - Requires: wpi_live_<key> in Authorization header OR X-API-Key header
+//    - For third-party integrations and external clients
+//    - Uses requireApiKey middleware
+//    - NEVER use JWT for external APIs
+//
+// 4. /api/* (Dashboard routes - JWT only)
+//    - Requires: Bearer token in Authorization header
+//    - For dashboard users, admin, superadmin
+//    - Authenticated users only
+//    - Uses requireJWT middleware
+//
+// RULE: Each route type uses ONE auth method. No mixing!
+// ============================================
+
+// Mount auth routes (NO AUTH - public login/logout)
+app.use('/api/auth', authRoutes);
+
+// ============================================
+// NEW: TENANT-ISOLATED AUTH ROUTES (PHASE 1)
+// ============================================
+// Import new tenant auth
+import { tenantAuth, superadminOnly, clientOnly } from './middleware/tenantAuth.js';
+import { superadminLogin, clientLogin, refreshToken } from './routes/auth/auth.js';
+
+// Superadmin login endpoint
+app.post('/api/auth/superadmin/login', superadminLogin);
+
+// Client login endpoint
+app.post('/api/auth/client/login', clientLogin);
+
+// Refresh token endpoint
+app.post('/api/auth/refresh-token', refreshToken);
+
+// ============================================
+// PHASE 2: WHATSAPP MESSAGE ROUTES (Legacy)
+// ============================================
+import clientMessagesRoutes from './routes/clientMessagesRoutes.js';
+import phase2WebhookRoutes from './routes/phase2WebhookRoutes.js';
+
+// Client message routes (require JWT + tenant isolation)
+app.use('/api/client/messages', tenantAuth, clientOnly, clientMessagesRoutes);
+app.use('/api/client/conversations', tenantAuth, clientOnly, clientMessagesRoutes);
+
+// WhatsApp webhook (NO AUTH - verified by signature)
+app.use('/api/webhooks', phase2WebhookRoutes);
+
+// ============================================
+// PHASE 3: REFACTORED ROUTE ARCHITECTURE
+// ============================================
+// Import refactored routes
+import superadminRoutes from './routes/superadmin/index.js';
+import clientRoutes from './routes/client/index.js';
+import companyRoutes from './routes/company/index.js';
+
+// Mount refactored routes with proper auth
+// SUPERADMIN routes: /api/superadmin/* (superadmin only)
+app.use('/api/superadmin', tenantAuth, superadminOnly, superadminRoutes);
+app.use('/api/superadmin/finance', tenantAuth, superadminOnly, adminFinancialRoutes);
+
+// CLIENT routes: /api/client/* (regular clients only)
+app.use('/api/client', tenantAuth, clientOnly, clientRoutes);
+
+// COMPANY routes: /api/company/* (ReplySQL account only)
+app.use('/api/company', tenantAuth, companyRoutes);
+
+// Mount demo routes (PUBLIC - anyone can book a demo)
+app.use('/api/demo', demoRoutes);
+
+// Mount enums routes (PUBLIC - anyone can fetch enum definitions)
+app.use('/api/enums', enumsRoutes);
+
+// Mount external API routes (API KEY AUTH only - for third-party integrations)
+app.use('/api/external', externalApiRoutes);
+app.use('/api/v1', externalApiRoutes);
+
+// Mount project routes (JWT AUTH only - multi-project scoping)
+app.use('/api/projects', requireJWT, projectRoutes);
+
+// Mount settings routes (ADMIN DOMAIN ONLY - superadmin/team configuration)
+app.use('/api/settings', requireAdminDomain, requireJWT, settingsRoutes);
+
+// ✅ SYSTEM CONSISTENCY: Mount phone-numbers as standalone endpoint (alias for /settings/phone-numbers)
+// This ensures both /api/phone-numbers and /api/settings/phone-numbers work for frontend compatibility
+app.use('/api/phone-numbers', requireAdminDomain, requireJWT, settingsRoutes);
+
+// Mount dashboard routes (JWT AUTH + SUBSCRIPTION REQUIRED - for logged-in dashboard users)
+app.use('/api/templates', requireJWT, requireSubscription, templateRoutes);
+app.use('/api/chatbots', requireJWT, requireSubscription, requirePlanFeature('chatbot'), chatbotRoutes);
+app.use('/api/messages', requireJWT, requireSubscription, messageRoutes);
+app.use('/api/conversations', requireJWT, requireSubscription, conversationRoutes);
+app.use('/api/contacts', requireJWT, requireSubscription, contactRoutes);
+app.use(
+  '/api/healthcare',
+  requireJWT,
+  requireSubscription,
+  requirePlanFeature('hc_patients', 'healthcare'),
+  healthcareRoutes
+);
+app.use(
+  '/api/pathology',
+  requireJWT,
+  requireSubscription,
+  requirePlanFeature('pl_patients', 'pathology'),
+  pathologyRoutes
+);
+app.use('/api/education/courses', requireJWT, requireSubscription, courseRoutes);
+app.use('/api/education/batches', requireJWT, requireSubscription, batchRoutes);
+app.use('/api/education/enquiries', requireJWT, requireSubscription, enquiryRoutes);
+app.use('/api/clinic', requireJWT, requireSubscription, clinicRoutes);
+app.use('/api/segments', requireJWT, requireSubscription, segmentRoutes);
+app.use('/api/broadcasts', requireJWT, requireSubscription, requirePlanFeature('broadcasts'), broadcastRoutes);
+app.use('/api/campaigns', requireJWT, requireSubscription, requirePlanFeature('campaigns'), campaignRoutes);
+app.use('/api/notifications', requireJWT, notificationRoutes); // Notifications accessible without subscription
+
+// Mount pricing routes (PUBLIC for public plans, JWT AUTH for admin)
+app.use('/api/pricing', pricingRoutes);
+
+// Mount subscription routes (JWT AUTH for user subscriptions)
+app.use('/api/subscriptions', requireJWT, subscriptionRoutes);
+
+// Mount credit pack routes (JWT AUTH for clients + SUPERADMIN for management)
+app.use('/api/dashboard/superadmin/credit-packs', creditPackRoutes);
+
+// Mount payment routes (JWT AUTH - for payment history and admin stats)
+app.use('/api/payment', requireJWT, paymentRoutes);
+
+// Mount payment webhook routes (PUBLIC for Cashfree webhooks, JWT AUTH for status checks)
+app.use('/api/payments', paymentWebhookRoutes);
+
+// Mount dashboard routes (JWT AUTH for dashboard statistics)
+app.use('/api/dashboard', requireJWT, dashboardRoutes);
+
+// Mount CRM routes (JWT AUTH + SUBSCRIPTION REQUIRED - for managing contacts, conversations, analytics)
+app.use('/api/crm', requireJWT, requireSubscription, crmRoutes);
+
+// Mount live chat routes (APP DOMAIN ONLY - client WhatsApp chat interface)
+app.use('/api/live-chat/conversations', requireAppDomain, requireJWT, requireSubscription, requirePlanFeature('live_chat'), liveChatConversationRoutes);
+app.use('/api/live-chat/messages', requireAppDomain, requireJWT, requireSubscription, requirePlanFeature('live_chat'), liveChatMessageRoutes);
+app.use('/api/live-chat/tags', requireJWT, requireSubscription, liveChatTagRoutes);
+
+// Mount support routes (SUPPORT DOMAIN ONLY - support inbox and ticket workflows)
+app.use('/api/support', requireSupportDomain, requireJWT, supportRoutes);
+
+// Mount media routes (JWT AUTH - for media proxy and downloads)
+app.use('/api/media', requireJWT, mediaRoutes);
+app.use('/api/media-library', requireJWT, attachDefaultProject, mediaLibraryRoutes);
+
+// Mount agent routes (JWT AUTH - for agent management, assignment, invitations)
+app.use('/api/agents', agentRoutes);
+
+// Mount self-service account routes (JWT AUTH - for dashboard users)
+app.use('/api/account', requireJWT, accountRoutes);
+app.use('/api/accounts', requireJWT, accountRoutes); // Alias for Account Dashboard
+
+// Mount organizations admin routes (JWT AUTH - for admin)
+app.use('/api/admin/organizations', requireJWT, organizationsRoutes);
+
+// Mount admin routes (JWT AUTH + SUPERADMIN ROLE - for superadmin)
+app.use('/api/admin', requireJWT, requireSuperAdmin, adminRoutes);
+
+// Mount discount configuration routes (JWT AUTH - for superadmin)
+app.use('/api/admin/discounts', requireJWT, discountRoutes);
+
+// Mount demo admin routes (JWT AUTH - for superadmin)
+app.use('/api/admin/demo-requests', requireJWT, demoRoutes);
+
+// Mount payment reminder routes (JWT AUTH - for admin)
+app.use('/api/admin/payment-reminders', requireJWT, paymentReminderRoutes);
+
+// Mount job routes (JWT AUTH - for admin)
+app.use('/api/jobs', requireJWT, jobRoutes);
+
+// Mount WhatsApp integration routes (Flow B: Embedded Signup)
+app.use('/api/integrations/whatsapp', requireJWT, whatsappRoutes);
+
+// Mount messaging metrics routes (tier and usage)
+app.use('/api/messaging-metrics', requireJWT, messagingMetricsRoutes);
+
+// Mount Live Chat routes (Real-time conversations and messaging)
+app.use('/api/integrations/whatsapp/conversations', requireJWT, liveChatConversationRoutes);
+app.use('/api/integrations/whatsapp/messages', requireJWT, liveChatMessageRoutes);
+app.use('/api/integrations/whatsapp/tags', requireJWT, liveChatTagRoutes);
+
+// Mount business permissions routes (JWT AUTH - for managing business advanced permissions)
+app.use('/api/business/permissions', requireJWT, businessPermissionsRoutes);
+
+// Mount API key management routes (JWT AUTH)
+app.use('/api/integrations/api-keys', apiKeyRoutes);
+
+// Mount external API routes - THIRD-PARTY INTEGRATIONS (API KEY AUTH ONLY)
+// Routes at /api/external/* are for external applications using API keys
+app.use('/api/external/conversations', integrationsRoutes);
+app.use('/api/external/messages', integrationsRoutes);
+app.use('/api/external/templates', integrationsRoutes);
+app.use('/api/external/contacts', integrationsRoutes);
+app.use('/api/external/broadcasts', integrationsRoutes);
+
+// Legacy integration routes (kept for backwards compatibility, same as /api/external/*)
+app.use('/api/integrations', integrationsRoutes);
+
+// Leads management (with JWT and subscription)
+app.use('/api/leads', requireJWT, requireSubscription, leadRoutes);
+
+// Mount API routes (API KEY AUTH - for external integrations only)
+app.use('/api/stats', authenticate, statsRoutes);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Route not found',
+    path: req.path
+  });
+});
+
+// Sentry error handler (should be before other error handlers)
+app.use(sentryErrorHandler);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal server error',
+    error: err.code || 'INTERNAL_SERVER_ERROR',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
+
+// Setup Socket.io for controllers
+export const setupSocketIO = (io) => {
+  const { setSocketIO: setWebhookSocketIO } = webhookRoutes;
+  const { setSocketIO: setMessageSocketIO } = messageRoutes;
+  
+  // Pass io instance to webhook controller
+  import('./controllers/webhookController.js').then(module => {
+    module.setSocketIO(io);
+  });
+  
+  // Pass io instance to message controller
+  import('./controllers/messageController.js').then(module => {
+    module.setSocketIO(io);
+  });
+
+  // Start payment status poller (auto-checks pending payments every 10 seconds)
+  startPaymentStatusPoller();
+
+  // Start payment timeout scheduler (runs every 15 minutes)
+  startPaymentTimeoutScheduler();
+  startWorkflowTimeoutScheduler();
+};
+
+export default app;

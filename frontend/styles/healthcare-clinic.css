@@ -1,0 +1,28 @@
+/* Clinic patient workspace — light, calm surfaces */
+.hc-patient-page {
+  --hc-teal: #0d9488;
+  --hc-blue: #2563eb;
+  --hc-violet: #7c3aed;
+  --hc-amber: #d97706;
+  --hc-green: #16a34a;
+  --hc-rose: #e11d48;
+  background: #f1f5f9;
+}
+
+.hc-patient-card {
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.hc-tab-panel {
+  border-left-width: 4px;
+  border-left-style: solid;
+}
+
+.hc-action-btn {
+  min-height: 2.75rem;
+  font-weight: 600;
+  border-radius: 0.625rem;
+}

@@ -1,0 +1,601 @@
+/**
+ * Role-Based Access Control (RBAC) Configuration
+ * Defines permissions for each user role
+ * 
+ * NOTE: Uses centralized UserRole enum from lib/enums.ts
+ */
+
+import { UserRole } from './enums';
+
+// Re-export UserRole for backward compatibility
+export { UserRole } from './enums';
+
+/**
+ * Route access configuration
+ * Defines which roles can access which routes
+ */
+export const routeAccess = {
+  // Dashboard
+  '/dashboard': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
+  '/dashboard/home': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
+  '/dashboard/command-center': [UserRole.SUPERADMIN],
+  
+  // Broadcasts - Allow USER role for clients
+  '/dashboard/broadcasts': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/broadcasts/new': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/broadcasts/schedule': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/broadcasts/create': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  
+  // Contacts - Allow USER role for clients
+  '/dashboard/contacts': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/contacts/import': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  
+  // Messages
+  '/dashboard/messages': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
+  
+  // Templates - Allow USER role for clients
+  '/dashboard/templates': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  
+  // Chatbot - Allow USER role for clients
+  '/dashboard/chatbot': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/chatbot/builder': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/flow': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/healthcare': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/healthcare/staff': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  // Project-scoped flow routes (allow all)
+  '/projects': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
+  
+  // Live Chat - Allow USER role for clients
+  '/dashboard/live-chat-v2': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
+  
+  // Campaigns - Allow USER role for clients
+  '/dashboard/campaigns': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/campaigns/new': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/campaigns/create': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  
+  // Leads - Allow USER role for clients
+  '/dashboard/leads': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
+  
+  // Analytics - Admin only
+  '/dashboard/analytics': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
+  '/dashboard/reports': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
+  
+  // Team
+  '/dashboard/team': [UserRole.SUPERADMIN, UserRole.ADMIN],
+  '/dashboard/team/members': [UserRole.SUPERADMIN, UserRole.ADMIN],
+  '/dashboard/team/roles': [UserRole.SUPERADMIN, UserRole.ADMIN],
+  
+  // Agents
+  '/dashboard/agents': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
+  '/dashboard/agents/create': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
+  '/dashboard/agents/onboarding': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT],
+  
+  // Billing
+  '/dashboard/billing': [UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/billing/invoices': [UserRole.SUPERADMIN],
+  '/dashboard/billing/subscriptions': [UserRole.SUPERADMIN],
+  
+  // Invoices - SuperAdmin only
+  '/dashboard/invoices': [UserRole.SUPERADMIN],
+  
+  // Transactions - Allow all authenticated users to view their transactions
+  '/dashboard/transactions': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  
+  // Account - Org Admins only
+  '/dashboard/account': [UserRole.ADMIN, UserRole.MANAGER],
+  
+  // Settings
+  '/dashboard/settings': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/settings/account': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/settings/security': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER],
+  '/dashboard/settings/whatsapp-setup': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER],
+  
+  // Client Features (now consolidated under /dashboard/features)
+  '/dashboard/features/connected-whatsapp': [UserRole.SUPERADMIN, UserRole.ADMIN],
+  '/dashboard/features/support': [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER],
+  '/dashboard/features/change-plan': [UserRole.ADMIN, UserRole.MANAGER],
+  
+  // SuperAdmin only routes
+  '/dashboard/organizations': [UserRole.SUPERADMIN],
+  '/dashboard/system-health': [UserRole.SUPERADMIN],
+  '/dashboard/platform-billing': [UserRole.SUPERADMIN],
+  '/dashboard/website-settings': [UserRole.SUPERADMIN],
+  
+  // SuperAdmin tier routes (/dashboard/superadmin/*)
+  '/dashboard/superadmin': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/tasks': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/organizations': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/admin/demo-requests': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/admin/pending-payments': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/system-health': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/platform-billing': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/transactions': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/billing/reconciliation/overview': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/billing/reconciliation/stuck-payments': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/invoices': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/credit-packs': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/billing/triggers': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/internal-users': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/offers': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/plans-and-offers': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/communications/maintenance': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/governance/audit-logs': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/governance/feature-flags': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/governance/exports': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/analytics/revenue-projections': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/accounts': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/website-settings': [UserRole.SUPERADMIN],
+  '/dashboard/superadmin/test-data': [UserRole.SUPERADMIN],
+  '/dashboard/support': [UserRole.SUPERADMIN],
+  '/dashboard/support/inbox': [UserRole.SUPERADMIN],
+  '/dashboard/support/tickets': [UserRole.SUPERADMIN],
+  '/dashboard/support/tickets/[ticketId]': [UserRole.SUPERADMIN],
+}
+
+/**
+ * Sidebar navigation items based on user role
+ */
+export const getSidebarItems = (role: UserRole) => {
+  const baseItems = [
+    // ── COMMAND CENTER ──
+    {
+      label: 'Tasks & Calendar',
+      href: '/dashboard/superadmin/tasks',
+      icon: 'CalendarDays',
+      group: '🛡️ Core Operations',
+      roles: [UserRole.SUPERADMIN],
+    },
+    // ── MAIN ──
+    {
+      label: 'Dashboard',
+      href: '/dashboard',
+      icon: 'LayoutDashboard',
+      group: null,
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    // ── GROWTH ──
+    {
+      label: 'Leads',
+      href: '/dashboard/leads',
+      icon: 'Target',
+      group: '🚀 Growth',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Contacts',
+      href: '/dashboard/contacts',
+      icon: 'Users',
+      group: '🚀 Growth',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT]
+    },
+    // ── CONVERSATIONS ──
+    {
+      label: 'Live Chat',
+      href: '/dashboard/live-chat-v2',
+      icon: 'MessageSquare',
+      group: '💬 Conversations',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Chatbot',
+      href: '/dashboard/chatbot',
+      icon: 'Bot',
+      group: '💬 Conversations',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Flow Builder',
+      href: '/dashboard/flow',
+      icon: 'GitBranch',
+      group: '💬 Conversations',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Enquiries',
+      href: '/dashboard/education/enquiries',
+      icon: 'Users',
+      group: '🎓 Education',
+      vertical: 'education',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    },
+    {
+      label: 'Admissions',
+      href: '/dashboard/education/admissions',
+      icon: 'UserPlus',
+      group: '🎓 Education',
+      vertical: 'education',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    },
+    {
+        label: 'Courses',
+        href: '/dashboard/education/courses',
+        icon: 'BookOpen',
+        group: '🎓 Education',
+        vertical: 'education',
+        roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    },
+    {
+        label: 'Batches',
+        href: '/dashboard/education/batches',
+        icon: 'Package',
+        group: '🎓 Education',
+        vertical: 'education',
+        roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    },
+    {
+      label: 'Home',
+      href: '/dashboard/pixels',
+      icon: 'LayoutDashboard',
+      group: '💇‍♀️ Salon Workspace',
+      vertical: 'pixels',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Appointments',
+      href: '/dashboard/pixels/appointments',
+      icon: 'Calendar',
+      group: '💇‍♀️ Salon Workspace',
+      vertical: 'pixels',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Clients',
+      href: '/dashboard/pixels/clients',
+      icon: 'Users',
+      group: '💇‍♀️ Salon Workspace',
+      vertical: 'pixels',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Staff & Services',
+      href: '/dashboard/pixels/staff',
+      icon: 'Users2',
+      group: '💇‍♀️ Salon Management',
+      vertical: 'pixels',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Memberships',
+      href: '/dashboard/pixels/memberships',
+      icon: 'CreditCard',
+      group: '💇‍♀️ Salon Management',
+      vertical: 'pixels',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Offers',
+      href: '/dashboard/pixels/offers',
+      icon: 'Megaphone',
+      group: '💇‍♀️ Salon Marketing',
+      vertical: 'pixels',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Loyalty Points',
+      href: '/dashboard/pixels/loyalty',
+      icon: 'BarChart3',
+      group: '💇‍♀️ Salon Marketing',
+      vertical: 'pixels',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    {
+      label: 'Overview',
+      href: '/dashboard/healthcare',
+      icon: 'Activity',
+      group: '🏥 Healthcare • Core',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Clinic Setup',
+      href: '/dashboard/healthcare/clinic-setup',
+      icon: 'Building2',
+      group: '🏥 Healthcare • Core',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Patients',
+      href: '/dashboard/healthcare/patients',
+      icon: 'Users',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Doctors',
+      href: '/dashboard/healthcare/doctors',
+      icon: 'BookOpen',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Staff',
+      href: '/dashboard/healthcare/staff',
+      icon: 'UserPlus',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Nurses',
+      href: '/dashboard/healthcare/nurses',
+      icon: 'Users2',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Appointments',
+      href: '/dashboard/healthcare/appointments',
+      icon: 'Calendar',
+      group: '🏥 Healthcare • Front Desk',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Front Desk',
+      href: '/dashboard/healthcare/frontdesk',
+      icon: 'Sliders',
+      group: '🏥 Healthcare • Front Desk',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Prescriptions',
+      href: '/dashboard/healthcare/prescriptions',
+      icon: 'FileText',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Medicine master',
+      href: '/dashboard/healthcare/pharmacy',
+      icon: 'Package',
+      group: '🏥 Healthcare • Clinical',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Inventory',
+      href: '/dashboard/healthcare/inventory',
+      icon: 'Archive',
+      group: '🏥 Healthcare • Pharmacy',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Billing',
+      href: '/dashboard/healthcare/billing',
+      icon: 'CreditCard',
+      group: '🏥 Healthcare • Billing',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Compliance',
+      href: '/dashboard/healthcare/compliance',
+      icon: 'ShieldCheck',
+      group: '🏥 Healthcare • Compliance',
+      vertical: 'healthcare',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    },
+    {
+      label: 'Overview',
+      href: '/dashboard/pathology',
+      icon: 'Activity',
+      group: '🧪 Pathology • Core',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Lab Setup',
+      href: '/dashboard/pathology/lab-setup',
+      icon: 'Building2',
+      group: '🧪 Pathology • Core',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Patients',
+      href: '/dashboard/pathology/patients',
+      icon: 'Users',
+      group: '🧪 Pathology • Operations',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Test catalog',
+      href: '/dashboard/pathology/tests',
+      icon: 'BookOpen',
+      group: '🧪 Pathology • Operations',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Lab orders',
+      href: '/dashboard/pathology/orders',
+      icon: 'Calendar',
+      group: '🧪 Pathology • Operations',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Collection',
+      href: '/dashboard/pathology/collection',
+      icon: 'Sliders',
+      group: '🧪 Pathology • Operations',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Reports',
+      href: '/dashboard/pathology/reports',
+      icon: 'FileText',
+      group: '🧪 Pathology • Reports',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Lab billing',
+      href: '/dashboard/pathology/billing',
+      icon: 'CreditCard',
+      group: '🧪 Pathology • Billing',
+      vertical: 'pathology',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    // ── MARKETING ──
+    {
+      label: 'Campaigns',
+      href: '/dashboard/campaigns',
+      icon: 'Megaphone',
+      group: '📢 Marketing',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER]
+    },
+    {
+      label: 'Templates',
+      href: '/dashboard/templates',
+      icon: 'FileText',
+      group: '📢 Marketing',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    },
+    {
+      label: 'Media Library',
+      href: '/dashboard/media',
+      icon: 'ImageIcon',
+      group: '📢 Marketing',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    },
+    // ── ANALYTICS ──
+    {
+      label: 'Analytics',
+      href: '/dashboard/analytics',
+      icon: 'BarChart3',
+      group: '📈 Analytics',
+      roles: [UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.AGENT, UserRole.USER]
+    },
+    // ── SYSTEM ──
+
+    {
+      label: 'Settings',
+      href: '/dashboard/settings',
+      icon: 'Settings',
+      group: '⚙️ System',
+    }
+    ,
+    {
+      label: 'Support Ops',
+      href: '/dashboard/support',
+      icon: 'BookOpen',
+      group: '⚙️ System',
+      roles: [UserRole.SUPERADMIN]
+    }
+  ]
+
+  // Filter items based on user role (with safety check for undefined roles)
+  return baseItems.filter(item => !item.roles || item.roles.includes(role))
+}
+
+/**
+ * Feature permissions based on role
+ */
+export const featurePermissions = {
+  [UserRole.SUPERADMIN]: {
+    broadcastMessages: true,
+    createCampaigns: true,
+    manageTeam: true,
+    manageBilling: true,
+    viewAnalytics: true,
+    manageTemplates: true,
+    createChatbot: true,
+    manageSettings: true,
+    viewAllData: true,
+    exportData: true,
+    apiAccess: true
+  },
+  [UserRole.ADMIN]: {
+    broadcastMessages: true,
+    createCampaigns: true,
+    manageTeam: true,
+    manageBilling: true,
+    viewAnalytics: true,
+    manageTemplates: true,
+    createChatbot: true,
+    manageSettings: true,
+    viewAllData: true,
+    exportData: true,
+    apiAccess: true
+  },
+  [UserRole.MANAGER]: {
+    broadcastMessages: true,
+    createCampaigns: true,
+    manageTeam: false,
+    manageBilling: false,
+    viewAnalytics: true,
+    manageTemplates: true,
+    createChatbot: true,
+    manageSettings: true,
+    viewAllData: true,
+    exportData: true,
+    apiAccess: false
+  },
+  [UserRole.AGENT]: {
+    broadcastMessages: true,
+    createCampaigns: false,
+    manageTeam: false,
+    manageBilling: false,
+    viewAnalytics: false,
+    manageTemplates: false,
+    createChatbot: false,
+    manageSettings: true,
+    viewAllData: false,
+    exportData: false,
+    apiAccess: false
+  },
+  [UserRole.USER]: {
+    broadcastMessages: false,
+    createCampaigns: false,
+    manageTeam: false,
+    manageBilling: false,
+    viewAnalytics: false,
+    manageTemplates: false,
+    createChatbot: false,
+    manageSettings: true,
+    viewAllData: false,
+    exportData: false,
+    apiAccess: false
+  }
+}
+
+/**
+ * Check if user has permission for a feature
+ */
+export const hasPermission = (role: UserRole, feature: keyof typeof featurePermissions[UserRole.SUPERADMIN]): boolean => {
+  return featurePermissions[role]?.[feature] ?? false
+}
+
+/**
+ * Check if user can access a route
+ */
+export const canAccessRoute = (role: UserRole, route: string): boolean => {
+  const rawRole = String(role || '')
+  if (rawRole === 'support') {
+    return route.startsWith('/dashboard/support')
+  }
+
+  const allowedRoles = routeAccess[route as keyof typeof routeAccess]
+  return allowedRoles ? allowedRoles.includes(role) : true
+}
+
+/**
+ * Role descriptions
+ */
+export const roleDescriptions = {
+  [UserRole.SUPERADMIN]: 'Full platform access, manage all features and users',
+  [UserRole.ADMIN]: 'Admin access, manage teams, billing, and campaigns',
+  [UserRole.MANAGER]: 'Manager access, create campaigns and manage agents',
+  [UserRole.AGENT]: 'Agent access, send messages and manage contacts',
+  [UserRole.USER]: 'Limited access, can only update own settings'
+}

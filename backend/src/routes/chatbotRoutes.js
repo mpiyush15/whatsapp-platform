@@ -1,0 +1,65 @@
+import express from 'express';
+import logger from '../utils/logger.js';
+import { validateProjectFromQuery } from '../middleware/projectAuth.js';
+import { handleControllerError, ValidationError, NotFoundError, UnauthorizedError, ForbiddenError, ConflictError, createAppError, validateInput, validateRequest } from '../utils/errorHandler.js';
+import { 
+  getChatbots, 
+  getChatbot,
+  createChatbot,
+  updateChatbot,
+  toggleChatbot,
+  deleteChatbot,
+  getChatbotInteractions,
+  getChatbotLeads,
+  updateLead,
+  convertLeadToClient,
+  deleteLead,
+  getEducationChatbotPresets,
+  installEducationChatbotPreset
+} from '../controllers/chatbotController.js';
+
+const router = express.Router();
+
+// JWT auth is handled at app.js level, no need for authenticate here
+
+// ===== PRESET ROUTES (Must come BEFORE dynamic /:chatbotId routes) =====
+router.get('/presets/education', getEducationChatbotPresets);
+router.post('/presets/education/install', installEducationChatbotPreset);
+
+// ===== LEADS ROUTES (Must come BEFORE /:id routes) =====
+// Get all leads for a chatbot
+router.get('/:chatbotId/leads', validateProjectFromQuery, getChatbotLeads);
+
+// Update lead status/notes
+router.patch('/leads/:leadId', updateLead);
+
+// Convert lead to contact
+router.post('/leads/:leadId/convert', convertLeadToClient);
+
+// Delete lead
+router.delete('/leads/:leadId', deleteLead);
+
+// ===== CHATBOT ROUTES =====
+
+// Get all chatbots with stats
+router.get('/', validateProjectFromQuery, getChatbots);
+
+// Get single chatbot
+router.get('/:id', validateProjectFromQuery, getChatbot);
+
+// Get chatbot interaction history
+router.get('/:id/interactions', validateProjectFromQuery, getChatbotInteractions);
+
+// Create new chatbot
+router.post('/', createChatbot);
+
+// Update chatbot
+router.put('/:id', updateChatbot);
+
+// Toggle chatbot active status
+router.patch('/:id/toggle', toggleChatbot);
+
+// Delete chatbot
+router.delete('/:id', deleteChatbot);
+
+export default router;
