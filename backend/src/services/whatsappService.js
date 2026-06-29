@@ -1556,7 +1556,7 @@ class WhatsAppService {
         components.push({
           type: 'button',
           sub_type: 'url',
-          index: buttonIdx,
+          index: String(buttonIdx), // Meta requires this to be a string (e.g. "0")
           parameters: [
             {
               type: 'text',
@@ -2084,25 +2084,31 @@ class WhatsAppService {
       await message.save();
       logger.info('✅ Message saved to DB');
 
-      // Upload media to WhatsApp and get media ID
-      const mediaId = await this.uploadMediaToWhatsApp(
-        metadata.fileBuffer,
-        phoneNumberId,
-        config.accessToken,
-        metadata.mimeType,
-        metadata.filename
-      );
-
-      // Prepare WhatsApp API payload with media ID
+      // Prepare WhatsApp API payload with media URL directly (solves delay issue)
       const mediaPayload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
         to: cleanPhone,
         type: mediaType,
-        [mediaType]: {
-          id: mediaId  // Use media ID instead of link
-        }
+        [mediaType]: {}
       };
+      
+      if (mediaUrl) {
+        mediaPayload[mediaType].link = mediaUrl;
+        logger.info('🔗 Using direct media link to avoid upload delays');
+      } else if (metadata.fileBuffer) {
+        logger.info('⚠️ No mediaUrl provided, falling back to manual WhatsApp media upload');
+        const mediaId = await this.uploadMediaToWhatsApp(
+          metadata.fileBuffer,
+          phoneNumberId,
+          config.accessToken,
+          metadata.mimeType,
+          metadata.filename
+        );
+        mediaPayload[mediaType].id = mediaId;
+      } else {
+        throw new Error('Either mediaUrl or fileBuffer is required to send media');
+      }
 
       // Add caption if provided (for image and video)
       if (caption && (mediaType === 'image' || mediaType === 'video')) {

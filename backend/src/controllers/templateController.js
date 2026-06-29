@@ -6,6 +6,7 @@ import { handleControllerError } from '../utils/errorHandler.js';
 import Template from '../models/Template.js';
 import PhoneNumber from '../models/PhoneNumber.js';
 import { uploadToS3, getMediaTypeFromMime } from '../services/s3Service.js';
+import { validateTemplateMetaRules } from '../utils/templateValidator.js';
 
 const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
 
@@ -712,9 +713,20 @@ export const submitTemplateToMeta = async (req, res) => {
       }
     }
 
+    // Run Meta Template Validation Rules
+    const validationErrors = validateTemplateMetaRules(template);
+    if (validationErrors && validationErrors.length > 0) {
+      return sendValidationError(res, `Template Validation Failed: ${validationErrors.join(' ')}`);
+    }
+
+    const exactLanguage = normalizeMetaTemplateLanguage(template.language);
+    if (template.language !== exactLanguage) {
+      template.language = exactLanguage;
+    }
+
     const payload = {
       name: template.name,
-      language: normalizeMetaTemplateLanguage(template.language),
+      language: exactLanguage,
       category: template.category.toUpperCase(), // Meta: MARKETING | UTILITY | AUTHENTICATION
       components,
       ...(isAuthentication ? { message_send_ttl_seconds: 600 } : {}),
