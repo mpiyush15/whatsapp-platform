@@ -724,6 +724,29 @@ export const submitTemplateToMeta = async (req, res) => {
       template.language = exactLanguage;
     }
 
+    // ----------------------------------------------------------------------
+    // CRITICAL FIX: Meta's automated validation bot expects the `type` fields 
+    // of components and buttons to be strictly LOWERCASE. If they are uppercase 
+    // (e.g. "HEADER"), they bypass the bot and fall into the manual review queue.
+    // ----------------------------------------------------------------------
+    components = components.map(comp => {
+      const newComp = { ...comp };
+      if (newComp.type) {
+        newComp.type = String(newComp.type).toLowerCase();
+      }
+      
+      if (newComp.buttons && Array.isArray(newComp.buttons)) {
+        newComp.buttons = newComp.buttons.map(btn => {
+          const newBtn = { ...btn };
+          if (newBtn.type) {
+            newBtn.type = String(newBtn.type).toLowerCase();
+          }
+          return newBtn;
+        });
+      }
+      return newComp;
+    });
+
     const payload = {
       name: template.name,
       language: exactLanguage,
