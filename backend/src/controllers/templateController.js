@@ -735,21 +735,21 @@ export const submitTemplateToMeta = async (req, res) => {
     }
 
     // ----------------------------------------------------------------------
-    // CRITICAL FIX: Meta's automated validation bot expects the `type` fields 
-    // of components and buttons to be strictly LOWERCASE. If they are uppercase 
-    // (e.g. "HEADER"), they bypass the bot and fall into the manual review queue.
+    // CRITICAL FIX: Meta's Graph API expects the `type` fields of components 
+    // and buttons to be strictly UPPERCASE (e.g., "BODY", "HEADER", "URL", "QUICK_REPLY"). 
+    // If they are lowercase, the API validation fails or defaults to manual review.
     // ----------------------------------------------------------------------
     components = components.map(comp => {
       const newComp = { ...comp };
       if (newComp.type) {
-        newComp.type = String(newComp.type).toLowerCase();
+        newComp.type = String(newComp.type).toUpperCase();
       }
       
       if (newComp.buttons && Array.isArray(newComp.buttons)) {
         newComp.buttons = newComp.buttons.map(btn => {
           const newBtn = { ...btn };
           if (newBtn.type) {
-            newBtn.type = String(newBtn.type).toLowerCase();
+            newBtn.type = String(newBtn.type).toUpperCase();
           }
           return newBtn;
         });
