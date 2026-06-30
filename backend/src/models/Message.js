@@ -47,7 +47,7 @@ const messageSchema = new mongoose.Schema({
   messageType: {
     type: String,
     enum: {
-      values: ['text', 'template', 'media', 'interactive', 'image', 'video', 'audio', 'document', 'location', 'sticker', 'button', 'reaction', 'voice'],
+      values: ['text', 'template', 'media', 'interactive', 'image', 'video', 'audio', 'document', 'location', 'sticker', 'button', 'reaction', 'voice', 'unsupported', 'unknown'],
       message: '{VALUE} is not a valid message type'
     },
     default: 'text'
