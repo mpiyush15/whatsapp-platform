@@ -107,14 +107,24 @@ function buildAuthenticationSubmitComponents({
   return components;
 }
 
-/** Meta often expects en_US for authentication presets, not bare "en". */
+/** Meta often expects en_US for authentication presets, not bare "en". ISO formatting is strict (e.g. en_US, es_ES). */
 function normalizeMetaTemplateLanguage(language) {
   const lang = (language || 'en').trim();
-  const map = {
-    en: 'en_US',
-    english: 'en_US',
-  };
-  return map[lang.toLowerCase()] || lang;
+  const lower = lang.toLowerCase();
+  
+  if (lower === 'en' || lower === 'english' || lower === 'en_us') {
+    return 'en_US';
+  }
+  
+  // Format ANY language string with an underscore to ISO lower_UPPER (e.g., "EN_US" -> "en_US", "es_mx" -> "es_MX")
+  if (lang.includes('_')) {
+    const parts = lang.split('_');
+    if (parts.length === 2) {
+      return `${parts[0].toLowerCase()}_${parts[1].toUpperCase()}`;
+    }
+  }
+  
+  return lang;
 }
 
 /**
