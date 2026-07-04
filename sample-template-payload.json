@@ -1,0 +1,36 @@
+{
+  "name": "sample_marketing_template",
+  "language": "en",
+  "category": "marketing",
+  "content": "Hello {{1}}, welcome to our service. Your order number is {{2}}.",
+  "hasMedia": true,
+  "mediaType": "image",
+  "mediaUrl": "https://example.com/image.png",
+  "mediaInputType": "url",
+  "headerText": "Welcome Header",
+  "footerText": "Thank you for choosing us!",
+  "buttons": [
+    {
+      "type": "QUICK_REPLY",
+      "text": "Yes"
+    },
+    {
+      "type": "URL",
+      "text": "Visit Website",
+      "url": "https://example.com"
+    }
+  ],
+  "variableType": "Text",
+  "mediaSample": "image",
+  "variableSamples": ["John", "12345"],
+  "variableConfig": [
+    {
+      "type": "Text"
+    },
+    {
+      "type": "Number"
+    }
+  ],
+  "projectId": "proj_123456789",
+  "templateType": "default"
+}

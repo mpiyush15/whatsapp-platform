@@ -1206,19 +1206,19 @@ export default function TemplatesTab({ projectId, isCreatePage = false }: { proj
 
             <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
               <table className="w-full min-w-[920px]">
-                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-[1]">
+                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-[1]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Category</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Category</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Type</th>
                     {isHealthcareCategory ? (
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap min-w-[140px]">Triggers</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap min-w-[140px]">Triggers</th>
                     ) : (
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Health</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Health</th>
                     )}
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Created At</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">Action</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Created At</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">

@@ -1,8 +1,9 @@
 'use client'
 
 import { useProject } from '@/lib/context/ProjectContext'
-import { Loader2, Phone, CheckCircle, Plus, RefreshCw, CreditCard, MessageSquare, Users, Settings, BarChart3, ArrowRight, Zap, Activity, AlertTriangle } from 'lucide-react'
+import { Loader2, Phone, CheckCircle, Plus, RefreshCw, CreditCard, MessageSquare, Users, Settings, BarChart3, ArrowRight, Zap, Activity, AlertTriangle, Building2 } from 'lucide-react'
 import Link from 'next/link'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 
@@ -55,6 +56,11 @@ export default function ProjectDashboard() {
   const [planName, setPlanName] = useState('No active plan')
   const [planInitialLoading, setPlanInitialLoading] = useState(true)
   const [planRefreshing, setPlanRefreshing] = useState(false)
+  const [activeTab, setActiveTab] = useState<'business' | 'overview' | 'whatsapp' | 'tools'>('business')
+
+  const [campaigns, setCampaigns] = useState<any[]>([])
+  const [campaignsLoading, setCampaignsLoading] = useState(true)
+  const [timeFilter, setTimeFilter] = useState<'all' | 'weekly' | 'monthly' | 'quarterly' | 'annually'>('all')
 
   const bootstrapStarted = useRef(false)
   const connectRequested = useRef(false)
@@ -227,16 +233,33 @@ export default function ProjectDashboard() {
     [getHeaders, planName, planStatus],
   )
 
+  const fetchBusinessStats = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false
+    try {
+      if (!silent) setCampaignsLoading(true)
+      const res = await fetch(`${API_URL}/campaigns?projectId=${projectId}`, { headers: getHeaders() })
+      if (!res.ok) return
+      const payload = await res.json()
+      const list = payload?.data?.campaigns || payload?.campaigns || (Array.isArray(payload) ? payload : [])
+      setCampaigns(list)
+    } catch (err) {
+      console.error('Failed to fetch campaigns for business stats', err)
+    } finally {
+      setCampaignsLoading(false)
+    }
+  }, [projectId, getHeaders])
+
   const loadDashboard = useCallback(
     async (opts?: { silent?: boolean }) => {
       const silent = opts?.silent ?? false
       const [phoneNumberId] = await Promise.all([
         fetchConnectedPhones({ silent }),
         fetchPlanStatus({ silent }),
+        fetchBusinessStats({ silent }),
       ])
       await fetchMessagingMetrics(phoneNumberId, { silent })
     },
-    [fetchConnectedPhones, fetchPlanStatus, fetchMessagingMetrics],
+    [fetchConnectedPhones, fetchPlanStatus, fetchMessagingMetrics, fetchBusinessStats],
   )
 
   useEffect(() => {
@@ -360,370 +383,409 @@ export default function ProjectDashboard() {
 
   const showPhonesSpinner = phonesInitialLoading && connectedPhones.length === 0
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { staggerChildren: 0.1 } }
+  };
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 }
+  };
+
   return (
-    <div className="p-8 min-h-screen bg-slate-50/50">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold mb-4 uppercase tracking-wider">
-              <Zap size={14} className="text-blue-500" />
-              {project?.businessCategory || 'Project'} Category
-            </div>
-            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">
-              Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-emerald-600">{project?.name}</span>
-            </h1>
-            <p className="text-slate-500 mt-2 text-lg">
-              Manage your WhatsApp communications, contacts, and integrations.
-            </p>
-          </div>
+    <div className="p-8 min-h-screen">
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-xl font-normal text-[#1C1E21]">
+            Welcome to {project?.name}
+          </h1>
+          <p className="text-[#667781] mt-1 text-sm">
+            Manage your WhatsApp communications, contacts, and integrations.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-8 space-y-8">
-            
-            {/* PLAN STATUS CARD */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 hover:shadow-md transition-shadow duration-300 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
-                <CreditCard size={120} />
-              </div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative z-10">
-                <div className="flex items-center gap-5">
-                  <div className={`p-4 rounded-xl ${
-                    planStatus === 'active' ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/20' :
-                    planStatus === 'expired' ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/20' :
-                    'bg-gradient-to-br from-slate-400 to-slate-500 text-white shadow-lg shadow-slate-500/20'
-                  }`}>
-                    <Activity size={28} />
-                  </div>
+        {/* Tabs */}
+        <div className="flex items-center gap-8 border-b border-gray-200 mb-8 pb-4">
+          <button 
+            onClick={() => setActiveTab('business')}
+            className={`text-base font-bold pb-4 -mb-[17px] border-b-[3px] transition-colors ${activeTab === 'business' ? 'border-[#008069] text-[#008069]' : 'border-transparent text-[#667781] hover:text-[#1C1E21]'}`}
+          >
+            My Business
+          </button>
+          <button 
+            onClick={() => setActiveTab('overview')}
+            className={`text-base font-bold pb-4 -mb-[17px] border-b-[3px] transition-colors ${activeTab === 'overview' ? 'border-[#008069] text-[#008069]' : 'border-transparent text-[#667781] hover:text-[#1C1E21]'}`}
+          >
+            Overview
+          </button>
+          <button 
+            onClick={() => setActiveTab('whatsapp')}
+            className={`text-base font-bold pb-4 -mb-[17px] border-b-[3px] transition-colors ${activeTab === 'whatsapp' ? 'border-[#008069] text-[#008069]' : 'border-transparent text-[#667781] hover:text-[#1C1E21]'}`}
+          >
+            WhatsApp Setup
+          </button>
+          <button 
+            onClick={() => setActiveTab('tools')}
+            className={`text-base font-bold pb-4 -mb-[17px] border-b-[3px] transition-colors ${activeTab === 'tools' ? 'border-[#008069] text-[#008069]' : 'border-transparent text-[#667781] hover:text-[#1C1E21]'}`}
+          >
+            Tools
+          </button>
+        </div>
+
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={containerVariants}
+          className="space-y-8"
+        >
+          {activeTab === 'business' && (
+            <motion.div variants={itemVariants} className="space-y-6">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
                   <div>
-                    <p className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-1">Current Plan</p>
-                    <h2 className="text-2xl font-bold text-slate-900">
-                      {planInitialLoading ? 'Checking...' : planName}
-                    </h2>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className={`relative flex h-2.5 w-2.5`}>
-                        {planStatus === 'active' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
-                        <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                          planStatus === 'active' ? 'bg-green-500' :
-                          planStatus === 'expired' ? 'bg-red-500' :
-                          planStatus === 'inactive' ? 'bg-yellow-500' : 'bg-slate-400'
-                        }`}></span>
-                      </span>
-                      <span className={`text-sm font-medium ${
-                          planStatus === 'active' ? 'text-green-700' :
-                          planStatus === 'expired' ? 'text-red-700' :
-                          planStatus === 'inactive' ? 'text-yellow-700' : 'text-slate-600'
-                      }`}>
-                        {planInitialLoading ? 'Loading subscription status...' :
-                         planStatus === 'active' ? 'Active Subscription' :
-                         planStatus === 'expired' ? 'Subscription Expired' :
-                         planStatus === 'inactive' ? 'No Active Subscription' : 'Unknown Status'}
-                      </span>
-                    </div>
+                    <h2 className="text-lg font-semibold text-slate-800">Business ROI & Performance</h2>
+                    <p className="text-xs text-slate-500 mt-1">Aggregated across WhatsApp campaigns</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <select
+                      value={timeFilter}
+                      onChange={(e) => setTimeFilter(e.target.value as any)}
+                      className="text-sm border-slate-200 rounded-lg text-slate-600 focus:ring-green-500 focus:border-green-500 py-1.5 pl-3 pr-8"
+                    >
+                      <option value="all">All Time</option>
+                      <option value="weekly">Last 7 Days</option>
+                      <option value="monthly">Last 30 Days</option>
+                      <option value="quarterly">Last 90 Days</option>
+                      <option value="annually">Last 365 Days</option>
+                    </select>
+                    <button 
+                      onClick={() => fetchBusinessStats()} 
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:bg-slate-50 rounded-lg text-sm transition-colors"
+                    >
+                      <RefreshCw size={14} className={campaignsLoading ? 'animate-spin' : ''} />
+                      Refresh
+                    </button>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => fetchPlanStatus({ silent: true })}
-                  disabled={planRefreshing}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold disabled:opacity-50 transition-all active:scale-95"
-                >
-                  <RefreshCw size={16} className={planRefreshing ? 'animate-spin text-green-600' : ''} />
-                  {planRefreshing ? 'Updating…' : 'Refresh Status'}
-                </button>
-              </div>
-            </div>
 
-            {/* WHATSAPP MESSAGING QUOTA */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-8 hover:shadow-md transition-shadow duration-300">
-              <div className="flex items-center justify-between gap-4 mb-8">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">WhatsApp Messaging Quota</h2>
-                  <p className="text-sm text-slate-500 mt-1 font-medium">
-                    24-hour rolling window metrics & quality
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => fetchMessagingMetrics(connectedPhones?.[0]?.phoneNumberId, { silent: true })}
-                  disabled={metricsRefreshing}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold rounded-lg text-sm disabled:opacity-50 transition-all active:scale-95 shadow-sm shadow-green-600/20"
-                >
-                  <RefreshCw size={16} className={metricsRefreshing ? 'animate-spin' : ''} />
-                  {metricsRefreshing ? 'Syncing…' : 'Sync Meta Data'}
-                </button>
-              </div>
-
-              {metricsInitialLoading && !messagingMetrics ? (
-                <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-                  <Loader2 className="w-8 h-8 animate-spin text-green-500 mb-3" />
-                  <p className="text-sm font-medium">Retrieving live metrics from Meta...</p>
-                </div>
-              ) : messagingMetrics ? (
-                <div className={`transition-opacity duration-300 ${metricsRefreshing ? 'opacity-50' : 'opacity-100'}`}>
-                  
-                  <div className="flex flex-col md:flex-row gap-8 items-center mb-8 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
-                    {/* SVG Circular Progress */}
-                    <div className="relative flex-shrink-0 w-32 h-32">
-                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-200" />
-                        <circle 
-                          cx="50" cy="50" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" 
-                          strokeDasharray={`${2 * Math.PI * 40}`} 
-                          strokeDashoffset={`${2 * Math.PI * 40 * (1 - (messagingMetrics.usagePercentage || 0) / 100)}`} 
-                          className={`transition-all duration-1000 ease-out ${
-                            (messagingMetrics.usagePercentage || 0) < 50 ? 'text-green-500' :
-                            (messagingMetrics.usagePercentage || 0) < 80 ? 'text-amber-500' : 'text-red-500'
-                          }`} 
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-2xl font-bold text-slate-900">{messagingMetrics.usagePercentage || 0}%</span>
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Used</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1 grid grid-cols-2 gap-4 w-full">
-                       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                          <p className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-1">Messages Sent</p>
-                          <p className="text-2xl font-black text-slate-900">{messagingMetrics.messageCount || 0}</p>
-                          <p className="text-xs font-medium text-slate-400 mt-1">/ {messagingMetrics.tierLimit} limit</p>
-                       </div>
-                       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                          <p className="text-xs uppercase tracking-wider font-bold text-slate-500 mb-1">Remaining</p>
-                          <p className="text-2xl font-black text-slate-900">{messagingMetrics.remainingMessages || 0}</p>
-                          <p className="text-xs font-medium text-slate-400 mt-1">Until next reset</p>
-                       </div>
-                    </div>
+                {campaignsLoading && campaigns.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                    <Loader2 className="w-6 h-6 animate-spin text-slate-300 mb-2" />
+                    <p className="text-xs">Calculating ROI metrics...</p>
                   </div>
+                ) : (
+                  (() => {
+                    const now = Date.now()
+                    let filteredCampaigns = campaigns
+                    if (timeFilter !== 'all') {
+                      const days = timeFilter === 'weekly' ? 7 : timeFilter === 'monthly' ? 30 : timeFilter === 'quarterly' ? 90 : 365
+                      const cutoff = now - (days * 24 * 60 * 60 * 1000)
+                      filteredCampaigns = campaigns.filter(c => {
+                        const date = c.createdAt ? new Date(c.createdAt).getTime() : 0
+                        return date >= cutoff
+                      })
+                    }
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-white border border-slate-200 rounded-xl p-5 hover:border-green-300 hover:shadow-md transition-all group">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs uppercase font-bold tracking-wider text-slate-500">Current Tier</p>
-                          <p className="text-xl font-bold text-slate-900 mt-1">{messagingMetrics.tier || 'Unknown'}</p>
-                        </div>
-                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-green-100 transition-colors">
-                          <Zap size={20} className="text-slate-400 group-hover:text-green-600 transition-colors" />
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-3 font-medium">{messagingMetrics.metaTier || 'Meta Tier Unavailable'}</p>
-                    </div>
+                    const COST_PER_MESSAGE = 0.80
                     
-                    <div className="bg-white border border-slate-200 rounded-xl p-5 hover:border-green-300 hover:shadow-md transition-all group">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs uppercase font-bold tracking-wider text-slate-500">Phone Quality</p>
-                          <div className="mt-2">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                              messagingMetrics.quality === 'GREEN' ? 'bg-green-100 text-green-700 border border-green-200' : 
-                              messagingMetrics.quality === 'YELLOW' ? 'bg-amber-100 text-amber-700 border border-amber-200' : 
-                              messagingMetrics.quality === 'RED' ? 'bg-red-100 text-red-700 border border-red-200' : 
-                              'bg-slate-100 text-slate-600 border border-slate-200'
-                            }`}>
-                              {messagingMetrics.quality === 'GREEN' && <div className="w-1.5 h-1.5 rounded-full bg-green-600"></div>}
-                              {messagingMetrics.quality || 'UNKNOWN'}
-                            </span>
+                    const totalSent = filteredCampaigns.reduce((acc, c) => acc + (c.recipients?.sent || c.stats?.totalSent || 0), 0)
+                    const totalDelivered = filteredCampaigns.reduce((acc, c) => acc + (c.stats?.totalDelivered || 0), 0)
+                    const totalReplies = filteredCampaigns.reduce((acc, c) => acc + (c.stats?.totalReplied || 0), 0)
+                    const totalQualified = filteredCampaigns.reduce((acc, c) => acc + (c.stats?.totalQualified || 0), 0)
+                    
+                    const totalSpend = totalSent * COST_PER_MESSAGE
+                    const costPerLead = totalQualified > 0 ? totalSpend / totalQualified : 0
+                    const costPerReply = totalReplies > 0 ? totalSpend / totalReplies : 0
+                    const replyRate = totalDelivered > 0 ? (totalReplies / totalDelivered) * 100 : 0
+
+                    return (
+                      <>
+                        <div className="mb-8">
+                          <h3 className="text-sm font-semibold text-slate-700 mb-4">Financial Overview</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="p-5 bg-slate-50 rounded-xl border border-slate-100">
+                              <p className="text-xs font-medium text-slate-500 mb-1">Total Campaign Spend</p>
+                              <p className="text-2xl font-semibold text-slate-800">₹{totalSpend.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Based on ₹0.80 avg msg cost</p>
+                            </div>
+                            <div className="p-5 bg-slate-50 rounded-xl border border-slate-100">
+                              <p className="text-xs font-medium text-slate-500 mb-1">Cost Per Lead (CPL)</p>
+                              <p className="text-2xl font-semibold text-slate-800">₹{costPerLead.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Total Spend / Qualified Leads</p>
+                            </div>
+                            <div className="p-5 bg-slate-50 rounded-xl border border-slate-100">
+                              <p className="text-xs font-medium text-slate-500 mb-1">Cost Per Reply (CPR)</p>
+                              <p className="text-2xl font-semibold text-slate-800">₹{costPerReply.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Total Spend / Total Replies</p>
+                            </div>
                           </div>
                         </div>
-                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-green-100 transition-colors">
-                          <Activity size={20} className="text-slate-400 group-hover:text-green-600 transition-colors" />
+
+                        <div>
+                          <h3 className="text-sm font-semibold text-slate-700 mb-4">Audience Engagement</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="p-5 border border-slate-100 rounded-xl">
+                              <p className="text-xs font-medium text-slate-500 mb-1">Total Replies</p>
+                              <p className="text-xl font-semibold text-slate-800">{totalReplies.toLocaleString()}</p>
+                            </div>
+                            <div className="p-5 border border-slate-100 rounded-xl">
+                              <p className="text-xs font-medium text-slate-500 mb-1">Reply Rate</p>
+                              <p className="text-xl font-semibold text-slate-800">{replyRate.toFixed(1)}%</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Replies / Delivered</p>
+                            </div>
+                            <div className="p-5 border border-slate-100 rounded-xl">
+                              <p className="text-xs font-medium text-slate-500 mb-1">Total Qualified Leads</p>
+                              <p className="text-xl font-semibold text-green-600">{totalQualified.toLocaleString()}</p>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <p className="text-xs text-slate-500 mt-3 font-medium">Meta verified health status</p>
-                    </div>
-                  </div>
+                      </>
+                    )
+                  })()
+                )}
+              </div>
+            </motion.div>
+          )}
 
-                  {messagingMetrics.status === 'fallback_db_only' && (
-                    <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-800 text-sm font-medium">
-                      <AlertTriangle size={16} />
-                      Meta API is temporarily unavailable. Showing cached database metrics.
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="bg-slate-50 rounded-xl border border-slate-200 border-dashed p-8 text-center">
-                  <Phone className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                  <h3 className="text-sm font-bold text-slate-900">No Metrics Available</h3>
-                  <p className="text-sm text-slate-500 mt-1">Connect a WhatsApp number to enable real-time quota tracking.</p>
-                </div>
-              )}
-            </div>
-
-            {/* QUICK ACTIONS / GETTING STARTED */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-8 hover:shadow-md transition-shadow duration-300">
-              <h2 className="text-xl font-bold text-slate-900 mb-6">Quick Actions</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Link href={`/projects/${projectId}/live-chat-v2`} className="group p-5 rounded-xl border border-slate-200 hover:border-green-500 hover:shadow-md hover:shadow-green-500/10 transition-all bg-white flex items-start gap-4">
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-lg group-hover:bg-green-500 group-hover:text-white transition-colors">
-                    <MessageSquare size={24} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-slate-900 group-hover:text-green-600 transition-colors flex items-center gap-2">
-                      Live Chat <ArrowRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                    </h3>
-                    <p className="text-sm text-slate-500 mt-1">Respond to customer messages in real-time.</p>
-                  </div>
-                </Link>
+          {activeTab === 'overview' && (
+            <motion.div variants={itemVariants} className="space-y-6">
+              
+              {/* COMBINED OVERVIEW CONTAINER */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                 
-                <Link href={`/projects/${projectId}/contacts`} className="group p-5 rounded-xl border border-slate-200 hover:border-green-500 hover:shadow-md hover:shadow-green-500/10 transition-all bg-white flex items-start gap-4">
-                  <div className="p-3 bg-purple-50 text-purple-600 rounded-lg group-hover:bg-green-500 group-hover:text-white transition-colors">
-                    <Users size={24} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-slate-900 group-hover:text-green-600 transition-colors flex items-center gap-2">
-                      Contacts <ArrowRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                    </h3>
-                    <p className="text-sm text-slate-500 mt-1">Manage and segment your audience.</p>
-                  </div>
-                </Link>
-
-                <Link href={`/projects/${projectId}/analytics`} className="group p-5 rounded-xl border border-slate-200 hover:border-green-500 hover:shadow-md hover:shadow-green-500/10 transition-all bg-white flex items-start gap-4">
-                  <div className="p-3 bg-amber-50 text-amber-600 rounded-lg group-hover:bg-green-500 group-hover:text-white transition-colors">
-                    <BarChart3 size={24} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-slate-900 group-hover:text-green-600 transition-colors flex items-center gap-2">
-                      Analytics <ArrowRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                    </h3>
-                    <p className="text-sm text-slate-500 mt-1">View campaign performance and delivery rates.</p>
-                  </div>
-                </Link>
-
-                <Link href={`/projects/${projectId}/settings`} className="group p-5 rounded-xl border border-slate-200 hover:border-green-500 hover:shadow-md hover:shadow-green-500/10 transition-all bg-white flex items-start gap-4">
-                  <div className="p-3 bg-slate-100 text-slate-600 rounded-lg group-hover:bg-green-500 group-hover:text-white transition-colors">
-                    <Settings size={24} />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-slate-900 group-hover:text-green-600 transition-colors flex items-center gap-2">
-                      Settings <ArrowRight size={14} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                    </h3>
-                    <p className="text-sm text-slate-500 mt-1">Configure integrations and project details.</p>
-                  </div>
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-4">
-            {/* WHATSAPP SETUP PANEL */}
-            <div className={`bg-gradient-to-b from-white to-slate-50 rounded-2xl shadow-sm border border-slate-200/60 p-6 sticky top-8 transition-opacity duration-300 ${phonesRefreshing ? 'opacity-70' : 'opacity-100'}`}>
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-green-100 text-green-600 rounded-xl">
-                    <Phone className="w-5 h-5" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900">WhatsApp Setup</h3>
-                </div>
-                {phonesRefreshing && <Loader2 className="w-4 h-4 animate-spin text-green-600" />}
-              </div>
-
-              {showPhonesSpinner ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-green-500 mb-4" />
-                  <p className="text-sm font-medium text-slate-500">Checking connections...</p>
-                </div>
-              ) : connectedPhones.length === 0 ? (
-                <div className="space-y-6">
-                  {!canConnectWhatsApp && !planInitialLoading && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 font-medium flex gap-3 shadow-inner">
-                      <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-                      An active subscription is required to connect to the Meta WhatsApp API.
+                {/* PLAN STATUS */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+                  <div className="flex items-center gap-4">
+                    <div className="p-2.5 rounded-lg bg-slate-50 text-slate-500 border border-slate-100">
+                      <Activity size={20} />
                     </div>
-                  )}
-                  
-                  <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm relative overflow-hidden">
-                    <div className="absolute right-0 top-0 w-32 h-32 bg-green-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
-                    <h4 className="font-bold text-slate-900 mb-4 relative z-10">Integration Steps</h4>
-                    <ul className="space-y-4 relative z-10">
-                      <li className="flex gap-3 text-sm">
-                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-100 text-green-700 font-bold flex items-center justify-center text-xs">1</span>
-                        <span className="text-slate-700 font-medium pt-0.5">Click &quot;Connect WhatsApp&quot;</span>
-                      </li>
-                      <li className="flex gap-3 text-sm">
-                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-100 text-green-700 font-bold flex items-center justify-center text-xs">2</span>
-                        <span className="text-slate-700 font-medium pt-0.5">Authenticate with your Facebook Business account</span>
-                      </li>
-                      <li className="flex gap-3 text-sm">
-                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-100 text-green-700 font-bold flex items-center justify-center text-xs">3</span>
-                        <span className="text-slate-700 font-medium pt-0.5">Select or create a WABA profile</span>
-                      </li>
-                    </ul>
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 mb-0.5">Current Plan</p>
+                      <h2 className="text-lg font-semibold text-slate-800">
+                        {planInitialLoading ? 'Checking...' : planName}
+                      </h2>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={`relative flex h-2 w-2`}>
+                          <span className={`relative inline-flex rounded-full h-2 w-2 ${planStatus === 'active' ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                        </span>
+                        <span className={`text-xs ${planStatus === 'active' ? 'text-green-600 font-medium' : 'text-slate-500'}`}>
+                          {planInitialLoading ? 'Loading...' :
+                           planStatus === 'active' ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  
                   <button
                     type="button"
-                    onClick={handleConnect}
-                    disabled={connecting || !canConnectWhatsApp || planInitialLoading}
-                    className="w-full px-4 py-3.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-green-600/30 active:scale-95"
+                    onClick={() => fetchPlanStatus({ silent: true })}
+                    disabled={planRefreshing}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg text-sm transition-colors"
                   >
-                    {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                    {connecting ? 'Connecting...' : 'Connect WhatsApp'}
+                    <RefreshCw size={14} className={planRefreshing ? 'animate-spin' : ''} />
+                    {planRefreshing ? 'Updating…' : 'Refresh'}
                   </button>
                 </div>
-              ) : (
-                <div className="space-y-5">
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200 shadow-sm flex items-center justify-between">
+
+                {/* WHATSAPP QUOTA */}
+                <div className="pt-6">
+                  <div className="flex items-center justify-between gap-4 mb-6">
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <span className="font-bold text-green-800">Connected</span>
-                      </div>
-                      <p className="text-xs font-semibold text-green-600 uppercase tracking-wider">
-                        {connectedPhones.length} active numbers
-                      </p>
+                      <h2 className="text-lg font-semibold text-slate-800">Messaging Quota</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">24-hour rolling window metrics</p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchMessagingMetrics(connectedPhones?.[0]?.phoneNumberId, { silent: true })}
+                      disabled={metricsRefreshing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      <RefreshCw size={14} className={metricsRefreshing ? 'animate-spin' : ''} />
+                      {metricsRefreshing ? 'Syncing…' : 'Sync Meta Data'}
+                    </button>
                   </div>
                   
-                  <div className="space-y-3">
+                  {metricsInitialLoading && !messagingMetrics ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-slate-400">
+                      <Loader2 className="w-6 h-6 animate-spin text-slate-300 mb-2" />
+                      <p className="text-xs">Retrieving live metrics...</p>
+                    </div>
+                  ) : messagingMetrics ? (
+                    <div className={`transition-opacity duration-300 ${metricsRefreshing ? 'opacity-50' : 'opacity-100'}`}>
+                      <div className="flex flex-col md:flex-row gap-8 items-center bg-slate-50 rounded-lg p-6">
+                        
+                        {/* Circular Progress */}
+                        <div className="relative flex-shrink-0 w-24 h-24">
+                          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="40" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-200" />
+                            <circle cx="50" cy="50" r="40" stroke="currentColor" strokeWidth="6" fill="transparent" 
+                              strokeDasharray={`${2 * Math.PI * 40}`} 
+                              strokeDashoffset={`${2 * Math.PI * 40 * (1 - (messagingMetrics.usagePercentage || 0) / 100)}`} 
+                              className="transition-all duration-1000 ease-out text-green-500" 
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-lg font-semibold text-slate-700">{messagingMetrics.usagePercentage || 0}%</span>
+                            <span className="text-[9px] uppercase font-medium text-slate-400">Used</span>
+                          </div>
+                        </div>
+                        
+                        {/* Metrics Grid (No Cards) */}
+                        <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-6 w-full">
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 mb-1">Messages Sent</p>
+                            <p className="text-xl font-semibold text-slate-800">{messagingMetrics.messageCount || 0}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">/ {messagingMetrics.tierLimit} limit</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 mb-1">Remaining</p>
+                            <p className="text-xl font-semibold text-slate-800">{messagingMetrics.remainingMessages || 0}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">Until next reset</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 mb-1">Current Tier</p>
+                            <p className="text-xl font-semibold text-slate-800">{messagingMetrics.tier || 'Unknown'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 mb-1">Phone Quality</p>
+                            <p className="text-xl font-semibold text-green-600">{messagingMetrics.quality || 'UNKNOWN'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 rounded-lg p-6 text-center">
+                      <Phone className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <h3 className="text-sm font-medium text-slate-700">No Metrics Available</h3>
+                      <p className="text-xs text-slate-500 mt-1">Connect a WhatsApp number to enable tracking.</p>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'whatsapp' && (
+            <motion.div variants={itemVariants} className="max-w-2xl">
+              <div className="bg-[#FFFFFF] rounded-2xl shadow-sm border border-gray-200 p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2.5 bg-[#F0F2F5] text-[#008069] rounded-xl">
+                    <Phone className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-xl font-bold text-[#1C1E21]">WhatsApp Setup</h3>
+                </div>
+
+                {showPhonesSpinner ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-[#008069] mb-4" />
+                    <p className="text-sm font-medium text-[#667781]">Checking connections...</p>
+                  </div>
+                ) : connectedPhones.length === 0 ? (
+                  <div className="space-y-6">
+                    <div className="bg-[#F0F2F5] rounded-xl p-5 border border-gray-200">
+                      <h4 className="font-bold text-[#1C1E21] mb-4">Integration Steps</h4>
+                      <ul className="space-y-4">
+                        <li className="flex gap-3 text-sm">
+                          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FFFFFF] text-[#008069] border border-gray-200 font-bold flex items-center justify-center text-xs">1</span>
+                          <span className="text-[#1C1E21] font-medium pt-0.5">Click "Connect WhatsApp"</span>
+                        </li>
+                        <li className="flex gap-3 text-sm">
+                          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FFFFFF] text-[#008069] border border-gray-200 font-bold flex items-center justify-center text-xs">2</span>
+                          <span className="text-[#1C1E21] font-medium pt-0.5">Authenticate with your Facebook Business account</span>
+                        </li>
+                      </ul>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={handleConnect}
+                      disabled={connecting || !canConnectWhatsApp || planInitialLoading}
+                      className="w-full px-4 py-3 bg-[#008069] text-[#FFFFFF] font-bold rounded-full disabled:opacity-50 flex items-center justify-center gap-2 hover:bg-[#006653]"
+                    >
+                      {connecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                      {connecting ? 'Connecting...' : 'Connect WhatsApp'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
                     {connectedPhones.map((phone) => (
-                      <div key={phone.phoneNumberId} className="bg-white border border-slate-200 hover:border-green-300 rounded-xl p-4 shadow-sm transition-colors group">
-                        <div className="font-mono text-lg font-bold text-slate-900 mb-3 tracking-tight">
+                      <div key={phone.phoneNumberId} className="bg-[#FFFFFF] border border-gray-200 rounded-xl p-4">
+                        <div className="font-mono text-lg font-bold text-[#1C1E21] mb-3">
                           {phone.displayPhone || phone.display_phone_number || 'N/A'}
                         </div>
                         <div className="space-y-2 text-sm">
-                          <div className="flex justify-between items-center bg-slate-50 p-1.5 rounded-lg">
-                            <span className="text-slate-500 font-medium ml-1">Name</span>
-                            <span className="font-bold text-slate-900 mr-1 truncate max-w-[140px]">
-                              {phone.displayName || phone.display_name || 'WhatsApp'}
-                            </span>
+                          <div className="flex justify-between items-center bg-[#F0F2F5] p-2 rounded-lg">
+                            <span className="text-[#667781] font-medium">Name</span>
+                            <span className="font-bold text-[#1C1E21]">{phone.displayName || phone.display_name || 'WhatsApp'}</span>
                           </div>
-                          <div className="flex justify-between items-center bg-slate-50 p-1.5 rounded-lg">
-                            <span className="text-slate-500 font-medium ml-1">Quality</span>
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white ${
-                                phone.qualityRating === 'GREEN' ? 'bg-green-500' :
-                                phone.qualityRating === 'YELLOW' ? 'bg-amber-500' : 'bg-red-500'
-                            }`}>
-                              {phone.qualityRating || 'UNKNOWN'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center bg-slate-50 p-1.5 rounded-lg">
-                            <span className="text-slate-500 font-medium ml-1">Status</span>
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white ${
-                                phone.verificationStatus === 'VERIFIED' ? 'bg-blue-500' : 'bg-slate-400'
-                            }`}>
-                              {phone.verificationStatus || 'UNKNOWN'}
-                            </span>
+                          <div className="flex justify-between items-center bg-[#F0F2F5] p-2 rounded-lg">
+                            <span className="text-[#667781] font-medium">Status</span>
+                            <span className="font-bold text-[#008069]">{phone.verificationStatus || 'VERIFIED'}</span>
                           </div>
                         </div>
                       </div>
                     ))}
+                    <button
+                      type="button"
+                      onClick={handleConnect}
+                      disabled={connecting || !canConnectWhatsApp || planInitialLoading}
+                      className="w-full px-4 py-3 bg-[#FFFFFF] border border-gray-200 text-[#008069] font-bold rounded-full disabled:opacity-50 hover:bg-gray-50"
+                    >
+                      Add Another Number
+                    </button>
                   </div>
-                  
-                  <button
-                    type="button"
-                    onClick={handleConnect}
-                    disabled={connecting || !canConnectWhatsApp || planInitialLoading}
-                    className="w-full px-4 py-3 bg-white border-2 border-slate-200 hover:border-green-600 text-slate-700 hover:text-green-700 font-bold rounded-xl transition-all disabled:opacity-50 active:scale-95 shadow-sm"
-                  >
-                    Add Another Number
-                  </button>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'tools' && (
+            <motion.div variants={itemVariants}>
+              <div className="bg-[#FFFFFF] rounded-2xl shadow-sm border border-gray-200 p-8">
+                <h2 className="text-xl font-bold text-[#1C1E21] mb-6">Quick Actions</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Link href={`/projects/${projectId}/live-chat-v2`} className="group p-5 rounded-xl border border-gray-200 bg-[#FFFFFF] flex items-start gap-4 hover:border-[#008069] transition-colors">
+                    <div className="p-3 bg-[#F0F2F5] text-[#008069] rounded-lg group-hover:bg-[#008069] group-hover:text-white transition-colors">
+                      <MessageSquare size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-base font-bold text-[#1C1E21]">Live Chat</h3>
+                      <p className="text-sm text-[#667781] mt-1">Respond to customer messages.</p>
+                    </div>
+                  </Link>
+                  <Link href={`/projects/${projectId}/contacts`} className="group p-5 rounded-xl border border-gray-200 bg-[#FFFFFF] flex items-start gap-4 hover:border-[#008069] transition-colors">
+                    <div className="p-3 bg-[#F0F2F5] text-[#008069] rounded-lg group-hover:bg-[#008069] group-hover:text-white transition-colors">
+                      <Users size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-base font-bold text-[#1C1E21]">Contacts</h3>
+                      <p className="text-sm text-[#667781] mt-1">Manage and segment audience.</p>
+                    </div>
+                  </Link>
+                  <Link href={`/projects/${projectId}/analytics`} className="group p-5 rounded-xl border border-gray-200 bg-[#FFFFFF] flex items-start gap-4 hover:border-[#008069] transition-colors">
+                    <div className="p-3 bg-[#F0F2F5] text-[#008069] rounded-lg group-hover:bg-[#008069] group-hover:text-white transition-colors">
+                      <BarChart3 size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-base font-bold text-[#1C1E21]">Analytics</h3>
+                      <p className="text-sm text-[#667781] mt-1">View campaign performance.</p>
+                    </div>
+                  </Link>
+                  <Link href={`/projects/${projectId}/settings`} className="group p-5 rounded-xl border border-gray-200 bg-[#FFFFFF] flex items-start gap-4 hover:border-[#008069] transition-colors">
+                    <div className="p-3 bg-[#F0F2F5] text-[#008069] rounded-lg group-hover:bg-[#008069] group-hover:text-white transition-colors">
+                      <Settings size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-base font-bold text-[#1C1E21]">Settings</h3>
+                      <p className="text-sm text-[#667781] mt-1">Configure project details.</p>
+                    </div>
+                  </Link>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
+              </div>
+            </motion.div>
+          )}
+
+        </motion.div>
       </div>
     </div>
   )

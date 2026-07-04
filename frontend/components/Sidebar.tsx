@@ -333,32 +333,17 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
   }
 
   const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => (
-    <div className="flex flex-col flex-1 min-h-0 bg-gray-900 border-r border-gray-800">
+    <div className="flex flex-col flex-1 min-h-0 bg-white border-r border-gray-200">
       {/* Header */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-gray-800 flex-shrink-0">
-        {(!collapsed || isMobile) && (
-          <Link href="/" prefetch={false} className="flex items-center gap-2">
-            <div className="h-8 w-8 bg-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
-              <MessageSquare className="h-5 w-5 text-white" />
-            </div>
-            <span className="font-bold text-white">Replysys</span>
-          </Link>
-        )}
-        {collapsed && !isMobile && (
-          <Link href="/" prefetch={false} className="mx-auto">
-            <div className="h-8 w-8 bg-green-600 rounded-lg flex items-center justify-center">
-              <MessageSquare className="h-5 w-5 text-white" />
-            </div>
-          </Link>
-        )}
+      <div className="flex items-center justify-end p-2 border-b border-gray-200 flex-shrink-0">
         {isMobile ? (
-          <button onClick={onMobileClose} className="text-gray-400 hover:text-white transition">
+          <button onClick={onMobileClose} className="text-gray-500 hover:text-gray-900 transition">
             <X className="h-5 w-5" />
           </button>
         ) : (
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="text-gray-400 hover:text-white transition ml-auto"
+            className={`text-gray-500 hover:text-gray-900 transition ${collapsed ? 'mx-auto' : ''}`}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
@@ -468,7 +453,7 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
                   </p>
                 )}
                 {groupKey !== '__none__' && (collapsed || isMobile) && !isMobile && (
-                  <div className="my-2 border-t border-gray-800" />
+                  <div className="my-2 border-t border-gray-200" />
                 )}
                 <div className="space-y-0.5">
                   {groupItems.map((item) => {
@@ -497,10 +482,10 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
                           className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition relative
                             ${collapsed && !isMobile ? 'justify-center' : ''}
                             ${isFeatureLocked
-                              ? 'cursor-not-allowed opacity-50 text-gray-500'
+                              ? 'cursor-not-allowed opacity-50 text-gray-400'
                               : isActive
-                              ? 'bg-green-600 text-white'
-                              : 'text-gray-100 hover:bg-gray-800 hover:text-white'
+                              ? 'bg-[#008069] text-white'
+                              : 'text-[#1C1E21] hover:bg-[#F0F2F5]'
                             }
                           `}
                         >
@@ -533,11 +518,11 @@ export default function Sidebar({ projectId, mobileOpen = false, onMobileClose, 
       </nav>
 
       {/* Bottom Actions */}
-      <div className="p-3 border-t border-gray-800 space-y-1 flex-shrink-0">
+      <div className="p-3 border-t border-gray-200 space-y-1 flex-shrink-0">
         <button
           onClick={() => { handleLogout(); if (onMobileClose) onMobileClose() }}
           title={collapsed && !isMobile ? 'Logout' : ''}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-100 hover:bg-gray-800 transition
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-[#1C1E21] hover:bg-[#F0F2F5] transition
             ${collapsed && !isMobile ? 'justify-center' : ''}
           `}
         >

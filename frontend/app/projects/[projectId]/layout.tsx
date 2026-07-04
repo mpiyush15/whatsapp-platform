@@ -71,37 +71,55 @@ function ProjectLayoutInner({ children, projectId }: { children: ReactNode; proj
 
   return isLiveChatPage ? (
     <LiveChatProvider>
-      <div className="flex h-screen bg-gray-50">
-        <Sidebar
-          projectId={projectId}
-          vertical={vertical}
-          mobileOpen={mobileSidebarOpen}
-          onMobileClose={() => setMobileSidebarOpen(false)}
-        />
-        <div className="flex-1 flex flex-col overflow-hidden">
+      <div 
+        className="flex h-screen bg-[#F0F2F5] relative overflow-hidden"
+        style={{
+          backgroundImage: 'radial-gradient(#D1D5DB 1px, transparent 1px)',
+          backgroundSize: '24px 24px'
+        }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-b from-[#F0F2F5] to-transparent pointer-events-none"></div>
+        <div className="flex flex-col w-full h-full relative z-10">
           <ProjectHeader projectId={projectId} onMenuClick={() => setMobileSidebarOpen(true)} />
-          <main className="flex-1 overflow-auto">
-            <ProjectStaffRouteGate projectId={projectId}>{children}</ProjectStaffRouteGate>
-          </main>
+          <div className="flex flex-1 overflow-hidden">
+            <Sidebar
+              projectId={projectId}
+              vertical={vertical}
+              mobileOpen={mobileSidebarOpen}
+              onMobileClose={() => setMobileSidebarOpen(false)}
+            />
+            <main className="flex-1 overflow-auto">
+              <ProjectStaffRouteGate projectId={projectId}>{children}</ProjectStaffRouteGate>
+            </main>
+          </div>
         </div>
       </div>
     </LiveChatProvider>
   ) : (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar
-        projectId={projectId}
-        vertical={vertical}
-        mobileOpen={mobileSidebarOpen}
-        onMobileClose={() => setMobileSidebarOpen(false)}
-      />
-      <FlowBuilderProvider>
-        <div className="flex-1 flex flex-col overflow-hidden">
+    <div 
+      className="flex h-screen bg-[#F0F2F5] relative overflow-hidden"
+      style={{
+        backgroundImage: 'radial-gradient(#D1D5DB 1px, transparent 1px)',
+        backgroundSize: '24px 24px'
+      }}
+    >
+      <div className="absolute inset-0 bg-gradient-to-b from-[#F0F2F5] to-transparent pointer-events-none"></div>
+      <div className="flex flex-col w-full h-full relative z-10">
+        <FlowBuilderProvider>
           <ProjectHeader projectId={projectId} onMenuClick={() => setMobileSidebarOpen(true)} />
-          <main className="flex-1 overflow-auto">
-            <ProjectStaffRouteGate projectId={projectId}>{children}</ProjectStaffRouteGate>
-          </main>
-        </div>
-      </FlowBuilderProvider>
+          <div className="flex flex-1 overflow-hidden">
+            <Sidebar
+              projectId={projectId}
+              vertical={vertical}
+              mobileOpen={mobileSidebarOpen}
+              onMobileClose={() => setMobileSidebarOpen(false)}
+            />
+            <main className="flex-1 overflow-auto">
+              <ProjectStaffRouteGate projectId={projectId}>{children}</ProjectStaffRouteGate>
+            </main>
+          </div>
+        </FlowBuilderProvider>
+      </div>
     </div>
   )
 }

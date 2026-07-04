@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, Play, Pause, CheckCircle, Clock, Zap } from 'lucide-react';
 import { CampaignType, CampaignStatus } from '@/lib/enums';
+import { CoreTableContainer, CoreTableHeader, CoreTableRow, CoreTableHead, CoreTableBody, CoreTableCell } from '@/components/CoreTable';
 
 interface Campaign {
   _id: string;
@@ -194,84 +195,80 @@ export function CampaignsTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto border border-gray-200 rounded-lg dark:border-gray-700">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+      <CoreTableContainer>
+        <CoreTableHeader>
+          <CoreTableRow isHeader>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('name')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Campaign Name <SortIcon columnKey="name" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('type')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Type <SortIcon columnKey="type" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('status')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Status <SortIcon columnKey="status" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 Reach
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 Metrics
-              </th>
-              <th className="px-6 py-3 text-right font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead className="text-right">
                 Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+              </CoreTableHead>
+            </CoreTableRow>
+          </CoreTableHeader>
+          <CoreTableBody>
             {isLoading ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+              <CoreTableRow>
+                <CoreTableCell colSpan={6} className="text-center text-gray-500">
                   Loading campaigns...
-                </td>
-              </tr>
+                </CoreTableCell>
+              </CoreTableRow>
             ) : filteredAndSorted.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+              <CoreTableRow>
+                <CoreTableCell colSpan={6} className="text-center text-gray-500">
                   No campaigns found
-                </td>
-              </tr>
+                </CoreTableCell>
+              </CoreTableRow>
             ) : (
               filteredAndSorted.map((campaign) => (
-                <tr
-                  key={campaign._id}
-                  className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <td className="px-6 py-4">
+                <CoreTableRow key={campaign._id}>
+                  <CoreTableCell>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">{campaign.name}</p>
                       <p className="text-xs text-gray-500 truncate mt-1">{campaign.description}</p>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <span className={`px-2.5 py-1 rounded text-xs font-medium inline-block ${getTypeColor(campaign.type)}`}>
                       {campaign.type}
                     </span>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <div className="flex items-center gap-2">
                       {getStatusIcon(campaign.status)}
                       <span className={`px-2.5 py-1 rounded text-xs font-medium ${getStatusColor(campaign.status)}`}>
                         {campaign.status}
                       </span>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <div className="text-sm">
                       <p className="font-medium text-gray-900 dark:text-white">
                         {campaign.recipients?.total || campaign.audience?.estimatedReach || '—'}
@@ -280,8 +277,8 @@ export function CampaignsTable({
                         {campaign.recipients?.sent ? `${campaign.recipients.sent} sent` : 'Not started'}
                       </p>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <div className="text-sm space-y-1">
                       {campaign.stats?.deliveryRate !== undefined && (
                         <p className="text-gray-700 dark:text-gray-300">
@@ -295,8 +292,8 @@ export function CampaignsTable({
                       )}
                       {!campaign.stats?.deliveryRate && <p className="text-gray-400">—</p>}
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <div className="flex justify-end gap-2">
                       {onView && (
                         <button
@@ -344,13 +341,12 @@ export function CampaignsTable({
                         </button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </CoreTableCell>
+                </CoreTableRow>
               ))
             )}
-          </tbody>
-        </table>
-      </div>
+          </CoreTableBody>
+      </CoreTableContainer>
 
       <div className="text-xs text-gray-500 dark:text-gray-400">
         Showing {filteredAndSorted.length} of {campaigns.length} campaigns

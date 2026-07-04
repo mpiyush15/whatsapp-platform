@@ -629,10 +629,10 @@ export default function ContactsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[1000px]">
                 <thead className="bg-slate-50 border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
                   <tr>
-                    <th className="px-4 py-4 w-10">
+                    <th className="px-4 py-4 w-10 whitespace-nowrap">
                       <input 
                         type="checkbox" 
                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -640,14 +640,14 @@ export default function ContactsPage() {
                         onChange={toggleSelectAll}
                       />
                     </th>
-                    <th className="px-6 py-4 cursor-pointer hover:bg-slate-100" onClick={() => { setSortField('userName'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Name</th>
-                    <th className="px-4 py-4 cursor-pointer hover:bg-slate-100" onClick={() => { setSortField('userPhone'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Contact Info</th>
-                    <th className="px-4 py-4 cursor-pointer hover:bg-slate-100" onClick={() => { setSortField('leadValue'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Value</th>
-                    <th className="px-4 py-4">Area / Location</th>
-                    <th className="px-4 py-4">Tags</th>
-                    <th className="px-4 py-4 cursor-pointer hover:bg-slate-100" onClick={() => { setSortField('source'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Source</th>
-                    <th className="px-4 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                    <th className="px-6 py-4 cursor-pointer hover:bg-slate-100 whitespace-nowrap" onClick={() => { setSortField('userName'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Name</th>
+                    <th className="px-4 py-4 cursor-pointer hover:bg-slate-100 whitespace-nowrap" onClick={() => { setSortField('userPhone'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Contact Info</th>
+                    <th className="px-4 py-4 cursor-pointer hover:bg-slate-100 whitespace-nowrap" onClick={() => { setSortField('leadValue'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Value</th>
+                    <th className="px-4 py-4 whitespace-nowrap">Area / Location</th>
+                    <th className="px-4 py-4 whitespace-nowrap">Tags</th>
+                    <th className="px-4 py-4 cursor-pointer hover:bg-slate-100 whitespace-nowrap" onClick={() => { setSortField('source'); setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc'); }}>Source</th>
+                    <th className="px-4 py-4 whitespace-nowrap">Status</th>
+                    <th className="px-6 py-4 text-right whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

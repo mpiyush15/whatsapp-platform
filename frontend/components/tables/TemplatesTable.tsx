@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, CheckCircle, Clock, AlertCircle, Copy } from 'lucide-react';
 import { TemplateStatus } from '@/lib/enums';
+import { CoreTableContainer, CoreTableHeader, CoreTableRow, CoreTableHead, CoreTableBody, CoreTableCell } from '@/components/CoreTable';
 
 interface Template {
   _id: string;
@@ -166,95 +167,91 @@ export function TemplatesTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto border border-gray-200 rounded-lg dark:border-gray-700">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+      <CoreTableContainer>
+        <CoreTableHeader>
+          <CoreTableRow>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('name')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Template Name <SortIcon columnKey="name" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('category')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Category <SortIcon columnKey="category" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('status')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Status <SortIcon columnKey="status" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('usageCount')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Usage <SortIcon columnKey="usageCount" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 Language
-              </th>
-              <th className="px-6 py-3 text-right font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead className="text-right">
                 Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+              </CoreTableHead>
+            </CoreTableRow>
+          </CoreTableHeader>
+          <CoreTableBody>
             {isLoading ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+              <CoreTableRow>
+                <CoreTableCell colSpan={6} className="text-center text-gray-500">
                   Loading templates...
-                </td>
-              </tr>
+                </CoreTableCell>
+              </CoreTableRow>
             ) : filteredAndSorted.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+              <CoreTableRow>
+                <CoreTableCell colSpan={6} className="text-center text-gray-500">
                   No templates found
-                </td>
-              </tr>
+                </CoreTableCell>
+              </CoreTableRow>
             ) : (
               filteredAndSorted.map((template) => (
-                <tr
-                  key={template._id}
-                  className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <td className="px-6 py-4">
+                <CoreTableRow key={template._id}>
+                  <CoreTableCell>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">{template.name}</p>
                       <p className="text-xs text-gray-500 truncate mt-1">{template.content.substring(0, 60)}...</p>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <span className={`px-2.5 py-1 rounded text-xs font-medium inline-block ${getCategoryColor(template.category)}`}>
                       {template.category}
                     </span>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <div className="flex items-center gap-2">
                       {getStatusIcon(template.status)}
                       <span className={`px-2.5 py-1 rounded text-xs font-medium ${getStatusColor(template.status)}`}>
                         {template.status}
                       </span>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <span className="font-medium text-gray-900 dark:text-white">{template.usageCount}</span>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <span className="text-gray-700 dark:text-gray-300">{template.language.toUpperCase()}</span>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <div className="flex justify-end gap-2">
                       {onView && (
                         <button
@@ -293,13 +290,12 @@ export function TemplatesTable({
                         </button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </CoreTableCell>
+                </CoreTableRow>
               ))
             )}
-          </tbody>
-        </table>
-      </div>
+          </CoreTableBody>
+      </CoreTableContainer>
 
       <div className="text-xs text-gray-500 dark:text-gray-400">
         Showing {filteredAndSorted.length} of {templates.length} templates

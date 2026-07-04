@@ -3,6 +3,8 @@
 import React from "react"
 import { TableRowsSkeleton } from "@/components/ui/skeleton"
 
+import { CoreTableContainer, CoreTableHeader, CoreTableHead, CoreTableBody, CoreTableRow, CoreTableCell } from "@/components/CoreTable"
+
 interface Column {
   key: string
   label: React.ReactNode
@@ -62,18 +64,13 @@ export default function DataTable({
   const textSize = wide ? "text-sm" : "text-sm"
 
   return (
-    <div
-      className={`overflow-x-auto rounded-lg border border-slate-200 ${
-        wide ? "shadow-sm" : "border-gray-300"
-      } ${containerClassName}`}
-    >
-      <table className={`w-max min-w-full border-collapse ${textSize}`}>
-        <thead className={wide ? "bg-slate-50" : "bg-gray-100"}>
+    <CoreTableContainer className={`${wide ? "shadow-sm" : "border-gray-300"} ${containerClassName}`}>
+        <CoreTableHeader>
           <tr>
             {columns.map((column) => (
-              <th
+              <CoreTableHead
                 key={column.key}
-                className={`border-b border-slate-200 text-left font-semibold text-slate-700 whitespace-nowrap ${cellPad} ${
+                className={`whitespace-nowrap ${cellPad} ${
                   column.headerClassName || ""
                 }`}
                 style={{
@@ -82,42 +79,42 @@ export default function DataTable({
                 }}
               >
                 {column.label}
-              </th>
+              </CoreTableHead>
             ))}
             {actions.length > 0 && (
-              <th
-                className={`border-b border-slate-200 text-left font-semibold text-slate-700 whitespace-nowrap ${cellPad}`}
+              <CoreTableHead
+                className={`whitespace-nowrap ${cellPad}`}
                 style={{ minWidth: "8rem" }}
               >
                 Actions
-              </th>
+              </CoreTableHead>
             )}
           </tr>
-        </thead>
+        </CoreTableHeader>
 
-        <tbody className={`${(loading || refreshing) && data.length === 0 ? "" : "animate-content-in"} ${refreshing || (loading && data.length > 0) ? "opacity-50 transition-opacity" : ""}`}>
+        <CoreTableBody className={`${(loading || refreshing) && data.length === 0 ? "" : "animate-content-in"} ${refreshing || (loading && data.length > 0) ? "opacity-50 transition-opacity" : ""}`}>
           {(loading || refreshing) && data.length === 0 ? (
             <TableRowsSkeleton rows={6} columns={columns.length + (actions.length > 0 ? 1 : 0)} />
           ) : data.length === 0 ? (
-            <tr>
-              <td
+            <CoreTableRow>
+              <CoreTableCell
                 colSpan={columns.length + (actions.length > 0 ? 1 : 0)}
-                className={`border-b border-slate-100 text-center text-slate-500 ${cellPad}`}
+                className={`text-center text-slate-500 ${cellPad}`}
               >
                 {emptyMessage}
-              </td>
-            </tr>
+              </CoreTableCell>
+            </CoreTableRow>
           ) : (
             data.map((row, rowIndex) => (
-              <tr
+              <CoreTableRow
                 key={row._id || row.accountId || rowIndex}
-                className={`border-b border-slate-100 ${rowClassName} ${
+                className={`${rowClassName} ${
                   onRowClick ? "cursor-pointer" : ""
                 }`}
                 onClick={() => onRowClick?.(row)}
               >
                 {columns.map((column) => (
-                  <td
+                  <CoreTableCell
                     key={`${rowIndex}-${column.key}`}
                     className={`border-b border-slate-100 text-slate-900 align-top ${cellPad} ${
                       column.className || ""
@@ -130,10 +127,10 @@ export default function DataTable({
                     {column.render
                       ? column.render(row[column.key], row)
                       : row[column.key] ?? "—"}
-                  </td>
+                  </CoreTableCell>
                 ))}
                 {actions.length > 0 && (
-                  <td className={`border-b border-slate-100 align-top ${cellPad}`}>
+                  <CoreTableCell className={`align-top ${cellPad}`}>
                     <div className="flex gap-2">
                       {actions.map((action, idx) => {
                         const custom = action.render?.(row)
@@ -168,13 +165,12 @@ export default function DataTable({
                         )
                       })}
                     </div>
-                  </td>
+                  </CoreTableCell>
                 )}
-              </tr>
+              </CoreTableRow>
             ))
           )}
-        </tbody>
-      </table>
-    </div>
+        </CoreTableBody>
+    </CoreTableContainer>
   )
 }

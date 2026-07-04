@@ -204,7 +204,7 @@ export default function MessageList({ messages, socket, isTyping, conversationId
   return (
     <div
       ref={scrollContainerRef}
-      className="flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] p-2 md:p-4 space-y-1.5 md:space-y-3 bg-gray-50 overscroll-contain"
+      className="flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] p-2 md:p-4 space-y-1.5 md:space-y-3 bg-[#FCF5EB] overscroll-contain"
     >
       {/* Loading indicator when fetching older messages */}
       {loadingMore && (

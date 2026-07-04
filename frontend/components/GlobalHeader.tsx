@@ -31,7 +31,7 @@ export default function GlobalHeader({ showBack = false }: GlobalHeaderProps) {
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
+    <div className="bg-[#115B4C] border-b border-[#115B4C]/20 px-6 py-4 sticky top-0 z-50 shadow-md">
       <div className="max-w-7xl mx-auto flex justify-between items-center">
         <div className="flex items-center gap-4">
           {showBack && (
@@ -44,22 +44,22 @@ export default function GlobalHeader({ showBack = false }: GlobalHeaderProps) {
             </button>
           )}
           <div>
-            <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <span className="text-teal-600">Replysys</span>
-              <span className="text-gray-300">|</span>
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-white">Replysys</span>
+              <span className="text-white/30">|</span>
               Business Workspaces
             </h1>
-            <p className="text-gray-500 mt-1 text-sm">Your WhatsApp communication partner</p>
+            <p className="text-white/70 mt-1 text-sm">Your WhatsApp communication partner</p>
           </div>
         </div>
         <div className="flex items-center gap-6">
           <div className="text-right hidden sm:block">
-            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-0.5">Last Login</p>
-            <p className="text-sm text-gray-700 font-medium">{sessionTime}</p>
+            <p className="text-[10px] text-white/50 uppercase font-bold tracking-wider mb-0.5">Last Login</p>
+            <p className="text-sm text-white/90 font-medium">{sessionTime}</p>
           </div>
           <button 
             onClick={handleLogout} 
-            className="text-gray-500 hover:text-red-600 transition p-2 rounded-lg hover:bg-red-50 flex items-center gap-2 text-sm font-medium border border-transparent hover:border-red-100"
+            className="text-white/80 hover:text-white transition p-2 rounded-lg hover:bg-white/10 flex items-center gap-2 text-sm font-medium border border-transparent"
           >
             <LogOut size={18} />
             <span className="hidden sm:inline">Logout</span>

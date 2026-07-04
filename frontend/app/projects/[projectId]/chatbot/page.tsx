@@ -759,7 +759,7 @@ export default function ChatbotPage() {
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px]">
-            <thead className="border-y border-slate-200 bg-slate-100/60">
+            <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Bot</th>
                   <th className="px-5 py-3.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th>

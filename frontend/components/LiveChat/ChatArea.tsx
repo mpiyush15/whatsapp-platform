@@ -66,7 +66,7 @@ export default function ChatArea({
   const withinSession = session?.withinSession !== false;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-gray-50 overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-[#FCF5EB] overflow-hidden">
       <div className="bg-white border-b border-gray-200 text-gray-900 px-3 py-2 flex items-center justify-between sticky top-0 z-10 flex-shrink-0">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {onBack && (

@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Eye, Edit, Trash2, MapPin, Building2, Mail, Phone, Check } from 'lucide-react';
 import { ContactType } from '@/lib/enums';
+import { CoreTableContainer, CoreTableHeader, CoreTableRow, CoreTableHead, CoreTableBody, CoreTableCell } from '@/components/CoreTable';
 
 interface Contact {
   _id: string;
@@ -128,10 +129,9 @@ export function ContactsTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto border border-gray-200 rounded-lg dark:border-gray-700">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <CoreTableContainer>
+        <CoreTableHeader>
+          <CoreTableRow isHeader>
               {/* Checkbox column */}
               {onSelectContact && (
                 <th className="px-4 py-3 text-left">
@@ -143,72 +143,71 @@ export function ContactsTable({
                   />
                 </th>
               )}
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('name')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Name <SortIcon columnKey="name" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('city')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Location <SortIcon columnKey="city" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('businessName')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Business <SortIcon columnKey="businessName" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 Phone
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('type')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Type <SortIcon columnKey="type" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-left font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead>
                 <button
                   onClick={() => handleSort('messageCount')}
-                  className="flex items-center gap-2 hover:text-gray-900 dark:hover:text-white"
+                  className="flex items-center gap-2 hover:text-white"
                 >
                   Messages <SortIcon columnKey="messageCount" />
                 </button>
-              </th>
-              <th className="px-6 py-3 text-right font-semibold text-gray-700 dark:text-gray-200">
+              </CoreTableHead>
+              <CoreTableHead className="text-right">
                 Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+              </CoreTableHead>
+            </CoreTableRow>
+          </CoreTableHeader>
+          <CoreTableBody>
             {isLoading ? (
-              <tr>
-                <td colSpan={onSelectContact ? 8 : 7} className="px-6 py-8 text-center text-gray-500">
+              <CoreTableRow>
+                <CoreTableCell colSpan={onSelectContact ? 8 : 7} className="text-center text-gray-500">
                   Loading contacts...
-                </td>
-              </tr>
+                </CoreTableCell>
+              </CoreTableRow>
             ) : filteredAndSorted.length === 0 ? (
-              <tr>
-                <td colSpan={onSelectContact ? 8 : 7} className="px-6 py-8 text-center text-gray-500">
+              <CoreTableRow>
+                <CoreTableCell colSpan={onSelectContact ? 8 : 7} className="text-center text-gray-500">
                   No contacts found
-                </td>
-              </tr>
+                </CoreTableCell>
+              </CoreTableRow>
             ) : (
               filteredAndSorted.map((contact) => (
-                <tr
+                <CoreTableRow
                   key={contact._id}
-                  className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
                   {/* Checkbox column */}
                   {onSelectContact && (
@@ -221,7 +220,7 @@ export function ContactsTable({
                       />
                     </td>
                   )}
-                  <td className="px-6 py-4">
+                  <CoreTableCell>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-white">{contact.name}</p>
                       {contact.email && (
@@ -230,8 +229,8 @@ export function ContactsTable({
                         </p>
                       )}
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     {contact.city ? (
                       <span className="flex items-center gap-1 text-gray-700 dark:text-gray-300">
                         <MapPin className="w-4 h-4 text-blue-500" />
@@ -240,8 +239,8 @@ export function ContactsTable({
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     {contact.businessName ? (
                       <span className="flex items-center gap-1 text-gray-700 dark:text-gray-300">
                         <Building2 className="w-4 h-4 text-purple-500" />
@@ -250,14 +249,14 @@ export function ContactsTable({
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <span className="flex items-center gap-1 text-gray-700 dark:text-gray-300">
                       <Phone className="w-4 h-4 text-green-500" />
                       {contact.whatsappNumber}
                     </span>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       contact.type === ContactType.CUSTOMER
                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
@@ -267,13 +266,13 @@ export function ContactsTable({
                     }`}>
                       {contact.type}
                     </span>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {contact.messageCount}
                     </span>
-                  </td>
-                  <td className="px-6 py-4">
+                  </CoreTableCell>
+                  <CoreTableCell>
                     <div className="flex justify-end gap-2">
                       {onView && (
                         <button
@@ -303,13 +302,12 @@ export function ContactsTable({
                         </button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </CoreTableCell>
+                </CoreTableRow>
               ))
             )}
-          </tbody>
-        </table>
-      </div>
+          </CoreTableBody>
+      </CoreTableContainer>
 
       {/* Summary */}
       <div className="text-xs text-gray-500 dark:text-gray-400">
