@@ -7,12 +7,14 @@ import { fixUsersAccountIdIndex } from './src/utils/fixUsersAccountIdIndex.js';
 import initializeSocket, { broadcastToProject, broadcastToAccount, sendNotificationToUser } from './src/socket/socketHandler.js';
 import { setupSocketIOHandlers } from './src/services/liveChat-socketHandler.js';
 import { initializeSocketIO } from './src/services/liveChat-socketService.js';
-import { startWorkflowTimeoutScheduler } from './src/schedulers/workflowTimeoutScheduler.js';
-import { startHealthcareReminderScheduler } from './src/schedulers/healthcareReminderScheduler.js';
-import { startPlatformBillingReminderScheduler } from './src/schedulers/platformBillingReminderScheduler.js';
+import { startWorkflowTimeoutScheduler, stopWorkflowTimeoutScheduler } from './src/schedulers/workflowTimeoutScheduler.js';
+import { startHealthcareReminderScheduler, stopHealthcareReminderScheduler } from './src/schedulers/healthcareReminderScheduler.js';
+import { startPlatformBillingReminderScheduler, stopPlatformBillingReminderScheduler } from './src/schedulers/platformBillingReminderScheduler.js';
+import { stopPaymentTimeoutScheduler } from './src/schedulers/paymentTimeoutScheduler.js';
+import { stopPaymentStatusPoller } from './src/jobs/paymentStatusPoller.js';
 
 // Initialize BullMQ Workers
-import './src/workers/broadcastWorker.js';
+import { closeBroadcastWorker } from './src/workers/broadcastWorker.js';
 
 // Load environment variables
 dotenv.config();
@@ -79,3 +81,22 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
+
+// Graceful Shutdown Hooks
+const gracefulShutdown = async () => {
+  console.log('🛑 Shutting down gracefully...');
+  stopPaymentStatusPoller();
+  stopWorkflowTimeoutScheduler();
+  stopHealthcareReminderScheduler();
+  stopPlatformBillingReminderScheduler();
+  stopPaymentTimeoutScheduler();
+  if (closeBroadcastWorker) await closeBroadcastWorker();
+  
+  await mongoose.disconnect();
+  httpServer.close(() => {
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);

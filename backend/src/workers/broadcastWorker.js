@@ -7,70 +7,83 @@ import { dispatchWebhookEvent } from '../services/webhookDispatcherService.js';
 
 const BATCH_SIZE = 50;
 
-// Create a powerful background worker
-export const broadcastWorker = new Worker(
-  'BroadcastQueue',
-  async (job) => {
-    const { accountId, phoneNumberId, broadcast, recipientPhone, totalRecipients } = job.data;
+let broadcastWorker = null;
 
-    try {
-      // 1. Send the message
-      await broadcastExecutionService.sendBroadcastMessage(accountId, phoneNumberId, broadcast, recipientPhone);
+// Only start the worker on the primary instance if running in cluster mode
+if (!process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0') {
+  broadcastWorker = new Worker(
+    'BroadcastQueue',
+    async (job) => {
+      const { accountId, phoneNumberId, broadcast, recipientPhone, totalRecipients } = job.data;
 
-      // 2. Mark phone sent safely
-      await broadcastRepository.markPhoneSent(broadcast._id, recipientPhone);
+      try {
+        // 1. Send the message
+        await broadcastExecutionService.sendBroadcastMessage(accountId, phoneNumberId, broadcast, recipientPhone);
 
-      return { success: true, recipientPhone };
-    } catch (error) {
-      // Log the error natively to our DB without crashing the worker
-      await broadcastRepository.pushErrorLog(broadcast._id, {
-        phoneNumber: recipientPhone,
-        error: error.message,
-        errorCode: error.code || null,
-      });
-      
-      throw error; // Let BullMQ know it failed so it triggers 'failed' event
-    }
-  },
-  {
-    connection,
-    concurrency: 5, // Process 5 jobs at exactly the same time per worker
-    limiter: {
-      max: 50, // Strict limit: 50 messages
-      duration: 1000, // per 1 second (1000ms)
+        // 2. Mark phone sent safely
+        await broadcastRepository.markPhoneSent(broadcast._id, recipientPhone);
+
+        return { success: true, recipientPhone };
+      } catch (error) {
+        // Log the error natively to our DB without crashing the worker
+        await broadcastRepository.pushErrorLog(broadcast._id, {
+          phoneNumber: recipientPhone,
+          error: error.message,
+          errorCode: error.code || null,
+        });
+        
+        throw error; // Let BullMQ know it failed so it triggers 'failed' event
+      }
     },
+    {
+      connection,
+      concurrency: 5, // Process 5 jobs at exactly the same time per worker
+      limiter: {
+        max: 50, // Strict limit: 50 messages
+        duration: 1000, // per 1 second (1000ms)
+      },
+    }
+  );
+
+  // Listen to completed jobs
+  broadcastWorker.on('completed', async (job) => {
+    const { broadcast } = job.data;
+    
+    // Atomically increment sent count
+    await broadcastRepository.incrementProgress(broadcast._id, {
+      sent: 1,
+      pending: -1,
+    });
+    
+    await checkBroadcastCompletion(broadcast._id, job.data.accountId, job.data.totalRecipients);
+  });
+
+  // Listen to failed jobs
+  broadcastWorker.on('failed', async (job, err) => {
+    const { broadcast } = job.data;
+    
+    // Atomically increment failed count
+    await broadcastRepository.incrementProgress(broadcast._id, {
+      failed: 1,
+      pending: -1,
+    });
+
+    await checkBroadcastCompletion(broadcast._id, job.data.accountId, job.data.totalRecipients);
+  });
+
+  broadcastWorker.on('error', (err) => {
+    logger.error('❌ Broadcast Worker Error:', err.message);
+  });
+}
+
+export { broadcastWorker };
+
+export const closeBroadcastWorker = async () => {
+  if (broadcastWorker) {
+    await broadcastWorker.close();
+    logger.info('⏹️ Broadcast Worker stopped gracefully');
   }
-);
-
-// Listen to completed jobs
-broadcastWorker.on('completed', async (job) => {
-  const { broadcast } = job.data;
-  
-  // Atomically increment sent count
-  await broadcastRepository.incrementProgress(broadcast._id, {
-    sent: 1,
-    pending: -1,
-  });
-  
-  await checkBroadcastCompletion(broadcast._id, job.data.accountId, job.data.totalRecipients);
-});
-
-// Listen to failed jobs
-broadcastWorker.on('failed', async (job, err) => {
-  const { broadcast } = job.data;
-  
-  // Atomically increment failed count
-  await broadcastRepository.incrementProgress(broadcast._id, {
-    failed: 1,
-    pending: -1,
-  });
-
-  await checkBroadcastCompletion(broadcast._id, job.data.accountId, job.data.totalRecipients);
-});
-
-broadcastWorker.on('error', (err) => {
-  logger.error('❌ Broadcast Worker Error:', err.message);
-});
+};
 
 /**
  * Checks if the broadcast is fully finished, and updates the final status.

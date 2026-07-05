@@ -12,6 +12,10 @@ import { handleControllerError, ValidationError, NotFoundError, UnauthorizedErro
 let scheduledJob = null;
 
 export const startPaymentTimeoutScheduler = () => {
+  // Only start on primary instance in cluster mode
+  if (process.env.NODE_APP_INSTANCE && process.env.NODE_APP_INSTANCE !== '0') return null;
+  if (scheduledJob) return scheduledJob; // Prevent duplicate execution
+
   try {
     // Schedule job to run every 15 minutes (at 0, 15, 30, 45 minute marks)
     scheduledJob = cron.schedule('*/15 * * * *', async () => {

@@ -6,6 +6,10 @@ let scheduledJob = null;
 
 /** Runs every minute — picks up expired workflow response deadlines */
 export const startWorkflowTimeoutScheduler = () => {
+  // Only start on primary instance in cluster mode
+  if (process.env.NODE_APP_INSTANCE && process.env.NODE_APP_INSTANCE !== '0') return null;
+  if (scheduledJob) return scheduledJob; // Prevent duplicate execution
+
   try {
     scheduledJob = cron.schedule('* * * * *', async () => {
       try {

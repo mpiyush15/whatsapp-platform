@@ -6,6 +6,10 @@ let scheduledJob = null;
 
 /** Runs every 15 minutes — 24h appointment reminders for healthcare */
 export const startHealthcareReminderScheduler = () => {
+  // Only start on primary instance in cluster mode
+  if (process.env.NODE_APP_INSTANCE && process.env.NODE_APP_INSTANCE !== '0') return null;
+  if (scheduledJob) return scheduledJob; // Prevent duplicate execution
+
   try {
     scheduledJob = cron.schedule('*/15 * * * *', async () => {
       try {

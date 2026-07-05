@@ -2,11 +2,11 @@ module.exports = {
   apps: [
     {
       name: 'replysys-backend',
-      script: 'src/app.js',
-      instances: 'max',
-      exec_mode: 'cluster',
+      script: 'server.js',
+      instances: 1,
+      exec_mode: 'fork',
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '500M',
       env: {
         NODE_ENV: 'development',
       },

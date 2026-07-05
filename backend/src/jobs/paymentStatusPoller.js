@@ -3,15 +3,21 @@ import Payment from '../models/Payment.js';
 import { cashfreeService } from '../services/cashfreeService.js';
 import { handleCashfreeWebhook } from '../controllers/paymentWebhookController.js';
 
+let intervalId = null;
+
 /**
  * Auto-poll last 5 pending payments from Cashfree
  * Only check payments that are NOT completed
  * Trigger subscription flow when payment completes
  */
 export const startPaymentStatusPoller = () => {
+  // Only start on primary instance in cluster mode
+  if (process.env.NODE_APP_INSTANCE && process.env.NODE_APP_INSTANCE !== '0') return;
+  if (intervalId) return; // Prevent duplicate execution
+
   logger.info('🚀 Starting payment status poller (checks every 10 seconds)');
   
-  setInterval(async () => {
+  intervalId = setInterval(async () => {
     try {
       // Get last 5 payments that are NOT completed
       const pendingPayments = await Payment.find({
@@ -140,4 +146,12 @@ export const startPaymentStatusPoller = () => {
   }, 10000); // Poll every 10 seconds
 };
 
-export default { startPaymentStatusPoller };
+export const stopPaymentStatusPoller = () => {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+    logger.info('⏹️ Payment status poller stopped gracefully');
+  }
+};
+
+export default { startPaymentStatusPoller, stopPaymentStatusPoller };

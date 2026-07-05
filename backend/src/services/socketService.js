@@ -387,6 +387,16 @@ export const initSocketIO = (server) => {
         });
         logger.info(`🔴 ${socket.email} went offline`);
       }
+      const conversationId = userConversations.get(socket.id);
+      if (conversationId) {
+        const users = conversationUsers.get(conversationId);
+        if (users) {
+          users.delete(socket.id);
+          if (users.size === 0) {
+            conversationUsers.delete(conversationId);
+          }
+        }
+      }
       userConversations.delete(socket.id);
     });
 
