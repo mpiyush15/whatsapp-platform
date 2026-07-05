@@ -41,8 +41,8 @@ const nextConfig = {
   /* Disable SWC minification to use Terser for better tree-shaking */
   swcMinify: true,
 
-  /* Compress CSS and optimize CSS in production */
-  compress: true,
+  /* Let Nginx handle compression to prevent double-compression corruption */
+  compress: false,
 
   /* Enable production source maps for debugging (optional - comment out for smaller builds) */
   productionBrowserSourceMaps: false,

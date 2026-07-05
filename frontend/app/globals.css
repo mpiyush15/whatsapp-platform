@@ -89,9 +89,6 @@
     --ring: 59 89% 46%;
   }
 
-  * {
-    @apply transition-colors duration-300;
-  }
 
   body {
     @apply bg-white text-gray-900;
