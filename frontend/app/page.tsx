@@ -43,14 +43,14 @@ export default function UpgradeAnnouncementPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          className="flex justify-center mb-10"
+          className="flex justify-center mb-6 sm:mb-10"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200 shadow-sm">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white border border-slate-200 shadow-sm">
             <span className="flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
             </span>
-            <span className="text-sm font-semibold tracking-wide text-slate-700 uppercase">
+            <span className="text-xs sm:text-sm font-semibold tracking-wide text-slate-700 uppercase">
               The Evolution of ReplySys
             </span>
           </div>
@@ -63,13 +63,13 @@ export default function UpgradeAnnouncementPage() {
           transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
           className="text-center mb-8"
         >
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1] mb-6">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1] sm:leading-[1.1] mb-6">
             Beyond WhatsApp. <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-500">
               Welcome to the Agentic Era.
             </span>
           </h1>
-          <p className="text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-base sm:text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed px-2 sm:px-0">
             We are upgrading from a standard WhatsApp API provider to a complete <strong className="font-semibold text-slate-900">AI Agents Platform</strong>. 
             Prepare for autonomous workflows, proactive reasoning, and systems that work <i>with</i> you, not just for you.
           </p>
@@ -164,13 +164,13 @@ export default function UpgradeAnnouncementPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your work email..." 
-                  className="flex-1 px-6 py-4 rounded-full border border-slate-200 bg-white text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+                  className="flex-1 px-4 py-3 sm:px-6 sm:py-4 rounded-full border border-slate-200 bg-white text-sm sm:text-base text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
                   disabled={isSubmitting}
                 />
                 <button 
                   type="submit"
                   disabled={isSubmitting || !email}
-                  className="px-8 py-4 rounded-full bg-blue-600 text-white font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70 disabled:hover:scale-100 min-w-[180px]"
+                  className="px-6 py-3 sm:px-8 sm:py-4 rounded-full bg-blue-600 text-white text-sm sm:text-base font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70 disabled:hover:scale-100 min-w-[150px] sm:min-w-[180px]"
                 >
                   {isSubmitting ? (
                     <span className="flex items-center gap-2">
