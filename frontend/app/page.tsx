@@ -1,39 +1,201 @@
-import Link from 'next/link';
+"use client";
+import React from 'react';
+import { motion } from 'framer-motion';
+import { ArrowRight, MessageSquare, ArrowRightLeft, BrainCircuit, Sparkles } from 'lucide-react';
 
-export default function HomePage() {
+export default function UpgradeAnnouncementPage() {
+  const [email, setEmail] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isSubmitted, setIsSubmitted] = React.useState(false);
+
+  const handleWaitlistSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    
+    setIsSubmitting(true);
+    try {
+      await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      setIsSubmitted(true);
+      setEmail('');
+    } catch (error) {
+      console.error('Submission failed', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white text-gray-900 px-4">
-      <div className="max-w-3xl w-full text-center space-y-8 animate-fade-in">
-        <div className="mb-4 flex items-center justify-center">
-          <span className="text-4xl font-extrabold tracking-tight text-[#060807]">
-            Replysys
-          </span>
-        </div>
-        
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-gray-900">
-          We are under <span className="text-[#115B4C] drop-shadow-sm">development</span>
-        </h1>
-        
-        <p className="text-xl md:text-2xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-          Something amazing is in the works. We are preparing the best experience for you.
-        </p>
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-center items-center relative overflow-hidden font-sans">
+      
+      {/* Background Corporate & Warm Glows */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-blue-600/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-amber-600/5 rounded-full blur-[120px] pointer-events-none" />
 
-        <div className="py-10">
-          <div className="inline-flex flex-col items-center p-8 bg-gray-50 rounded-3xl border border-gray-100 shadow-sm transition-transform hover:scale-105 duration-300">
-            <span className="text-sm font-semibold uppercase tracking-widest text-gray-500 mb-3">Expected Launch</span>
-            <span className="text-4xl md:text-5xl font-extrabold text-gray-900 tracking-tight">August 15th</span>
+      {/* Main Container */}
+      <main className="max-w-5xl mx-auto px-6 py-20 relative z-10 w-full">
+        
+        {/* Top Badge */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="flex justify-center mb-10"
+        >
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200 shadow-sm">
+            <span className="flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            </span>
+            <span className="text-sm font-semibold tracking-wide text-slate-700 uppercase">
+              The Evolution of ReplySys
+            </span>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="pt-6 flex flex-col sm:flex-row items-center justify-center gap-4">
-          <Link href="/login" className="px-8 py-4 rounded-xl font-semibold bg-[#115B4C] text-white hover:bg-[#115B4C]/90 transition-colors shadow-sm text-lg">
-            Login to Dashboard (Beta)
-          </Link>
-          <a href="mailto:hello@domain.com" className="px-8 py-4 rounded-xl font-semibold border-2 border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors text-gray-700 text-lg">
-            Contact Us
-          </a>
-        </div>
+        {/* Headline */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
+          className="text-center mb-8"
+        >
+          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1] mb-6">
+            Beyond WhatsApp. <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-indigo-500">
+              Welcome to the Agentic Era.
+            </span>
+          </h1>
+          <p className="text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            We are upgrading from a standard WhatsApp API provider to a complete <strong className="font-semibold text-slate-900">AI Agents Platform</strong>. 
+            Prepare for autonomous workflows, proactive reasoning, and systems that work <i>with</i> you, not just for you.
+          </p>
+        </motion.div>
+
+        {/* UI Chat Transition Mock */}
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1, delay: 0.3, ease: "easeOut" }}
+          className="my-16 max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-center gap-8"
+        >
+          {/* Left: Legacy WhatsApp Bot */}
+          <div className="w-full md:w-[320px] bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-slate-100 p-4 border-b border-slate-200 text-center">
+              <h3 className="font-semibold text-slate-600 text-sm">The Old Way: Chatbots</h3>
+            </div>
+            <div className="p-4 bg-slate-50 space-y-4 h-[240px] flex flex-col justify-end">
+              <div className="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-sm self-end text-sm max-w-[85%] shadow-sm">
+                Can I book a haircut for tomorrow at 2 PM?
+              </div>
+              <div className="bg-white border border-slate-200 text-slate-600 p-3 rounded-2xl rounded-tl-sm self-start text-sm max-w-[85%] shadow-sm">
+                Sorry, I didn't understand that. <br/><br/>
+                Reply 1 for Sales.<br/>
+                Reply 2 for Support.
+              </div>
+            </div>
+          </div>
+
+          {/* Arrow */}
+          <div className="rotate-90 md:rotate-0 flex items-center justify-center px-4">
+            <motion.div
+              animate={{ x: [0, 15, 0] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <ArrowRight className="w-8 h-8 md:w-10 md:h-10 text-blue-500" />
+            </motion.div>
+          </div>
+
+          {/* Right: Agentic AI */}
+          <div className="w-full md:w-[350px] bg-gradient-to-b from-slate-900 to-slate-800 rounded-3xl shadow-2xl border border-slate-700 overflow-hidden transform md:scale-110 relative">
+            <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
+              <BrainCircuit className="w-24 h-24 text-blue-300" />
+            </div>
+            <div className="bg-slate-800/50 p-4 border-b border-slate-700 text-center relative z-10 flex items-center justify-center gap-2">
+              <Sparkles className="w-4 h-4 text-blue-400" />
+              <h3 className="font-bold text-white text-sm">The New Way: AI Agents</h3>
+            </div>
+            <div className="p-4 space-y-4 h-[260px] flex flex-col justify-end relative z-10">
+              <div className="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-sm self-end text-[13px] max-w-[85%] shadow-md">
+                Can I book a haircut for tomorrow at 2 PM?
+              </div>
+              
+              {/* Agent Thinking State */}
+              <div className="self-start flex items-center gap-2 text-[11px] text-slate-400 font-medium mb-1 px-1">
+                <BrainCircuit className="w-3 h-3 text-blue-400 animate-pulse" />
+                Checking Calendar & CRM...
+              </div>
+
+              <div className="bg-slate-700 border border-slate-600 text-slate-100 p-3 rounded-2xl rounded-tl-sm self-start text-[13px] max-w-[90%] shadow-lg">
+                I found an opening at 2:00 PM and booked it on your Google Calendar! 📅 <br/><br/>
+                Should I send the deposit link?
+              </div>
+            </div>
+          </div>
+
+        </motion.div>
+
+        {/* Call to Action - Waitlist Form */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.5, ease: "easeOut" }}
+          className="flex flex-col items-center justify-center max-w-lg mx-auto mt-12"
+        >
+          {isSubmitted ? (
+            <div className="flex items-center gap-3 px-6 py-4 bg-green-50 border border-green-200 rounded-2xl text-green-700 shadow-sm">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-green-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">You're on the list!</p>
+                <p className="text-xs text-green-600/80">We've sent your details to support@replysys.com</p>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleWaitlistSubmit} className="w-full">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input 
+                  type="email" 
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your work email..." 
+                  className="flex-1 px-6 py-4 rounded-full border border-slate-200 bg-white text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+                  disabled={isSubmitting}
+                />
+                <button 
+                  type="submit"
+                  disabled={isSubmitting || !email}
+                  className="px-8 py-4 rounded-full bg-blue-600 text-white font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 hover:scale-105 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70 disabled:hover:scale-100 min-w-[180px]"
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      Joining...
+                    </span>
+                  ) : (
+                    <>Join the Waitlist <ArrowRight className="w-4 h-4" /></>
+                  )}
+                </button>
+              </div>
+              <p className="text-center text-xs text-slate-500 mt-4">
+                We'll notify you as soon as the Agentic Core is ready for beta testing.
+              </p>
+            </form>
+          )}
+        </motion.div>
+
+      </main>
+
+      {/* Footer / Copyright */}
+      <div className="absolute bottom-6 text-center w-full text-slate-400 text-sm font-medium">
+        © 2026 ReplySys. The Future of Work.
       </div>
+
     </div>
   );
 }
