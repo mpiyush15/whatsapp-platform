@@ -64,11 +64,12 @@ function buildBodyExample(content, category = '', providedSamples = []) {
   const samples = indices.map((n, i) => {
     if (isAuth && n === 1) return '123456';
     if (providedSamples && providedSamples[i]) return providedSamples[i];
-    if (n === 1) return 'Customer';
-    if (n === 2) return 'Starter';
-    if (n === 3) return 'monthly';
-    if (n === 4) return 'https://replysys.com/pay';
-    return `sample_${n}`;
+    if (n === 1) return 'John Doe';
+    if (n === 2) return '15-Aug-2024';
+    if (n === 3) return 'Order #10293';
+    if (n === 4) return 'Premium Plan';
+    if (n === 5) return '20% OFF';
+    return `Example Value ${n}`;
   });
 
   return { body_text: [samples] };
@@ -155,7 +156,7 @@ function buildMetaComponents({
   } else if (!isAuthentication && headerText) {
     const hasVars = /\{\{\d+\}\}/.test(headerText);
     const comp = { type: 'HEADER', format: 'TEXT', text: headerText };
-    if (hasVars) comp.example = { header_text: ['sample_value'] };
+    if (hasVars) comp.example = { header_text: ['Hello John'] };
     components.push(comp);
   }
 
@@ -190,8 +191,8 @@ function buildMetaComponents({
     const metaButtons = buttons.map((btn) => {
       const type = (btn.type || 'QUICK_REPLY').toUpperCase();
       if (type === 'URL') {
-        let urlStr = btn.url || btn.value || 'https://example.com';
-        let exampleValue = btn.sampleValue || "custom_url_param";
+        let urlStr = btn.url || btn.value || 'https://mywebsite.com/offer';
+        let exampleValue = btn.sampleValue || "summer-sale-2024";
         const isDynamic = btn.isDynamicUrl || btn.isDynamicDocument;
         
         if (isDynamic && !/\\{\\{\\d+\\}\\}/.test(urlStr)) {
@@ -763,6 +764,7 @@ export const submitTemplateToMeta = async (req, res) => {
       category: template.category.toUpperCase(), // Meta: MARKETING | UTILITY | AUTHENTICATION
       components,
       ...(isAuthentication ? { message_send_ttl_seconds: 600 } : {}),
+      allow_category_change: true,
     };
 
     logger.info(`📤 Submitting template "${template.name}" to Meta WABA: ${wabaId}`);
