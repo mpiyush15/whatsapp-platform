@@ -17,7 +17,7 @@ import { handleControllerError, ValidationError, NotFoundError, UnauthorizedErro
 
 export const subdomainDetectionMiddleware = async (req, res, next) => {
   try {
-    const hostname = req.hostname; // e.g., "client-a.whatsapp-platform.com"
+    const hostname = req.hostname || ''; // Fallback to empty string to prevent undefined errors
     
     // Skip subdomain detection for backend API domains
     // Backends typically accessed at: domain.up.railway.app, localhost:5000, etc.

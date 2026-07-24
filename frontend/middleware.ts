@@ -80,6 +80,7 @@ export function middleware(request: NextRequest) {
   const requiredDomain = getRequiredDomainForPath(pathname)
   const currentDomain = detectDomainFromRequest(request)
 
+  /*
   if (requiredDomain && currentDomain !== requiredDomain) {
     return redirectToDomain(request, requiredDomain)
   }
@@ -96,6 +97,7 @@ export function middleware(request: NextRequest) {
   if (currentDomain === 'healthcare' && isAppOnlyPath(pathname)) {
     return redirectToDomain(request, 'app')
   }
+  */
 
   return NextResponse.next()
 }
