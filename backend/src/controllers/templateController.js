@@ -769,6 +769,7 @@ export const submitTemplateToMeta = async (req, res) => {
 
     logger.info(`📤 Submitting template "${template.name}" to Meta WABA: ${wabaId}`);
     logger.info('Payload:', JSON.stringify(payload, null, 2));
+    console.log('\n\n=== FULL META SUBMIT PAYLOAD ===\n', JSON.stringify(payload, null, 2), '\n================================\n');
 
     const metaResponse = await axios.post(
       `${GRAPH_API_URL}/${wabaId}/message_templates`,
