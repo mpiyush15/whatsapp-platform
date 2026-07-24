@@ -7,6 +7,7 @@ import Template from '../models/Template.js';
 import PhoneNumber from '../models/PhoneNumber.js';
 import { uploadToS3, getMediaTypeFromMime } from '../services/s3Service.js';
 import { validateTemplateMetaRules } from '../utils/templateValidator.js';
+import { checkTemplateApproval } from '../geminiClient.js';
 
 const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
 
@@ -770,6 +771,12 @@ export const submitTemplateToMeta = async (req, res) => {
     logger.info('Payload:', JSON.stringify(payload, null, 2));
     console.log('\n\n=== FULL META SUBMIT PAYLOAD ===\n', JSON.stringify(payload, null, 2), '\n================================\n');
 
+    // AI Approval System Checker
+    const aiCheck = await checkTemplateApproval(payload);
+    if (aiCheck.status === 'REJECTED') {
+      return sendValidationError(res, `AI Template Approval Failed. Meta would likely reject this template. Reasons: ${aiCheck.reasons.join(' ')}`);
+    }
+
     const metaResponse = await axios.post(
       `${GRAPH_API_URL}/${wabaId}/message_templates`,
       payload,
@@ -778,6 +785,7 @@ export const submitTemplateToMeta = async (req, res) => {
 
     const metaData = metaResponse.data;
     logger.info('✅ Meta accepted template:', metaData);
+    console.log('\n\n=== META RESPONSE HEADERS ===\n', JSON.stringify(metaResponse.headers, null, 2), '\n=============================\n');
 
     template.metaTemplateId = String(metaData.id);
     template.status = 'pending';
