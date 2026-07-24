@@ -16,7 +16,7 @@ const model = genAI.getGenerativeModel({
   },
   safetySettings: [
     {
-      category: 'HARM_CATEGORY_DANGEROUS_CODE',
+      category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
       threshold: 'BLOCK_NONE',
     },
   ],
