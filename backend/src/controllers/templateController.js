@@ -764,7 +764,6 @@ export const submitTemplateToMeta = async (req, res) => {
       category: template.category.toUpperCase(), // Meta: MARKETING | UTILITY | AUTHENTICATION
       components,
       ...(isAuthentication ? { message_send_ttl_seconds: 600 } : {}),
-      allow_category_change: true,
     };
 
     logger.info(`📤 Submitting template "${template.name}" to Meta WABA: ${wabaId}`);
