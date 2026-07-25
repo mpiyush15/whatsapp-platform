@@ -57,10 +57,10 @@ const templateSchema = new mongoose.Schema({
   category: {
     type: String,
     enum: {
-      values: ['marketing', 'utility', 'authentication'],
+      values: ['marketing', 'utility', 'authentication', 'MARKETING', 'UTILITY', 'AUTHENTICATION'],
       message: '{VALUE} is not a valid template category'
     },
-    default: 'utility'
+    default: 'UTILITY'
   },
   content: {
     type: String,

@@ -21,9 +21,9 @@ export function validateTemplateMetaRules(template) {
     errors.push('Template name must only contain lowercase alphanumeric characters and underscores.');
   }
 
-  const validCategories = ['utility', 'authentication'];
+  const validCategories = ['utility', 'authentication', 'marketing'];
   if (!validCategories.includes(String(category).toLowerCase())) {
-    errors.push('Category mismatch: Keep everything strictly Utility or Authentication to avoid manual review delays.');
+    errors.push('Category mismatch: Must be Marketing, Utility or Authentication.');
   }
 
   // Authentication templates have very strict and limited rules
