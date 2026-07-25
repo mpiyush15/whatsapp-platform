@@ -769,7 +769,15 @@ export default function TemplatesTab({ projectId, isCreatePage = false }: { proj
   }
 
   const renderMetaMobilePreview = (isLive = false) => {
-    const liveContent = formData.content?.trim()
+    let liveContent = formData.content?.trim() || ''
+    
+    if (formData.variableSamples && formData.variableSamples.length > 0) {
+      liveContent = liveContent.replace(/\{\{(\d+)\}\}/g, (match, num) => {
+        const index = parseInt(num) - 1;
+        return formData.variableSamples?.[index] ? formData.variableSamples[index] : match;
+      });
+    }
+
     const liveFooter = formData.footerText?.trim()
     const liveHeader = formData.headerText?.trim()
     const liveImage = localMediaPreviewUrl || formData.mediaUrl?.trim()
