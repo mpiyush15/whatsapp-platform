@@ -365,6 +365,7 @@ export default function TemplatesTab({ projectId, isCreatePage = false }: { proj
       const isAuth = formData.category === 'authentication'
       let finalData: any = {
         ...formData,
+        category: formData.category.toUpperCase(),
         projectId,
         templateType,
         ...(isAuth
@@ -385,7 +386,7 @@ export default function TemplatesTab({ projectId, isCreatePage = false }: { proj
         const formDataToSend = new FormData()
         formDataToSend.append('name', formData.name)
         formDataToSend.append('language', formData.language)
-        formDataToSend.append('category', formData.category)
+        formDataToSend.append('category', formData.category.toUpperCase())
         formDataToSend.append('content', formData.content)
         formDataToSend.append('hasMedia', String(formData.hasMedia))
         formDataToSend.append('mediaType', formData.mediaType)

@@ -754,82 +754,44 @@ export default function TemplateEditForm({ formData, setFormData, category, temp
           )}
         </div>
 
-        {/* Variable Config Table */}
+        {/* Sample Values for Variables */}
         {bodyVariableCount > 0 && category !== "authentication" && (
-          <div className="mt-8">
-            <h4 className="text-lg font-semibold text-gray-900 mb-4">Template Variables</h4>
+          <div className="mt-6 bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <div className="mb-3">
+              <h4 className="text-[14px] font-semibold text-gray-900">Sample Values</h4>
+              <p className="text-[12px] text-gray-500 mt-0.5">
+                Specify realistic sample values for your variables. Meta uses these to understand context and instantly approve templates.
+              </p>
+            </div>
             
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="py-3 px-2 text-sm font-semibold text-gray-900">Variable</th>
-                    <th className="py-3 px-2 text-sm font-semibold text-gray-900">Display Name</th>
-                    <th className="py-3 px-2 text-sm font-semibold text-gray-900">Example Value</th>
-                    <th className="py-3 px-2 text-sm font-semibold text-gray-900">Auto Map</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {variableConfig.map((config, i) => (
-                    <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="py-4 px-2 w-[100px]">
-                        <span className="text-sm font-medium text-gray-700 font-mono">
-                          {'{{'}{i + 1}{'}}'}
-                        </span>
-                      </td>
-                      <td className="py-4 px-2 w-[220px]">
-                        <input
-                          type="text"
-                          value={config.displayName}
-                          onChange={(e) => {
-                            const newConfig = [...variableConfig]
-                            newConfig[i].displayName = e.target.value
-                            set({ variableConfig: newConfig })
-                          }}
-                          placeholder="e.g. Customer Name"
-                          className="w-full px-3 py-1.5 border-b border-transparent hover:border-gray-300 focus:border-blue-500 bg-transparent text-sm focus:outline-none transition-colors"
-                        />
-                      </td>
-                      <td className="py-4 px-2 w-[220px]">
-                        <input
-                          type="text"
-                          value={config.exampleValue}
-                          onChange={(e) => {
-                            const newConfig = [...variableConfig]
-                            newConfig[i].exampleValue = e.target.value
-                            
-                            // Also keep legacy variableSamples in sync for Meta requirements
-                            const newSamples = [...(formData.variableSamples || [])]
-                            newSamples[i] = e.target.value
-                            
-                            set({ variableConfig: newConfig, variableSamples: newSamples })
-                          }}
-                          placeholder="e.g. Rahul Patil"
-                          className="w-full px-3 py-1.5 border-b border-transparent hover:border-gray-300 focus:border-blue-500 bg-transparent text-sm focus:outline-none transition-colors"
-                        />
-                      </td>
-                      <td className="py-4 px-2 w-[200px]">
-                        <select
-                          value={config.autoMap}
-                          onChange={(e) => {
-                            const newConfig = [...variableConfig]
-                            newConfig[i].autoMap = e.target.value
-                            set({ variableConfig: newConfig })
-                          }}
-                          className="w-full px-2 py-1.5 border-b border-transparent hover:border-gray-300 focus:border-blue-500 bg-transparent text-sm focus:outline-none cursor-pointer appearance-none"
-                        >
-                          <option value="none">None</option>
-                          <option value="Contact Name">Contact Name</option>
-                          <option value="Phone Number">Phone Number</option>
-                          <option value="Email">Email</option>
-                          <option value="Custom">Custom</option>
-                          <option value="Appointment Date">Appointment Date</option>
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {variableConfig.map((config, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <div className="flex-shrink-0 w-16 text-right">
+                    <span className="text-sm font-semibold text-gray-700 bg-gray-200 px-2 py-1 rounded">
+                      {'{{'}{i + 1}{'}}'}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={config.exampleValue || formData.variableSamples?.[i] || ''}
+                      onChange={(e) => {
+                        const newConfig = [...variableConfig]
+                        newConfig[i].exampleValue = e.target.value
+                        
+                        // Keep legacy variableSamples in sync for Meta requirements
+                        const newSamples = [...(formData.variableSamples || [])]
+                        newSamples[i] = e.target.value
+                        
+                        set({ variableConfig: newConfig, variableSamples: newSamples })
+                      }}
+                      placeholder={`Sample text for Variable ${i + 1} (e.g. Rahul Sharma)`}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-600 text-sm bg-white"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
