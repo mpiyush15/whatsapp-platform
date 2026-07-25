@@ -16,9 +16,14 @@ export function validateTemplateMetaRules(template) {
 
   const isAuthentication = String(category).toLowerCase() === 'authentication';
 
-  // 1. Name validation
+  // 1. Name and Category validation
   if (!name || !/^[a-z0-9_]+$/.test(name)) {
     errors.push('Template name must only contain lowercase alphanumeric characters and underscores.');
+  }
+
+  const validCategories = ['utility', 'authentication'];
+  if (!validCategories.includes(String(category).toLowerCase())) {
+    errors.push('Category mismatch: Keep everything strictly Utility or Authentication to avoid manual review delays.');
   }
 
   // Authentication templates have very strict and limited rules
@@ -37,6 +42,14 @@ export function validateTemplateMetaRules(template) {
   const consecutiveRegex = /\{\{\d+\}\}\s*\{\{\d+\}\}/;
   if (consecutiveRegex.test(bodyText)) {
     errors.push('Variables cannot be placed consecutively (e.g. {{1}}{{2}} or {{1}} {{2}}). They must be separated by actual text.');
+  }
+
+  // Rule: Never start or end with a variable
+  if (/^\{\{\d+\}\}/.test(bodyText.trim())) {
+    errors.push('Templates cannot start with a variable. Always anchor it with text at the beginning.');
+  }
+  if (/\{\{\d+\}\}$/.test(bodyText.trim())) {
+    errors.push('Templates cannot end with a variable. Always anchor it with text at the end.');
   }
 
   // Rule: Variable numbering must be sequential starting at 1
