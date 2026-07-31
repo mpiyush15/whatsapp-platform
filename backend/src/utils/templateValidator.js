@@ -102,5 +102,21 @@ export function validateTemplateMetaRules(template) {
     });
   }
 
+  // 5. Utility vs Marketing words
+  if (String(category).toLowerCase() === 'utility') {
+    const promoWords = ['offer', 'discount', 'off', 'deal', 'buy now', 'sale', 'free', 'promo'];
+    const lowerBody = bodyText.toLowerCase();
+    // Use word boundaries to avoid matching "coffee" with "off" or "freedom" with "free"
+    const found = promoWords.filter(w => new RegExp(`\\b${w}\\b`, 'i').test(bodyText));
+    if (found.length > 0) {
+      errors.push(`UTILITY template contains promotional words (${found.join(', ')}). This will be flagged to MARKETING and go to 24h review. Change category to MARKETING or remove those words.`);
+    }
+  }
+
+  // 6. Body too short
+  if (bodyText.replace(/\{\{\d+\}\}/g, '').trim().length < 10) {
+    errors.push('Body text is too short. Add more context about why user is receiving this message.');
+  }
+
   return errors;
 }

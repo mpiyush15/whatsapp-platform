@@ -9,7 +9,7 @@ import { uploadToS3, getMediaTypeFromMime } from '../services/s3Service.js';
 import { validateTemplateMetaRules } from '../utils/templateValidator.js';
 import { checkTemplateApproval } from '../geminiClient.js';
 
-const GRAPH_API_URL = 'https://graph.facebook.com/v21.0';
+const GRAPH_API_URL = 'https://graph.facebook.com/v23.0';
 
 /**
  * Helper: get the first active phone number config (wabaId + accessToken) for an account
@@ -68,8 +68,8 @@ function buildBodyExample(content, category = '', providedSamples = []) {
     if (n === 1) return 'John Doe';
     if (n === 2) return '15-Aug-2024';
     if (n === 3) return 'Order #10293';
-    if (n === 4) return 'Premium Plan';
-    if (n === 5) return '20% OFF';
+    if (n === 4) return 'Standard Plan';
+    if (n === 5) return '12345';
     return `Example Value ${n}`;
   });
 
@@ -193,16 +193,22 @@ function buildMetaComponents({
       const type = (btn.type || 'QUICK_REPLY').toUpperCase();
       if (type === 'URL') {
         let urlStr = btn.url || btn.value || 'https://mywebsite.com/offer';
-        let exampleValue = btn.sampleValue || "summer-sale-2024";
+        let exampleValue = btn.sampleValue || "https://mywebsite.com/offer/12345";
+        
+        // Ensure exampleValue is a full URL if it's dynamic
+        if (exampleValue && !exampleValue.startsWith('http')) {
+           exampleValue = `https://mywebsite.com/${exampleValue.replace(/^\//, '')}`;
+        }
+        
         const isDynamic = btn.isDynamicUrl || btn.isDynamicDocument;
         
-        if (isDynamic && !/\\{\\{\\d+\\}\\}/.test(urlStr)) {
+        if (isDynamic && !/\{\{\d+\}\}/.test(urlStr)) {
           urlStr = urlStr.trim();
           if (!urlStr.endsWith('/')) urlStr += '/';
           urlStr += '{{1}}';
         }
         
-        const hasVars = /\\{\\{\\d+\\}\\}/.test(urlStr);
+        const hasVars = /\{\{\d+\}\}/.test(urlStr);
         return { 
           type: 'URL', 
           text: btn.text, 
@@ -662,15 +668,22 @@ export const submitTemplateToMeta = async (req, res) => {
 
     // Prefer existing stored header sample, then mediaUrl
     const storedHeaderComp = template.components?.find(c => c.type === 'HEADER');
-    const storedSample = storedHeaderComp?.example?.header_handle?.[0] || '';
-    let headerSample = normalizeHeaderSample(storedSample || template.mediaUrl || '');
+    let headerSample = storedHeaderComp?.example?.header_handle?.[0] || '';
+    let isHandle = !!headerSample;
 
-    // For media headers, prefer a WhatsApp media-id sample (more reliable for Meta validation)
+    // For media headers, force use of handle, never URL (S3 private URLs get flagged)
     if (template.hasMedia && ['image', 'video', 'document'].includes(String(template.mediaType || '').toLowerCase())) {
-      const needsMetaSample = !headerSample || /^https?:\/\//i.test(headerSample);
-      if (needsMetaSample) {
+      if (!isHandle) {
         const mediaIdSample = await uploadTemplateSampleToMeta(phone, template.mediaUrl, String(template.mediaType || 'image').toLowerCase());
-        if (mediaIdSample) headerSample = mediaIdSample;
+        if (mediaIdSample) {
+          headerSample = mediaIdSample;
+          isHandle = true;
+        } else {
+          logger.error('❌ Failed to create Meta media handle. META_APP_ID missing or upload failed');
+          return sendValidationError(res,
+            'Failed to upload media sample to Meta. Please set META_APP_ID in env. Private S3 URLs cannot be sent to Meta (triggers 24h queue).'
+          );
+        }
       }
     }
 
@@ -718,7 +731,6 @@ export const submitTemplateToMeta = async (req, res) => {
         (c) => c.type === 'HEADER' && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(c.format)
       );
       if (headerIdx >= 0 && headerSample) {
-        const isHandle = !String(headerSample).startsWith('http');
         components[headerIdx].example = isHandle 
           ? { header_handle: [headerSample] } 
           : { header_url: [headerSample] };
@@ -769,12 +781,12 @@ export const submitTemplateToMeta = async (req, res) => {
 
     logger.info(`📤 Submitting template "${template.name}" to Meta WABA: ${wabaId}`);
     logger.info('Payload:', JSON.stringify(payload, null, 2));
-    console.log('\n\n=== FULL META SUBMIT PAYLOAD ===\n', JSON.stringify(payload, null, 2), '\n================================\n');
 
-    // AI Approval System Checker
+    // AI Approval System Checker (Soft Warning only)
     const aiCheck = await checkTemplateApproval(payload);
     if (aiCheck.status === 'REJECTED') {
-      return sendValidationError(res, `AI Template Approval Failed. Meta would likely reject this template. Reasons: ${aiCheck.reasons.join(' ')}`);
+      logger.warn('⚠ Gemini warning but still submitting to Meta:', aiCheck.reasons);
+      template.aiWarning = aiCheck.reasons;
     }
 
     const metaResponse = await axios.post(
@@ -785,7 +797,6 @@ export const submitTemplateToMeta = async (req, res) => {
 
     const metaData = metaResponse.data;
     logger.info('✅ Meta accepted template:', metaData);
-    console.log('\n\n=== META RESPONSE HEADERS ===\n', JSON.stringify(metaResponse.headers, null, 2), '\n=============================\n');
 
     template.metaTemplateId = String(metaData.id);
     template.status = 'pending';

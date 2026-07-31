@@ -12,7 +12,7 @@ import { authService } from '@/lib/auth'
 import CreditBalanceTopbar from '@/components/CreditBalanceTopbar'
 
 const BrandLogo = () => (
-  <div className="hidden lg:flex items-center w-64 h-16 pl-6 -ml-6 shrink-0 relative">
+  <div className="hidden lg:flex items-center w-64 h-12 pl-6 -ml-6 shrink-0 relative">
     <Link href="/" prefetch={false} className="flex items-center gap-2">
       <div className="h-8 w-8 bg-[#008069] rounded-lg flex items-center justify-center flex-shrink-0">
         <MessageSquare className="h-5 w-5 text-white" />
@@ -189,7 +189,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
       const { tabTitle, showSyncButton, showCreateButton, isSyncing, onSyncClick, onCreateClick } = settingsContext
 
       return (
-        <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center justify-between px-6">
+        <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <BrandLogo />
             <button
@@ -231,7 +231,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
     }
 
     return (
-      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center justify-between px-6">
+      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center justify-between px-6">
         <div className="flex items-center gap-2">
           <BrandLogo />
           <button
@@ -261,7 +261,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
       const { showSyncButton, showCreateButton, isSyncing, onSyncClick, onCreateClick } = settingsContext
 
       return (
-        <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center justify-between px-6">
+        <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <BrandLogo />
             <button
@@ -301,7 +301,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
     }
 
     return (
-      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center justify-between px-6">
+      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center justify-between px-6">
         <div className="flex items-center gap-2">
           <BrandLogo />
           <button
@@ -321,7 +321,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
   // Show topbar with campaigns heading
   if (isCampaignsPage) {
     return (
-      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center justify-between px-6">
+      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center justify-between px-6">
         <div className="flex items-center gap-2">
           <BrandLogo />
           <button
@@ -342,7 +342,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
   if (isLiveChatPage) {
     return (
       <div className="bg-[#115B4C] border-b border-[#115B4C]/20">
-        <div className="h-16 flex items-center gap-3 px-6">
+        <div className="h-12 flex items-center gap-3 px-6">
           <BrandLogo />
           <button
             onClick={onMenuClick}
@@ -373,7 +373,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
   // Show contacts topbar in the shared ProjectHeader
   if (isContactsPage) {
     return (
-      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center justify-between gap-4 px-6">
+      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center justify-between gap-4 px-6">
         <div className="flex items-center gap-2">
           <BrandLogo />
           <button
@@ -466,7 +466,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
     const routeHeader = getRouteHeader()
     const flowStatus = isFlowPage ? flowBuilder?.status : null
     return (
-      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center justify-between gap-4 px-6">
+      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center justify-between gap-4 px-6">
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo />
           <button
@@ -500,7 +500,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
 
   if (loading && !project) {
     return (
-      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center px-6">
+      <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center px-6">
         <div className="flex items-center gap-3">
           <BrandLogo />
           <button
@@ -517,7 +517,7 @@ export default function ProjectHeader({ projectId, onMenuClick }: ProjectHeaderP
   }
 
   return (
-    <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-16 flex items-center justify-between px-6">
+    <header className="bg-[#115B4C] border-b border-[#115B4C]/20 h-12 flex items-center justify-between px-6">
       {/* Left: Project Info */}
       <div className="flex items-center gap-3">
         <BrandLogo />

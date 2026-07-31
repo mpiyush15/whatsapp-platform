@@ -37,7 +37,7 @@ export default function DashboardTopbar() {
   const pageName = getPageName()
 
   return (
-    <div className="fixed top-0 left-64 right-0 h-16 bg-white border-b border-gray-200 flex items-center px-8 z-40">
+    <div className="fixed top-0 left-64 right-0 h-12 bg-white border-b border-gray-200 flex items-center px-8 z-40">
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-500">Project</span>
         <ChevronRight size={16} className="text-gray-400" />
