@@ -789,6 +789,18 @@ export const submitTemplateToMeta = async (req, res) => {
       template.aiWarning = aiCheck.reasons;
     }
 
+    template.lastMetaPayload = payload;
+    template.lastSubmittedAt = new Date();
+    await template.save();
+
+    // Also write to file for local check
+    fs.writeFileSync(
+      `/tmp/last-meta-payload-${template.name}.json`,
+      JSON.stringify(payload, null, 2)
+    );
+
+    logger.info(`📦 DEBUG PAYLOAD for ${template.name}:`, JSON.stringify(payload, null, 2));
+
     const metaResponse = await axios.post(
       `${GRAPH_API_URL}/${wabaId}/message_templates`,
       payload,
@@ -800,6 +812,7 @@ export const submitTemplateToMeta = async (req, res) => {
 
     template.metaTemplateId = String(metaData.id);
     template.status = 'pending';
+    template.lastMetaResponse = metaData;
     template.lastSyncedAt = new Date();
     await template.save();
 
@@ -978,6 +991,29 @@ export const duplicateTemplate = async (req, res) => {
 };
 export const listTemplates = getTemplates; // alias for backward compat
 
+export const getTemplateDebug = async (req, res) => {
+  try {
+    const t = await Template.findById(req.params.id);
+    if (!t) return sendNotFound(res, 'Template not found');
+    
+    return sendSuccess(res, {
+      name: t.name,
+      lastSubmittedAt: t.lastSubmittedAt,
+      lastMetaPayload: t.lastMetaPayload,
+      lastMetaResponse: t.lastMetaResponse,
+      checks: {
+        has_header_handle: !!t.lastMetaPayload?.components?.find(c=>c.type==='HEADER')?.example?.header_handle,
+        has_header_url: !!t.lastMetaPayload?.components?.find(c=>c.type==='HEADER')?.example?.header_url,
+        has_private_s3_url: JSON.stringify(t.lastMetaPayload||'').includes('amazonaws.com'),
+        has_url_button_example: t.lastMetaPayload?.components?.find(c=>c.type==='BUTTONS')?.buttons?.some(b=>b.example),
+        body_example: t.lastMetaPayload?.components?.find(c=>c.type==='BODY')?.example
+      }
+    }, 'Template debug info retrieved');
+  } catch (error) {
+    return handleControllerError(res, error, 'getTemplateDebug');
+  }
+};
+
 export default {
   createTemplate,
   getTemplate,
@@ -988,4 +1024,5 @@ export default {
   updateTemplate,
   deleteTemplate,
   duplicateTemplate,
+  getTemplateDebug,
 };

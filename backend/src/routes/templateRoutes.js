@@ -58,6 +58,7 @@ const upload = multer({
 
 router.get('/', validateProjectFromQuery, templateController.getTemplates);
 router.get('/:id', validateProjectFromQuery, validators.validateObjectId, templateController.getTemplate);
+router.get('/:id/debug', validators.validateObjectId, templateController.getTemplateDebug);
 router.post('/', checkPlanLimit('template'), createTemplateLimiter, upload.single('mediaFile'), handleMulterError, validators.validateCreateTemplate, templateController.createTemplate);
 router.post('/sync', templateController.syncTemplates);
 router.post('/:id/submit', submitTemplateLimiter, validators.validateObjectId, templateController.submitTemplateToMeta);

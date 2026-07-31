@@ -133,6 +133,11 @@ const templateSchema = new mongoose.Schema({
   rejectedAt: Date,
   rejectedReason: String,
   
+  // Debug logging for Meta API
+  lastMetaPayload: { type: Object, default: null },
+  lastMetaResponse: { type: Object, default: null },
+  lastSubmittedAt: { type: Date },
+  
   // Soft delete
   isDeleted: {
     type: Boolean,
