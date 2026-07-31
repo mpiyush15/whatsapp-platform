@@ -498,37 +498,64 @@ export default function TemplatesTab({ projectId, isCreatePage = false }: { proj
     if (!confirm("Submit this template to Meta for approval?")) return
     
     try {
+      // 1. Optimistic UI - instantly show pending, don't wait
+      setTemplates(prev => prev.map(t => 
+        t._id === id ? { ...t, status: TemplateStatus.PENDING as any } : t
+      ));
+
       const response = await fetch(`${API_URL}/templates/${id}/submit?projectId=${projectId}`, {
         method: 'POST',
         headers: getHeaders(),
-      })
+      });
 
       const result = await response.json()
-      if (response.ok) {
-        const submitPayload = result.data || result
-        const submittedMetaId = submitPayload.metaTemplateId || submitPayload.template?.metaTemplateId || 'N/A'
-
-        // Auto-sync immediately so status updates quickly after submit
-        const syncResponse = await fetch(`${API_URL}/templates/sync?projectId=${projectId}`, {
-          method: 'POST',
-          headers: getHeaders(),
-        })
-        const syncResult = await syncResponse.json()
-        const syncPayload = syncResult.data || syncResult
-
-        if (syncResponse.ok) {
-          alert(`✅ Template submitted to Meta successfully!\nTemplate ID: ${submittedMetaId}\n\n🔄 Synced: ${syncPayload.synced ?? 0} (Created: ${syncPayload.created ?? 0}, Updated: ${syncPayload.updated ?? 0})`)
-        } else {
-          alert(`✅ Template submitted to Meta successfully!\nTemplate ID: ${submittedMetaId}\n\n⚠️ Auto-sync failed. Please click Sync.`)
-        }
-
-        fetchTemplates()
-      } else {
-        alert(`❌ Failed to submit template: ${result.message || "Unknown error"}`)
+      if (!response.ok) {
+        alert(`❌ Failed: ${result.message}`);
+        // revert on fail
+        fetchTemplates();
+        return;
       }
+
+      // 2. Auto-poll for 90 seconds
+      let attempts = 0;
+      const maxAttempts = 9; // 9 * 10sec = 90 sec
+
+      const interval = setInterval(async () => {
+        attempts++;
+        try {
+          await fetch(`${API_URL}/templates/sync?projectId=${projectId}`, {
+            method: 'POST',
+            headers: getHeaders(),
+          });
+          const listRes = await fetch(`${API_URL}/templates?projectId=${projectId}`, {
+            headers: getHeaders()
+          });
+          if (listRes.ok) {
+            const data = await listRes.json();
+            const payload = data.data || data;
+            const list = payload.templates || [];
+            setTemplates(list);
+            
+            const updated = list.find((t: any) => t._id === id);
+            if (updated?.status === 'approved') {
+              clearInterval(interval);
+              // optional: small celebration
+              console.log("✅ Approved!");
+            }
+            if (updated?.status === 'rejected' || attempts >= maxAttempts) {
+              clearInterval(interval);
+            }
+          }
+        } catch (e) {
+          console.error("Poll error", e);
+        }
+        if (attempts >= maxAttempts) clearInterval(interval);
+      }, 10000); // poll every 10 sec
+
     } catch (error) {
       console.error("Error submitting template:", error)
       alert("❌ Failed to submit template. Please try again.")
+      fetchTemplates();
     }
   }
 
